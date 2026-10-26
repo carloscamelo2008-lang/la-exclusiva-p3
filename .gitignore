@@ -1,59 +1,81 @@
 # Compiled Java classes
 *.class
+*.ctxt
 
-# Java archive/package outputs
+# Java archives and generated packages
 *.jar
 *.war
 *.nar
 *.ear
+*.zip
+*.tar.gz
+*.rar
 
-# Maven build output
+# Maven / build output
 target/
+build/
+dist/
+out/
+nbbuild/
+nbdist/
+!**/src/**/build/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# NetBeans
+/nbproject/private/
+/.nb-gradle/
+.mtj.tmp/
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# Gradle caches
+.gradle/
 
 # Logs and JVM crash reports
 *.log
 hs_err_pid*
 replay_pid*
 
-# IntelliJ IDEA
-.idea/
-*.iml
-out/
+# IDE/tool-generated tag files
+*.tag
+**/*.tag
 
-# NetBeans
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/**/build/
+# Temporary files, editor backups, patch leftovers
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+*~
 
-# Eclipse (in case a team member opens the project there)
-.project
-.classpath
-.settings/
-
-# Gradle caches/build output (if tooling creates them)
-.gradle/
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+*.local
 
 # OS-generated files
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Temporary files and editor backups
-*.tmp
-*.temp
-*.swp
-*.swo
-*~
-*.bak
+# Local PostgreSQL data directories
+.pgdata/
+postgres-data/
+postgresql-data/
 
-# JavaFX/native packaging artifacts
-*.app/
-*.dmg
-*.msi
+# Runtime data files; keep curated examples under data/seed-*.csv
+data/*.csv
+data/*.dat
+!data/seed-*.csv
 
-# Keep source code, documentation, SQL scripts, and intentional seed data tracked.
-# Do not ignore all *.csv or *.sql files globally: some may be required for the project.
+# Do not ignore *.sql or *.csv globally:
+# SQL scripts and intentionally curated seed data may be required.
