@@ -90,7 +90,9 @@ feature/*  fix/*  refactor/*  docs/*
 - [Diagrama de clases inicial](docs/fase-2/diagrama-clases-inicial.md)
 - [Mockups de la interfaz final](docs/fase-2/mockups.md)
 - [Propuesta GRASP y SOLID](docs/fase-2/grasp-solid.md)
+- [Plan de pruebas funcionales](docs/fase-3/pruebas-funcionales.md)
 - [Trazabilidad inicial GRASP/SOLID](docs/fase-3/trazabilidad-grasp-solid.md)
+- [Lista de control de la fase 4](docs/fase-4/README.md)
 - [Bitácoras de uso de IA](docs/ai-usage/README.md)
 - [Preparación futura de PostgreSQL](database/README.md)
 

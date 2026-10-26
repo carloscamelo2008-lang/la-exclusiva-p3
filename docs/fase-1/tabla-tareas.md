@@ -21,10 +21,10 @@
 | T-15 | Consultar resumen diario y movimientos de caja | Carlos | P1 | Pendiente | Se diferencian ventas, efectivo recibido, abonos, egresos y retiros. |
 | T-16 | Documentar y diseñar control de envases retornables | Jesús con el equipo | P2 | Pendiente | El modelo distingue tipos de envase y la relación compartida Poker 250/Aguilita 250. |
 | T-17 | Documentar y diseñar préstamos de cavas físicas | Equipo, coordina Carlos | P2 | Pendiente | Se acuerdan estado, ubicación, responsable e historial mínimo. |
-| T-18 | Preparar mockups de la futura interfaz JavaFX | Carlos con revisión del equipo | P1 | En preparación | Wireframes de venta, inventario, clientes/deudas, pedidos y resumen diario revisados. |
-| T-19 | Documentar arquitectura, diagrama de clases y paquetes | Equipo, coordina Carlos | P0 | En preparación | Los diagramas y responsabilidades quedan revisados antes de consolidar el diseño. |
-| T-20 | Registrar la aplicación de GRASP y SOLID | Cada integrante; consolida Carlos | P0 | En preparación | Cada justificación referencia una clase o método real y se actualiza tras los cambios. |
-| T-21 | Mantener las bitácoras de uso de IA | Cada integrante | P0 | Pendiente | Cada persona registra su uso real de herramientas de IA sin inventar entradas. |
+| T-18 | Preparar mockups de la futura interfaz JavaFX | Carlos con revisión del equipo | P1 | En revisión | Wireframes de venta, inventario, clientes/deudas, pedidos y resumen diario revisados. |
+| T-19 | Documentar arquitectura, diagrama de clases y paquetes | Equipo, coordina Carlos | P0 | En revisión | Los diagramas y responsabilidades quedan revisados antes de consolidar el diseño. |
+| T-20 | Registrar la aplicación de GRASP y SOLID | Cada integrante; consolida Carlos | P0 | En revisión | Cada justificación referencia una clase o método real y se actualiza tras los cambios. |
+| T-21 | Mantener las bitácoras de uso de IA | Cada integrante | P0 | En progreso | Cada persona registra su uso real de herramientas de IA sin inventar entradas. |
 | T-22 | Integrar PostgreSQL mediante JDBC | Equipo, coordina Carlos | P2 | Pospuesto | Esquema, repositorios y pruebas de persistencia integradas en una etapa posterior. |
 | T-23 | Implementar interfaz gráfica JavaFX | Equipo | P2 | Pospuesto | Interfaz gráfica probada en la entrega final. |
 
