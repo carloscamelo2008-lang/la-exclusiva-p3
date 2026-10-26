@@ -1,9 +1,15 @@
-# Compiled Java classes and archives
+# Compiled Java classes
 *.class
+*.ctxt
+
+# Java archives and generated packages
 *.jar
 *.war
 *.nar
 *.ear
+*.zip
+*.tar.gz
+*.rar
 
 # Maven / build output
 target/
@@ -21,6 +27,7 @@ nbdist/
 # NetBeans
 /nbproject/private/
 /.nb-gradle/
+.mtj.tmp/
 
 # Eclipse
 .project
@@ -60,15 +67,15 @@ replay_pid*
 Thumbs.db
 desktop.ini
 
-# Native installer/package output
-*.app/
-*.dmg
-*.msi
-
 # Local PostgreSQL data directories
 .pgdata/
 postgres-data/
 postgresql-data/
 
+# Runtime data files; keep curated examples under data/seed-*.csv
+data/*.csv
+data/*.dat
+!data/seed-*.csv
+
 # Do not ignore *.sql or *.csv globally:
-# SQL scripts and intentional test/seed data may be required in the repository.
+# SQL scripts and intentionally curated seed data may be required.
