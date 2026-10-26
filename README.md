@@ -79,6 +79,16 @@ feature/*  fix/*  refactor/*  docs/*
 - El autor no aprueba su propio Pull Request.
 - La configuración inicial debe ser revisada por Jesús y Daniel antes de que el líder la integre en develop.
 
+## Verificación automática
+
+El workflow de GitHub Actions ejecuta la construcción Maven con Java 17 cuando se abre un Pull Request hacia main o develop, y cuando hay un push a esas ramas. Antes de integrar, se debe revisar el resultado del flujo, además de la aprobación del integrante revisor.
+
+~~~~bash
+mvn --batch-mode --no-transfer-progress clean verify
+~~~~
+
+La ejecución automática aún debe comprobarse al abrir el primer Pull Request. No se debe considerar aprobada una compilación hasta que GitHub muestre un resultado exitoso.
+
 ## Documentación del proyecto
 
 - [Documentación general de la fase 1](docs/fase-1/proyecto-aula.md)

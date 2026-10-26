@@ -72,6 +72,7 @@ Todas las ramas de trabajo se crean desde develop y se proponen mediante Pull Re
 4. El líder técnico comprueba que la revisión esté aprobada antes de integrar.
 5. No se fusiona un Pull Request mientras tenga observaciones bloqueantes.
 6. Para la configuración inicial, Jesús y Daniel revisarán la rama feature/project-setup y deberán aprobarla antes de que Carlos haga el merge a develop.
+7. La aprobación del revisor y la verificación automática de Maven son comprobaciones separadas; ambas deben completarse antes de integrar.
 
 ## Convenciones
 
