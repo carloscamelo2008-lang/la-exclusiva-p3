@@ -1,11 +1,11 @@
-# Compiled Java classes and generated artifacts
+# Compiled Java classes and archives
 *.class
 *.jar
 *.war
 *.nar
 *.ear
 
-# Maven and build output
+# Maven / build output
 target/
 build/
 dist/
@@ -27,7 +27,7 @@ nbdist/
 .classpath
 .settings/
 
-# Gradle
+# Gradle caches
 .gradle/
 
 # Logs and JVM crash reports
@@ -39,7 +39,7 @@ replay_pid*
 *.tag
 **/*.tag
 
-# Temporary files, editor backups, and patch leftovers
+# Temporary files, editor backups, patch leftovers
 *.tmp
 *.temp
 *.swp
@@ -49,7 +49,7 @@ replay_pid*
 *.rej
 *~
 
-# Local environment and secrets
+# Local environment files and secrets
 .env
 .env.*
 !.env.example
@@ -65,10 +65,10 @@ desktop.ini
 *.dmg
 *.msi
 
-# Local PostgreSQL data directories (never commit database clusters)
+# Local PostgreSQL data directories
 .pgdata/
 postgres-data/
 postgresql-data/
 
-# Intentionally do not ignore *.sql or *.csv globally:
-# database scripts and curated seed/test data may belong in version control.
+# Do not ignore *.sql or *.csv globally:
+# SQL scripts and intentional test/seed data may be required in the repository.

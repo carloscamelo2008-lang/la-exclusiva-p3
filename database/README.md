@@ -1,22 +1,25 @@
-# Base de datos
+# PostgreSQL: etapa de persistencia definitiva
 
-La aplicación utilizará PostgreSQL mediante JDBC.
+PostgreSQL es el motor previsto para la etapa de persistencia definitiva del proyecto. De acuerdo con la prioridad de este avance, todavía no se han implementado el esquema ni las clases JDBC.
 
-## Organización prevista
+## Alcance de la etapa posterior
 
-- `schema.sql`: creación versionada del esquema acordado.
-- `seed.sql`: datos ficticios de prueba para desarrollo y demostración.
-
-Estos scripts se añadirán cuando el equipo valide las entidades, relaciones y reglas que afectan inventario, ventas y cuentas por cobrar. No se deben crear tablas definitivas antes de resolver las equivalencias de inventario y las reglas de crédito.
+- Definir el modelo entidad-relación.
+- Preparar schema.sql y datos ficticios de prueba.
+- Implementar repositorios/DAO usando JDBC.
+- Configurar transacciones para registrar ventas, líneas, pagos y ajustes de inventario de manera consistente.
+- Probar altas, consultas, actualizaciones, restricciones y errores de persistencia.
 
 ## Configuración local
 
-La conexión se configurará por variables de entorno, sin guardar contraseñas en Git.
+No guardar credenciales en Git. Cuando comience la integración se utilizarán variables de entorno como:
 
-- `LAEXCLUSIVA_DB_URL`: URL JDBC de la base de datos.
-- `LAEXCLUSIVA_DB_USER`: usuario de PostgreSQL.
-- `LAEXCLUSIVA_DB_PASSWORD`: contraseña del usuario.
+- LAEXCLUSIVA_DB_URL
+- LAEXCLUSIVA_DB_USER
+- LAEXCLUSIVA_DB_PASSWORD
 
-Ejemplo de formato de URL: `jdbc:postgresql://localhost:5432/la_exclusiva`.
+Formato de URL de ejemplo: jdbc:postgresql://localhost:5432/la_exclusiva.
 
-Cada integrante debe usar su configuración local. Si se crea un archivo de configuración local, debe quedar excluido de Git. Solo se incluirán en el repositorio ejemplos sin secretos.
+## Datos
+
+Solo se deben usar datos ficticios en los scripts y pruebas del repositorio. No se deben copiar nombres, teléfonos, direcciones o saldos reales de clientes del negocio.

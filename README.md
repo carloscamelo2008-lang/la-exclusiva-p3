@@ -4,87 +4,94 @@ Sistema de administración para el negocio familiar La Exclusiva, desarrollado c
 
 ## Propósito
 
-Organizar las operaciones de venta de cervezas y el control de información del negocio: productos, presentaciones, inventario, clientes, ventas, cuentas por cobrar y movimientos de dinero. El alcance contempla, además, compras, proveedores, envases retornables, cavas y pagos a trabajadores, según la prioridad acordada por el equipo.
+Organizar la operación de un negocio familiar de venta de cervezas mediante módulos para productos e inventario, ventas, clientes, cuentas por cobrar, abonos, compras, movimientos de dinero y, en una etapa posterior, control de envases retornables y cavas.
 
-## Estado actual
+## Estado del proyecto
 
-El repositorio se encuentra en la fase de configuración inicial y análisis. La primera entrega se trabajará con una interfaz de consola; JavaFX queda previsto para la entrega final.
+El repositorio está en la fase inicial de análisis, diseño y preparación del desarrollo.
 
-## Tecnologías
+- **Entrega inicial:** aplicación de consola en español y funcionalidades prioritarias del negocio.
+- **Interfaz final:** se contempla JavaFX; la interfaz gráfica no forma parte del primer avance funcional.
+- **Base de datos:** PostgreSQL está previsto para una etapa posterior. El esquema y la integración JDBC todavía no están implementados.
+- **Diseño:** se preparan desde ahora los diagramas, mockups, responsabilidades de clases y trazabilidad de GRASP/SOLID.
+
+## Tecnologías y herramientas
 
 - Java 17.
 - Maven.
-- PostgreSQL mediante JDBC.
 - Git y GitHub.
-- IntelliJ IDEA y NetBeans como entornos de desarrollo compatibles.
+- IntelliJ IDEA o NetBeans.
+- PostgreSQL con JDBC, previsto para la etapa de persistencia definitiva.
 
-El proyecto se configura mediante Maven para que los integrantes puedan clonarlo y abrirlo desde distintos IDE sin mantener configuraciones de compilación diferentes.
+Maven centraliza la compilación y las dependencias para que los tres integrantes trabajen con el mismo proyecto aunque utilicen diferentes IDE.
 
-## Ejecutar el proyecto
+## Ejecutar el esqueleto inicial
 
-Se requiere tener instalado Java 17 y Maven.
+Se requiere Java 17 y Maven.
 
 Compilar:
 
-```bash
+~~~~bash
 mvn clean compile
-```
+~~~~
 
-Ejecutar el menú de consola:
+Ejecutar el menú de consola inicial:
 
-```bash
+~~~~bash
 mvn exec:java
-```
+~~~~
 
-La estructura inicial del menú es una base de trabajo. Las opciones funcionales se incorporarán gradualmente mediante ramas de funcionalidad y Pull Requests.
+El menú actual es una base inicial; sus opciones funcionales se implementarán mediante ramas de trabajo y Pull Requests.
 
 ## Organización del código
 
-El proyecto seguirá una arquitectura por capas inspirada en el trabajo realizado en GameZone:
+La arquitectura propuesta separa estas responsabilidades:
 
-- **model:** entidades del negocio y su comportamiento.
-- **persistence:** acceso y persistencia en PostgreSQL, mediante clases de acceso a datos.
-- **service:** reglas de negocio, validaciones y coordinación de operaciones.
-- **ui:** interacción con el usuario mediante consola durante la primera entrega.
+- **model:** conceptos y reglas propias de las entidades del negocio.
+- **persistence:** acceso a los datos y repositorios.
+- **service:** casos de uso, reglas de negocio y coordinación de operaciones.
+- **ui:** interacción con el usuario. Para la primera entrega se utilizará consola; JavaFX se abordará en la entrega final.
 
-La interfaz no accederá directamente a la base de datos. Las operaciones se solicitarán a la capa de servicios, que coordinará el trabajo con las demás capas.
+La interfaz no debe ejecutar SQL ni modificar directamente el inventario. Las operaciones se solicitan a los servicios.
 
-## Convenciones del equipo
+## Convenciones
 
-- Los nombres de clases, métodos, atributos y variables se escribirán en inglés.
-- Los comentarios, JavaDoc y documentos del proyecto se redactarán en español.
-- Los menús, mensajes de validación y demás textos visibles al usuario estarán en español.
-- Los commits y nombres de ramas utilizarán inglés y nombres descriptivos.
-- Las credenciales de conexión no se guardarán en GitHub.
-- No se fusionarán cambios a `develop` sin una revisión y aprobación de otro integrante.
+- Clases, métodos, atributos y variables: inglés.
+- Comentarios, JavaDoc, documentación y mensajes visibles al usuario: español.
+- Commits y ramas: inglés, descriptivos y consistentes.
+- No guardar contraseñas ni datos personales reales en el repositorio.
+- No integrar cambios en develop sin la revisión acordada.
 
 ## Control de versiones
 
-Se utilizará el siguiente flujo:
-
-```text
+~~~~text
 main
   ↑
 develop
   ↑
 feature/*  fix/*  refactor/*  docs/*
-```
+~~~~
 
-- `main`: versión estable.
-- `develop`: integración del trabajo aprobado.
-- Las ramas de trabajo se crean desde `develop`.
-- Cada tarea se propone mediante un Pull Request hacia `develop`.
+- main: versión estable.
+- develop: integración del trabajo revisado.
+- Las ramas de trabajo nacen de develop.
+- Cada tarea se propone mediante un Pull Request hacia develop.
 - El autor no aprueba su propio Pull Request.
-- La configuración inicial se enviará a revisión de Jesús y Daniel antes de integrarla en `develop`.
+- La configuración inicial debe ser revisada por Jesús y Daniel antes de que el líder la integre en develop.
 
-## Documentación
+## Documentación del proyecto
 
-- `TEAM.md`: roles, responsabilidades y reglas de trabajo.
-- `docs/fase-1/analisis-negocio.md`: contexto del negocio y problemas identificados.
-- `docs/fase-1/requerimientos.md`: funcionalidades, prioridades y criterios de aceptación.
-- `docs/fase-1/plan-entrega.md`: plan inmediato para la entrega.
-- `docs/fase-1/tabla-tareas.md`: responsables y estado de las actividades.
-- `docs/fase-2/arquitectura-inicial.md`: capas y dependencias iniciales.
-- `database/README.md`: acuerdos iniciales para scripts y conexión a PostgreSQL.
+- [Documentación general de la fase 1](docs/fase-1/proyecto-aula.md)
+- [Análisis del negocio](docs/fase-1/analisis-negocio.md)
+- [Requerimientos](docs/fase-1/requerimientos.md)
+- [Tabla de tareas actualizable](docs/fase-1/tabla-tareas.md)
+- [Arquitectura inicial por capas](docs/fase-2/arquitectura-inicial.md)
+- [Diagrama de paquetes](docs/fase-2/diagrama-paquetes.md)
+- [Diagrama de clases inicial](docs/fase-2/diagrama-clases-inicial.md)
+- [Mockups de la interfaz final](docs/fase-2/mockups.md)
+- [Propuesta GRASP y SOLID](docs/fase-2/grasp-solid.md)
+- [Trazabilidad inicial GRASP/SOLID](docs/fase-3/trazabilidad-grasp-solid.md)
+- [Bitácoras de uso de IA](docs/ai-usage/README.md)
+- [Preparación futura de PostgreSQL](database/README.md)
 
-Los documentos iniciales son borradores de trabajo que el equipo debe revisar antes de tomarlos como especificación definitiva.
+Los diagramas, mockups y trazabilidad se consideran propuestas de diseño hasta que el equipo revise el contenido y se contrasten con la implementación real.

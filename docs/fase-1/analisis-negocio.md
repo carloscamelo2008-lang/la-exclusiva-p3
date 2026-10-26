@@ -2,119 +2,149 @@
 
 **Proyecto:** Sistema de administración para La Exclusiva  
 **Asignatura:** Programación de Computadores III  
-**Versión:** 0.1  
-**Estado:** Borrador para revisión del equipo
+**Versión:** 0.2  
+**Estado:** Borrador basado en información del negocio; pendiente de validación del equipo.
 
 ## 1. Propósito
 
-Este documento recoge el contexto conocido del negocio familiar La Exclusiva, identifica problemas de sus procesos actuales y plantea las necesidades que deberá atender el sistema. Servirá como base para especificar los requerimientos, diseñar las clases y organizar el trabajo de desarrollo.
+Este documento recoge el contexto conocido del negocio familiar La Exclusiva, identifica dificultades de sus procesos actuales y define reglas preliminares para diseñar el sistema. Servirá como base para los requerimientos, los diagramas, el desarrollo y las pruebas.
 
 ## 2. Contexto del negocio
 
-La Exclusiva es un negocio familiar dedicado a la venta de cervezas de diferentes marcas y presentaciones. Sus operaciones incluyen recibir mercancía, mantener existencias, atender pedidos, registrar ventas, cobrar a clientes, realizar abonos, comprar hielo y otros insumos, pagar gastos y controlar distintos movimientos de dinero.
+La Exclusiva es un negocio familiar dedicado a la venta de cervezas de diferentes marcas y presentaciones. Sus operaciones habituales incluyen recibir mercancía, mantener existencias, atender pedidos, registrar ventas, cobrar a clientes, registrar pagos parciales y abonos, realizar compras y controlar los movimientos de dinero.
 
-Entre las referencias conocidas se encuentran:
+### Catálogo inicial conocido
 
-| Referencia | Presentación | Unidades aproximadas por canasta |
-|---|---:|---:|
-| Costeñita | 175 ml | 38 |
-| Costeña Bacana | 330 ml | 30 |
-| Poker | 750 ml | 16 |
-| Poker | 250 ml | 38 |
-| Aguilita | 250 ml | 38 |
-| Cola y Pola | Lata de 330 ml | 30 |
+| Referencia | Presentación | Unidades por canasta completa | Tipo de envase |
+|---|---:|---:|---|
+| Costeñita | 175 ml | 38 | Retornable, exclusivo |
+| Poker | 250 ml | 38 | Retornable, compartido con Aguilita 250 ml |
+| Aguilita | 250 ml | 38 | Retornable, compartido con Poker 250 ml |
+| Costeña Bacana | 330 ml | 30 | Retornable, exclusivo |
+| Cola y Pola | Lata de 330 ml | 30 | Lata no retornable |
+| Poker | 750 ml | 16 | Retornable, tipo exclusivo |
 
-La lista puede ampliarse según la demanda. Las cantidades de la tabla corresponden a la información compartida por el negocio y deben validarse antes de convertirse en datos iniciales definitivos.
+El catálogo puede ampliarse según la demanda. Las cantidades anteriores corresponden a la información reportada por el negocio y deben utilizarse como datos iniciales configurables, no como reglas imposibles de cambiar.
 
-## 3. Presentaciones y envases
+## 3. Control combinado del inventario
 
-El inventario no puede asumir que todas las canastas contienen la misma cantidad. Las referencias pueden venderse por unidad o por una fracción o canasta completa, por lo que el sistema debe convertir cada formato a una cantidad de producto consistente.
+El inventario debe representar una combinación de canastas completas y unidades sueltas por referencia. Para una referencia determinada:
 
-También existen envases retornables. Algunos productos usan tipos de envase diferentes; Poker de 250 ml y Aguilita de 250 ml comparten un tipo, mientras que otras referencias usan envases distintos. Hay envases vacíos que actualmente no se aprovechan mucho. El modelo debe distinguir el inventario del producto vendido y el control de los envases retornables.
+- **Canastas completas:** cantidad de canastas cerradas disponibles.
+- **Unidades sueltas:** envases o latas que no forman una canasta completa.
+- **Unidades totales equivalentes:** canastas completas multiplicadas por la capacidad de la referencia, más las unidades sueltas.
 
-Las cavas son recipientes físicos que pueden entregarse temporalmente con pedidos para colocar una canasta de cerveza y hielo. Se necesita poder identificar cada cava, su estado y, cuando esté prestada, la ubicación o persona responsable.
+La capacidad por canasta depende de la presentación: 38 unidades para envases menores de 330 ml, 30 para presentaciones de 330 ml y 16 para la presentación de 750 ml. La aplicación deberá validar cualquier equivalencia adicional antes de registrarla.
 
-## 4. Situación actual y dificultades
+Cuando una venta se hace por unidad, media canasta o canasta completa, el sistema debe calcular cuántas unidades se descuentan. No debe permitir que el stock equivalente resulte negativo.
 
-Parte de la información se lleva manualmente. Las deudas de los clientes se anotan en un tablero con el nombre y el valor pendiente. Este método es rápido, pero puede dificultar reconstruir qué productos originaron la deuda, cuándo ocurrió la venta, qué abonos se han realizado y cuál es el saldo correcto.
+## 4. Precios comunicados por el negocio
 
-El dinero se administra de forma manual, sin un registro completo y consistente de todas las entradas, salidas y retiros. Esto limita la posibilidad de conocer el movimiento de caja y analizar los resultados del negocio.
+Los precios informados inicialmente son:
 
-Entre las operaciones que necesitan mejor trazabilidad están:
+| Presentación de venta | Precio comunicado |
+|---|---:|
+| Unidad de referencia menor de 750 ml | $2.500 COP |
+| Unidad de referencia de 750 ml | $6.000 COP |
+| Media canasta/cava de presentaciones habituales | $45.000 COP |
+| Canasta/cava completa de presentaciones habituales | $85.000 COP |
+| Media canasta/cava de la referencia de 750 ml | $45.000 COP |
+| Canasta/cava completa de la referencia de 750 ml | $90.000 COP |
 
-- Ventas con varias referencias y cantidades.
-- Actualización de existencias a partir de las ventas y compras.
-- Deudas de clientes, abonos y saldos.
-- Compras y pagos a proveedores.
-- Gastos como hielo, servicios y pagos a trabajadores.
-- Retiros efectuados por los administradores.
-- Control de envases retornables y cavas prestadas.
+Estos precios deben almacenarse de forma explícita por producto y presentación. No se deben calcular automáticamente a partir del precio unitario, porque los importes comunicados para unidades y canastas no necesariamente coinciden con la multiplicación aritmética.
 
-## 5. Justificación
+**Pendiente de validación:** confirmar si el precio unitario de $6.000 corresponde exactamente a Poker 750 ml, si todos los productos menores de 750 ml usan las tarifas indicadas y si “media cava/cava completa” se refiere a la presentación comercial de venta. En el modelo se distinguirá la presentación comercial de venta de la cava física que se presta al cliente.
 
-Un sistema centralizado puede reducir la dependencia de registros manuales, conservar el historial de las operaciones y facilitar la consulta de inventario, ventas, deudas y movimientos de dinero.
+## 5. Envases retornables y cavas físicas
 
-La solución se desarrollará en Java, inicialmente con interfaz de consola para la primera entrega, persistencia en PostgreSQL y organización por capas. JavaFX queda contemplado para la entrega final. La separación de responsabilidades busca que el sistema sea entendible y permita incorporar funcionalidades sin concentrar toda la lógica en el menú.
+Los envases de Poker 250 ml y Aguilita 250 ml pertenecen al mismo tipo compartido. Costeñita 175 ml, Costeña Bacana 330 ml y Poker 750 ml tienen tipos de envase retornable distintos. Cola y Pola se comercializa en lata no retornable.
 
-## 6. Objetivo general propuesto
+El sistema deberá distinguir entre:
 
-Desarrollar un sistema de administración para el negocio familiar La Exclusiva que permita organizar y controlar sus operaciones principales de inventario, ventas, cuentas por cobrar y movimientos de dinero, mediante una aplicación Java con persistencia en PostgreSQL, para mejorar la trazabilidad de la información y apoyar la toma de decisiones.
+1. **Inventario de producto:** cerveza por canastas y unidades sueltas.
+2. **Inventario de envases vacíos:** unidades retornables agrupadas por tipo de envase.
+3. **Cavas físicas prestadas:** recipientes identificables que se entregan temporalmente y deben poder localizarse y recuperarse.
 
-## 7. Objetivos específicos propuestos
+La venta de cerveza no debe confundirse con el préstamo de una cava física. El control detallado de envases y cavas se desarrollará después de estabilizar ventas e inventario.
 
-1. Analizar los procesos del negocio y documentar las reglas de operación relevantes.
-2. Diseñar una arquitectura por capas y un modelo de clases que distribuya las responsabilidades de forma coherente.
-3. Implementar el registro y consulta de productos, presentaciones y existencias.
-4. Implementar el registro de ventas y la actualización correspondiente del inventario.
-5. Registrar clientes, deudas, abonos y saldos pendientes.
-6. Incorporar consultas e informes básicos para facilitar la administración diaria.
-7. Aplicar validaciones, manejo de excepciones y buenas prácticas de diseño orientado a objetos.
-8. Gestionar el trabajo mediante Git y GitHub, con cambios revisados y trazables.
+## 6. Ventas, pagos parciales y deudas
 
-## 8. Alcance inicial
+Una venta puede incluir distintas referencias y presentaciones. El sistema debe registrar las líneas de venta, sus cantidades y los precios aplicados.
 
-### Funcionalidades prioritarias para la primera demostración
+Los clientes pueden pagar parcialmente. Por ello, el sistema debe diferenciar:
 
-- Registrar y consultar referencias de productos.
-- Registrar y consultar existencias.
-- Registrar ventas con varias referencias y cantidades.
-- Calcular el total de la venta.
-- Actualizar inventario sin permitir existencias negativas.
-- Registrar clientes.
-- Registrar ventas a crédito, abonos y saldo pendiente, de acuerdo con las reglas confirmadas por el equipo.
-- Conservar los datos en PostgreSQL entre ejecuciones.
+- **Total de la venta:** valor completo de los productos vendidos.
+- **Total abonado/pagado:** suma de los pagos registrados para esa venta.
+- **Saldo pendiente:** total de la venta menos los pagos registrados.
 
-### Funcionalidades complementarias
+Cada pago o abono debe conservar su fecha, valor y relación con la venta o cuenta que está pagando. Un abono reduce el saldo pendiente y no debe crear una segunda venta ni duplicar el ingreso de dinero. El sistema debe impedir que el saldo se vuelva negativo, salvo que en el futuro se defina explícitamente una regla para pagos en exceso.
 
-Cuando el núcleo esté estable, se priorizarán los movimientos de caja y reportes. Para una ampliación posterior se contemplan compras y créditos con proveedores, control de envases, cavas, pagos a trabajadores y una interfaz JavaFX.
+## 7. Clientes y vendedores
 
-## 9. Reglas de negocio identificadas
+Los datos obligatorios identificados para clientes y vendedores son:
 
-1. Cada referencia comercial debe poder identificarse de manera única.
-2. La capacidad de una canasta depende de la referencia y no debe asumirse igual para todos los productos.
-3. Una venta puede incluir distintas referencias y cantidades.
-4. El precio y la cantidad de cada línea deben permitir calcular el total correctamente.
-5. Una venta no puede generar inventario negativo.
-6. Las deudas deben quedar vinculadas a la venta que las originó.
-7. Los abonos deben reducir el saldo pendiente y conservar el historial de pagos.
-8. El sistema debe distinguir el valor total vendido del dinero efectivamente recibido.
-9. Todo ingreso o egreso registrado debe conservar valor, fecha, categoría y descripción.
-10. Los envases retornables deben controlarse según su tipo.
-11. Una cava prestada debe poder identificarse y mantener un estado y ubicación actualizados.
+- Nombre.
+- Número de teléfono.
+- Dirección.
 
-## 10. Decisiones por confirmar
+El sistema debe generar automáticamente un identificador para cada cliente, sin que el usuario tenga que inventar o escribir manualmente ese identificador. El mecanismo concreto y su formato se definirán durante el diseño técnico. Se recomienda usar el mismo criterio de identificador generado para vendedores.
 
-Antes de cerrar el diseño, el equipo debe validar:
+## 8. Compras y pedidos de mercancía
 
-- Cómo se cuenta el inventario: unidades, canastas o una combinación.
-- Los precios y equivalencias para unidad, media canasta y canasta completa.
-- Qué tipos de envases se comparten entre referencias y cómo se registran las devoluciones.
-- Si las ventas pueden tener pagos parciales y cómo se registra un abono.
-- Qué categorías exactas se usarán para ingresos y egresos.
-- Cómo se registrarán compras de mercancía y pagos a proveedores.
-- Qué datos son obligatorios para clientes y trabajadores.
-- Qué operaciones deben estar obligatoriamente listas para la entrega inicial del miércoles.
+La compra de mercancía será un módulo separado de la venta al cliente. El propósito es registrar el próximo pedido, los productos y cantidades que se esperan recibir y el estado del pedido.
 
-## 11. Criterio de cierre
+Se propone manejar estos estados iniciales:
 
-El análisis estará listo para usarse como especificación cuando el equipo valide las reglas pendientes que afectan el modelo de datos, las clases y el cálculo de ventas. A partir de ahí se cerrarán los requerimientos, el diseño de clases y los criterios de prueba.
+- **Planeado:** el pedido se está preparando.
+- **Solicitado:** el pedido ya se comunicó al proveedor.
+- **Recibido parcialmente:** llegó una parte de la mercancía.
+- **Recibido:** llegó toda la mercancía esperada.
+- **Cancelado:** el pedido no se realizará.
+
+El inventario solo debe aumentar por las cantidades efectivamente recibidas, no por el mero hecho de crear o solicitar un pedido. Los pagos al proveedor se registrarán aparte para distinguir la mercancía solicitada, la recibida y el dinero efectivamente pagado.
+
+## 9. Ingresos y egresos: qué significan las categorías
+
+Una categoría es simplemente una etiqueta que permite saber **por qué entró o salió dinero**. No es un módulo diferente ni un cálculo complicado. Por ejemplo, no es lo mismo gastar dinero en hielo que retirar dinero para el administrador.
+
+Se proponen estas categorías iniciales.
+
+**Ingresos:**
+- Cobro de una venta.
+- Abono de una deuda de cliente.
+- Otro ingreso.
+
+**Egresos:**
+- Pago de una compra de mercancía.
+- Compra de hielo.
+- Servicios.
+- Pago a trabajadores.
+- Retiro de administrador.
+- Otro egreso.
+
+Cuando un cliente paga una parte de una venta, el dinero efectivamente recibido se registra como entrada; la porción que queda fiada sigue siendo una cuenta por cobrar, no efectivo en caja. Cuando se registra un pedido a un proveedor, todavía no debe anotarse como dinero gastado hasta que corresponda registrar el pago.
+
+## 10. Situación actual y dificultades
+
+Parte de la información se registra manualmente. Las deudas, por ejemplo, se anotan en un tablero con el nombre del cliente y el valor pendiente. Este método puede dificultar reconstruir los productos que originaron una deuda, la fecha de la operación, los abonos efectuados y el saldo correcto.
+
+El manejo del dinero tampoco conserva de manera uniforme el detalle de todas las entradas, salidas y retiros. Asimismo, el seguimiento del inventario exige considerar presentaciones con distintas capacidades de canasta, unidades sueltas y tipos de envase retornable.
+
+## 11. Solución propuesta
+
+Se desarrollará una aplicación Java con arquitectura por capas y menú de consola para el avance inmediato. La primera prioridad es que los módulos principales funcionen y se puedan demostrar; la interfaz gráfica JavaFX y la integración definitiva con PostgreSQL se abordarán en una etapa posterior.
+
+La aplicación se organizará en model, persistence, service y ui. Las reglas del negocio y los cálculos no deben estar concentrados en el menú. Los repositorios aislarán el mecanismo de persistencia para facilitar el paso posterior a PostgreSQL.
+
+## 12. Decisiones por validar
+
+1. Confirmar las tarifas unitarias y por presentación para cada referencia.
+2. Confirmar qué se entiende por media cava/canasta y cómo se representa comercialmente.
+3. Validar qué ocurre al intentar registrar un abono superior al saldo.
+4. Definir el mínimo necesario para registrar proveedor y pedido.
+5. Acordar qué mecanismo temporal de persistencia se utilizará en el avance inmediato antes de PostgreSQL.
+6. Confirmar la prioridad de los módulos complementarios después de ventas, inventario y deudas.
+
+## 13. Criterio de cierre
+
+El análisis estará validado cuando el equipo confirme los precios y equivalencias, los flujos de ventas y abonos, y la prioridad de los módulos. Después se revisará el diagrama de clases y se convertirán las reglas de negocio en pruebas verificables.

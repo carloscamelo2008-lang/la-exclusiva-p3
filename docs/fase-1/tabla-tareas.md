@@ -1,22 +1,35 @@
 # Tabla inicial de tareas
 
-**Estado inicial:** todas las actividades funcionales están pendientes hasta que exista evidencia de su implementación y revisión.
+**Estado actual:** las funcionalidades están pendientes hasta que exista implementación, prueba y revisión en GitHub. La tabla debe actualizarse durante el desarrollo.
 
 | ID | Actividad | Responsable inicial | Prioridad | Estado | Criterio de cierre |
 |---|---|---|---|---|---|
-| T-01 | Revisar y aprobar la configuración inicial del repositorio | Jesús y Daniel; coordinación de Carlos | P0 | En revisión | Ambos revisan el Pull Request inicial y dejan su aprobación. |
-| T-02 | Validar las reglas de negocio para presentaciones y canastas | Equipo, lidera Jesús | P0 | Pendiente | Se documentan equivalencias y se resuelven las preguntas críticas. |
-| T-03 | Definir el esquema inicial de PostgreSQL | Equipo, coordina Carlos | P0 | Pendiente | Tablas y relaciones mínimas aprobadas antes de programar consultas. |
-| T-04 | Registrar y consultar productos | Jesús | P0 | Pendiente | Pruebas de creación, consulta y datos inválidos. |
-| T-05 | Consultar y actualizar inventario | Jesús | P0 | Pendiente | Una venta reduce stock y no se aceptan existencias negativas. |
-| T-06 | Registrar clientes | Daniel | P0 | Pendiente | Registro y consulta con identificador único según las reglas acordadas. |
-| T-07 | Registrar cuentas por cobrar, abonos y saldos | Daniel | P0 | Pendiente | Una deuda y sus abonos producen el saldo esperado y conservan el historial. |
-| T-08 | Integrar el registro de ventas | Carlos | P0 | Pendiente | Una venta con varias líneas calcula el total y actualiza inventario. |
-| T-09 | Integrar ventas a crédito con clientes y abonos | Carlos con Daniel | P0 | Pendiente | El saldo de la deuda coincide con los abonos registrados. |
-| T-10 | Registrar movimientos de ingresos y egresos | Carlos, sujeto a avance P0 | P1 | Pendiente | Los movimientos quedan guardados y se pueden consultar. |
-| T-11 | Crear un resumen diario básico | Carlos, sujeto a avance P0 | P1 | Pendiente | Ventas, efectivo recibido, abonos y egresos aparecen diferenciados. |
-| T-12 | Documentar y probar cavas, envases, proveedores y pagos a trabajadores | Equipo según la distribución posterior | P2 | Pendiente | Requerimientos detallados y priorizados para la versión final. |
+| T-01 | Revisar y aprobar la configuración inicial del repositorio | Jesús y Daniel; coordina Carlos | P0 | En revisión | Ambos revisan el PR de configuración y aprueban la base antes del merge a develop. |
+| T-02 | Validar precios, presentaciones y capacidades de canastas | Equipo, lidera Jesús | P0 | Pendiente | Se confirman las tarifas y equivalencias por referencia. |
+| T-03 | Definir modelo de dominio y contratos entre módulos | Equipo, coordina Carlos | P0 | Pendiente | Clases, relaciones y firmas compartidas acordadas antes de codificar en paralelo. |
+| T-04 | Implementar productos y catálogo inicial | Jesús | P0 | Pendiente | Se pueden registrar y consultar las referencias conocidas. |
+| T-05 | Implementar inventario combinado: canastas y unidades sueltas | Jesús | P0 | Pendiente | Las unidades equivalentes se calculan y se validan correctamente. |
+| T-06 | Registrar precios por unidad, media canasta y canasta completa | Jesús con Carlos | P0 | Pendiente | Los precios por presentación se configuran por referencia y se prueban. |
+| T-07 | Registrar clientes con ID generado y datos obligatorios | Daniel | P0 | Pendiente | ID único generado; nombre, teléfono y dirección obligatorios. |
+| T-08 | Registrar vendedores y datos básicos | Daniel | P0 | Pendiente | Nombre, teléfono y dirección se validan. |
+| T-09 | Implementar ventas con varias referencias y presentaciones | Carlos | P0 | Pendiente | Una venta mixta calcula total y unidades a descontar correctamente. |
+| T-10 | Integrar venta con inventario | Carlos con Jesús | P0 | Pendiente | El stock disminuye por las unidades equivalentes; la venta inválida no deja cambios parciales. |
+| T-11 | Implementar pagos parciales, abonos y cuentas por cobrar | Daniel con Carlos | P0 | Pendiente | Total, pagado y saldo se actualizan y se conserva el historial de abonos. |
+| T-12 | Crear módulo de pedidos de mercancía | Jesús | P1 | Pendiente | Se puede registrar un pedido y sus productos, cantidades, fecha y estado. |
+| T-13 | Registrar recepción parcial o completa de pedidos | Jesús con Carlos | P1 | Pendiente | El stock aumenta solo por las cantidades realmente recibidas. |
+| T-14 | Registrar ingresos y egresos con categorías | Carlos | P1 | Pendiente | Cada movimiento registra fecha, valor, categoría y descripción. |
+| T-15 | Consultar resumen diario y movimientos de caja | Carlos | P1 | Pendiente | Se diferencian ventas, efectivo recibido, abonos, egresos y retiros. |
+| T-16 | Documentar y diseñar control de envases retornables | Jesús con el equipo | P2 | Pendiente | El modelo distingue tipos de envase y la relación compartida Poker 250/Aguilita 250. |
+| T-17 | Documentar y diseñar préstamos de cavas físicas | Equipo, coordina Carlos | P2 | Pendiente | Se acuerdan estado, ubicación, responsable e historial mínimo. |
+| T-18 | Preparar mockups de la futura interfaz JavaFX | Carlos con revisión del equipo | P1 | En preparación | Wireframes de venta, inventario, clientes/deudas, pedidos y resumen diario revisados. |
+| T-19 | Documentar arquitectura, diagrama de clases y paquetes | Equipo, coordina Carlos | P0 | En preparación | Los diagramas y responsabilidades quedan revisados antes de consolidar el diseño. |
+| T-20 | Registrar la aplicación de GRASP y SOLID | Cada integrante; consolida Carlos | P0 | En preparación | Cada justificación referencia una clase o método real y se actualiza tras los cambios. |
+| T-21 | Mantener las bitácoras de uso de IA | Cada integrante | P0 | Pendiente | Cada persona registra su uso real de herramientas de IA sin inventar entradas. |
+| T-22 | Integrar PostgreSQL mediante JDBC | Equipo, coordina Carlos | P2 | Pospuesto | Esquema, repositorios y pruebas de persistencia integradas en una etapa posterior. |
+| T-23 | Implementar interfaz gráfica JavaFX | Equipo | P2 | Pospuesto | Interfaz gráfica probada en la entrega final. |
 
-## Seguimiento
+## Regla para actualizar estados
 
-Actualizar esta tabla en cada revisión de equipo. No cambiar un estado a “Completada” solo porque el código exista: debe cumplir el criterio de aceptación y estar revisado e integrado en develop.
+Usar únicamente: **Pendiente**, **En progreso**, **En revisión**, **Completada**, **Bloqueada** o **Pospuesto**.
+
+Una actividad se marca como Completada cuando satisface su criterio de aceptación, se ha probado y su Pull Request está aprobado e integrado en develop.
