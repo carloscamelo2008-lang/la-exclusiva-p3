@@ -1,25 +1,23 @@
-# PostgreSQL: etapa de persistencia definitiva
+# PostgreSQL: persistencia definitiva en una etapa posterior
 
-PostgreSQL es el motor previsto para la etapa de persistencia definitiva del proyecto. De acuerdo con la prioridad de este avance, todavía no se han implementado el esquema ni las clases JDBC.
+PostgreSQL es el motor previsto para la persistencia definitiva. En el primer avance, la prioridad es construir y probar los casos de uso de consola; se utilizarán colecciones en memoria detrás de contratos de repositorio. Los datos de ese avance se reinician al cerrar el programa.
 
-## Alcance de la etapa posterior
+## Alcance de la siguiente etapa
 
-- Definir el modelo entidad-relación.
-- Preparar schema.sql y datos ficticios de prueba.
-- Implementar repositorios/DAO usando JDBC.
-- Configurar transacciones para registrar ventas, líneas, pagos y ajustes de inventario de manera consistente.
-- Probar altas, consultas, actualizaciones, restricciones y errores de persistencia.
+- Diseñar el modelo entidad-relación.
+- Crear schema.sql y datos ficticios de prueba.
+- Implementar repositorios/DAO mediante JDBC.
+- Configurar transacciones para guardar una venta, líneas, pagos y ajustes de inventario de manera consistente.
+- Implementar CRUD y manejo de errores de persistencia.
+- Probar restricciones e integridad de las operaciones.
 
-## Configuración local
+## Configuración local prevista
 
-No guardar credenciales en Git. Cuando comience la integración se utilizarán variables de entorno como:
-
+No guardar credenciales en Git. La conexión utilizará variables de entorno:
 - LAEXCLUSIVA_DB_URL
 - LAEXCLUSIVA_DB_USER
 - LAEXCLUSIVA_DB_PASSWORD
 
 Formato de URL de ejemplo: jdbc:postgresql://localhost:5432/la_exclusiva.
 
-## Datos
-
-Solo se deben usar datos ficticios en los scripts y pruebas del repositorio. No se deben copiar nombres, teléfonos, direcciones o saldos reales de clientes del negocio.
+Usar datos ficticios en scripts y pruebas. No copiar al repositorio teléfonos, direcciones ni saldos reales de clientes.

@@ -7,96 +7,71 @@
 - **Repositorio:** https://github.com/carloscamelo2008-lang/la-exclusiva-p3
 - **Integrantes:** Carlos Eduardo Camelo Montaño, Jesús Daniel Díaz Álvarez y Daniel Josué Arrieta Fontalvo.
 
-## Roles y responsabilidades iniciales
+## Roles iniciales
 
-Esta es la distribución de partida. El equipo debe confirmar los límites entre módulos y las firmas compartidas durante la revisión de la configuración inicial.
+### Carlos Eduardo Camelo Montaño — Liderazgo técnico e integración
 
-### Carlos Eduardo Camelo Montaño — Líder técnico e integración
-
-- Coordinar el análisis, las prioridades y los acuerdos técnicos.
-- Mantener el repositorio, la estrategia de ramas y la tabla de tareas.
+- Mantener la estrategia de Git, la tabla de tareas y la documentación compartida.
 - Coordinar el menú de consola y el caso de uso de registro de ventas.
-- Implementar la integración de ventas con inventario, pagos, abonos y movimientos de caja.
-- Coordinar los contratos entre módulos y revisar los Pull Requests.
-- Mantener la documentación general y verificar que corresponda con el sistema implementado.
-- Preparar la futura integración de PostgreSQL y coordinar la interfaz JavaFX de la entrega final.
+- Implementar el flujo de ventas y coordinar su integración con inventario, pagos, abonos y caja.
+- Acordar contratos entre módulos y revisar los Pull Requests.
+- Consolidar pruebas, documentos de diseño y trazabilidad de GRASP/SOLID.
+- Coordinar la futura integración de PostgreSQL y la interfaz JavaFX final.
 
-### Jesús Daniel Díaz Álvarez — Productos, inventario y pedidos de mercancía
+### Jesús Daniel Díaz Álvarez — Productos, inventario y pedidos
 
-- Definir y documentar las referencias, presentaciones, capacidades de canastas y tipos de envase.
-- Implementar el registro y consulta de productos.
-- Implementar el control de canastas completas y unidades sueltas.
-- Implementar el módulo de pedidos de mercancía y la recepción real de productos, coordinado con la actualización de inventario.
-- Preparar pruebas de cantidades, precios por presentación y actualización de existencias.
-- Documentar las decisiones técnicas de su módulo.
+- Confirmar y documentar referencias, precios, capacidades de canastas y tipos de envase.
+- Implementar catálogo, registro y consulta de productos.
+- Implementar inventario combinado de canastas completas y unidades sueltas.
+- Implementar precios por unidad, media canasta y canasta completa.
+- Desarrollar el módulo separado de pedidos y recepción de mercancía después de estabilizar el núcleo.
+- Preparar pruebas de cantidades, presentaciones y existencias.
 
-### Daniel Josué Arrieta Fontalvo — Clientes, fiados y abonos
+### Daniel Josué Arrieta Fontalvo — Clientes, vendedores y cuentas por cobrar
 
-- Analizar y documentar el registro actual de clientes, deudas y abonos.
-- Implementar el registro y consulta de clientes con identificador generado automáticamente.
-- Implementar las operaciones para cuentas por cobrar, abonos y saldos pendientes.
-- Preparar pruebas para deudas nuevas, pagos parciales, abonos y saldos.
-- Coordinar el registro de vendedores, cuyos datos mínimos son nombre, teléfono y dirección.
-- Documentar las decisiones técnicas de su módulo.
+- Implementar registro y consulta de clientes con ID generado automáticamente.
+- Validar nombre, teléfono y dirección para clientes y vendedores.
+- Implementar pagos parciales, abonos, historial y consulta de saldos.
+- Preparar pruebas de deudas, abonos parciales y saldos.
+- Mantener documentación y pruebas del módulo.
 
 ## Responsabilidades compartidas
 
-Todos los integrantes deberán:
+Todos los integrantes deben revisar reglas de negocio y diagramas, acordar firmas compartidas antes de programar en paralelo, compilar y probar sus ramas, participar en revisiones cruzadas y actualizar su propia bitácora de IA cuando corresponda.
 
-- Revisar el análisis, los requerimientos y los diagramas antes de cerrar el diseño.
-- Acordar las clases compartidas, las firmas de métodos y los contratos entre módulos antes de desarrollarlos en paralelo.
-- Mantener los cambios limitados a su tarea y coordinar antes de modificar código de otro integrante.
-- Compilar y probar su rama antes de solicitar una revisión.
-- Revisar el trabajo de otro integrante.
-- Registrar el uso de IA en su bitácora personal cuando corresponda.
-- Participar en las pruebas integrales, en la actualización de los documentos y en la demostración.
+## Flujo Git
 
-## Flujo Git y autorización de cambios
+- main: versión estable.
+- develop: integración de cambios revisados.
+- feature/*: nuevas funcionalidades.
+- fix/*: correcciones.
+- refactor/*: reorganizaciones internas.
+- docs/*: documentación.
 
-### Ramas principales
+Las ramas de trabajo se crean desde develop y se integran mediante Pull Requests a develop.
 
-- main: versión estable y lista para una entrega.
-- develop: integración del trabajo revisado.
-- feature/nombre-funcionalidad: nuevas funcionalidades.
-- fix/nombre-defecto: correcciones de errores.
-- refactor/nombre-cambio: reorganización interna sin cambiar el comportamiento esperado.
-- docs/nombre-documento: cambios de documentación.
+### Autorización de cambios
 
-Todas las ramas de trabajo se crean desde develop y se proponen mediante Pull Request dirigido a develop.
-
-### Revisión y autorización
-
-1. El autor explica el cambio en el Pull Request e indica cómo lo verificó.
-2. Otro integrante revisa el cambio; el autor no puede aprobar su propio Pull Request.
-3. Si se solicitan correcciones, el autor las realiza en la misma rama y vuelve a pedir revisión.
-4. El líder técnico comprueba que la revisión esté aprobada antes de integrar.
-5. No se fusiona un Pull Request mientras tenga observaciones bloqueantes.
-6. Para la configuración inicial, Jesús y Daniel revisarán la rama feature/project-setup y deberán aprobarla antes de que Carlos haga el merge a develop.
-7. La aprobación del revisor y la verificación automática de Maven son comprobaciones separadas; ambas deben completarse antes de integrar.
+1. El autor describe el cambio y las pruebas en el Pull Request.
+2. El autor no aprueba su propio Pull Request.
+3. Los cambios funcionales requieren revisión de otro integrante y visto bueno del líder antes de integrarse.
+4. Las decisiones de arquitectura, contratos compartidos o cambios de alcance deben revisarse por los tres integrantes.
+5. Para la configuración inicial, Jesús y Daniel revisan y aprueban el PR de feature/project-setup antes de que Carlos lo integre en develop.
+6. La compilación automática de Maven y la aprobación del equipo son controles separados; ambos deben ser satisfactorios.
 
 ## Convenciones
 
 - Identificadores técnicos del código: inglés.
-- Comentarios, JavaDoc y documentación: español.
-- Textos y mensajes dirigidos al usuario: español.
-- Commits: inglés con formato Conventional Commits.
+- Comentarios, JavaDoc, documentación y mensajes de usuario: español.
+- Commits y ramas: inglés, descriptivos y consistentes.
 - No subir contraseñas, archivos de entorno reales, compilados ni datos personales reales.
 
 Ejemplos de commits:
-
 - chore: configure Maven project
 - docs: document initial business analysis
 - feat: add product registration
 - fix: validate available stock
 
-## Criterios para cerrar una tarea
+## Criterio de finalización de una tarea
 
-Una tarea se considera terminada cuando:
-
-- Cumple su criterio de aceptación.
-- Valida entradas y reglas de negocio relevantes.
-- Guarda y recupera los datos según el mecanismo aprobado para esa etapa.
-- Los mensajes visibles al usuario están en español.
-- Compila y tiene pruebas pertinentes.
-- Su Pull Request fue revisado, aprobado y fusionado en develop.
-- La documentación afectada está actualizada.
+Una tarea se completa cuando cumple su criterio de aceptación, ha sido probada, compila, tiene documentación actualizada y su Pull Request está aprobado e integrado en develop.

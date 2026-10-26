@@ -26,34 +26,32 @@ La Exclusiva es un negocio familiar dedicado a la venta de cervezas de diferente
 
 El catálogo puede ampliarse según la demanda. Las cantidades anteriores corresponden a la información reportada por el negocio y deben utilizarse como datos iniciales configurables, no como reglas imposibles de cambiar.
 
-## 3. Control combinado del inventario
+## 3. Inventario combinado
 
-El inventario debe representar una combinación de canastas completas y unidades sueltas por referencia. Para una referencia determinada:
+El inventario se lleva por combinación de canastas completas y unidades sueltas para cada referencia.
 
-- **Canastas completas:** cantidad de canastas cerradas disponibles.
-- **Unidades sueltas:** envases o latas que no forman una canasta completa.
-- **Unidades totales equivalentes:** canastas completas multiplicadas por la capacidad de la referencia, más las unidades sueltas.
+- **Canastas completas:** cantidad de canastas sin fraccionar.
+- **Unidades sueltas:** unidades disponibles fuera de una canasta completa.
+- **Unidades equivalentes:** canastas completas multiplicadas por su capacidad, más las unidades sueltas.
 
-La capacidad por canasta depende de la presentación: 38 unidades para envases menores de 330 ml, 30 para presentaciones de 330 ml y 16 para la presentación de 750 ml. La aplicación deberá validar cualquier equivalencia adicional antes de registrarla.
+Las referencias menores de 330 ml usan 38 unidades por canasta; las presentaciones de 330 ml usan 30; Poker de 750 ml usa 16. Una media canasta equivale a la mitad de la capacidad: 19, 15 u 8 unidades respectivamente.
 
-Cuando una venta se hace por unidad, media canasta o canasta completa, el sistema debe calcular cuántas unidades se descuentan. No debe permitir que el stock equivalente resulte negativo.
+Al vender por unidad, media canasta o canasta completa, el sistema convierte la presentación a unidades equivalentes y descuenta la cantidad correcta. No debe aceptar una operación que deje existencias negativas.
 
 ## 4. Precios comunicados por el negocio
 
-Los precios informados inicialmente son:
-
-| Presentación de venta | Precio comunicado |
+| Producto o presentación de venta | Precio |
 |---|---:|
-| Unidad de referencia menor de 750 ml | $2.500 COP |
-| Unidad de referencia de 750 ml | $6.000 COP |
-| Media canasta/cava de presentaciones habituales | $45.000 COP |
-| Canasta/cava completa de presentaciones habituales | $85.000 COP |
-| Media canasta/cava de la referencia de 750 ml | $45.000 COP |
-| Canasta/cava completa de la referencia de 750 ml | $90.000 COP |
+| Una unidad de cualquier cerveza menor de 750 ml | $2.500 COP |
+| Una unidad de Poker de 750 ml | $6.000 COP |
+| Media canasta de cualquier referencia menor de 750 ml | $45.000 COP |
+| Canasta completa de cualquier referencia menor de 750 ml | $85.000 COP |
+| Media canasta de Poker de 750 ml | $45.000 COP |
+| Canasta completa de Poker de 750 ml | $90.000 COP |
 
-Estos precios deben almacenarse de forma explícita por producto y presentación. No se deben calcular automáticamente a partir del precio unitario, porque los importes comunicados para unidades y canastas no necesariamente coinciden con la multiplicación aritmética.
+El precio unitario de $2.500 aplica a Costeñita 175 ml, Poker 250 ml, Aguilita 250 ml, Costeña Bacana 330 ml y Cola y Pola en lata de 330 ml, por ser referencias menores de 750 ml. Poker de 750 ml tiene precio unitario de $6.000.
 
-**Pendiente de validación:** confirmar si el precio unitario de $6.000 corresponde exactamente a Poker 750 ml, si todos los productos menores de 750 ml usan las tarifas indicadas y si “media cava/cava completa” se refiere a la presentación comercial de venta. En el modelo se distinguirá la presentación comercial de venta de la cava física que se presta al cliente.
+Los precios por media canasta y canasta completa se configuran de forma explícita; no se calculan multiplicando el precio unitario por el número de unidades. En estas reglas comerciales, “media” significa media canasta, no la cava física que pueda prestarse temporalmente al cliente.
 
 ## 5. Envases retornables y cavas físicas
 
@@ -132,18 +130,28 @@ El manejo del dinero tampoco conserva de manera uniforme el detalle de todas las
 
 ## 11. Solución propuesta
 
-Se desarrollará una aplicación Java con arquitectura por capas y menú de consola para el avance inmediato. La primera prioridad es que los módulos principales funcionen y se puedan demostrar; la interfaz gráfica JavaFX y la integración definitiva con PostgreSQL se abordarán en una etapa posterior.
+Se desarrollará una aplicación Java por capas y con menú de consola para el avance inmediato. Se priorizarán catálogo, inventario combinado, ventas, clientes y pagos parciales.
 
-La aplicación se organizará en model, persistence, service y ui. Las reglas del negocio y los cálculos no deben estar concentrados en el menú. Los repositorios aislarán el mecanismo de persistencia para facilitar el paso posterior a PostgreSQL.
+Para este avance se propone usar colecciones en memoria detrás de contratos de repositorio, de modo que la lógica de negocio no dependa del mecanismo temporal de almacenamiento. Los datos se reiniciarán al cerrar la aplicación. PostgreSQL y JDBC quedan para la etapa posterior; JavaFX será la interfaz gráfica de la entrega final. Los mockups visuales se diseñarán como una tarea posterior de la fase 2.
 
 ## 12. Decisiones por validar
 
-1. Confirmar las tarifas unitarias y por presentación para cada referencia.
-2. Confirmar qué se entiende por media cava/canasta y cómo se representa comercialmente.
-3. Validar qué ocurre al intentar registrar un abono superior al saldo.
-4. Definir el mínimo necesario para registrar proveedor y pedido.
-5. Acordar qué mecanismo temporal de persistencia se utilizará en el avance inmediato antes de PostgreSQL.
-6. Confirmar la prioridad de los módulos complementarios después de ventas, inventario y deudas.
+**Aclaradas por el negocio:**
+- Las unidades de todas las referencias menores de 750 ml cuestan $2.500 COP.
+- La unidad de Poker 750 ml cuesta $6.000 COP.
+- Media canasta equivale a la mitad de las unidades de una canasta completa.
+- Los precios de media canasta y canasta completa se configuran independientemente del precio unitario.
+- El inventario combina canastas completas y unidades sueltas.
+- Se permiten pagos parciales; los abonos reducen el saldo pendiente.
+- Los pedidos de mercancía van en un módulo separado.
+- Nombre, teléfono y dirección son obligatorios para clientes y vendedores.
+
+**Pendientes de decisión técnica o validación del equipo:**
+1. Qué identificador visible se usará para cliente y vendedor.
+2. Cómo se inicializarán los datos de prueba en la persistencia temporal en memoria.
+3. Qué datos mínimos son obligatorios al crear un pedido y cómo registrar una recepción parcial.
+4. Qué módulos complementarios entran después de ventas, inventario y cuentas por cobrar.
+5. El diseño visual de los mockups de la futura interfaz JavaFX.
 
 ## 13. Criterio de cierre
 

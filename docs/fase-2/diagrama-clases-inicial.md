@@ -1,6 +1,6 @@
 # Diagrama de clases inicial
 
-**Estado:** borrador de diseño. Los métodos y relaciones deben revisarse con el equipo antes de implementarse.
+**Estado:** borrador de diseño. Debe revisarse antes de implementar y actualizarse contra el código final.
 
 ~~~~mermaid
 classDiagram
@@ -11,15 +11,8 @@ classDiagram
         -String phone
         -String address
     }
-
-    class Customer {
-        +String getCustomerId()
-    }
-
-    class Seller {
-        +String getSellerId()
-    }
-
+    class Customer
+    class Seller
     Person <|-- Customer
     Person <|-- Seller
 
@@ -39,7 +32,6 @@ classDiagram
         +int calculateTotalUnits()
         +void addStock(int units)
         +void removeStock(int units)
-        +BigDecimal getPrice(SalePresentation presentation)
     }
 
     class SalePresentation {
@@ -47,11 +39,9 @@ classDiagram
         +int calculateUnits(BeerProduct product, int quantity)
         +BigDecimal calculateAmount(BeerProduct product, int quantity)
     }
-
     class UnitPresentation
     class HalfCratePresentation
     class FullCratePresentation
-
     SalePresentation <|.. UnitPresentation
     SalePresentation <|.. HalfCratePresentation
     SalePresentation <|.. FullCratePresentation
@@ -63,13 +53,11 @@ classDiagram
         -Seller seller
         -List~SaleItem~ items
         -List~Payment~ payments
-        +void addItem(SaleItem item)
         +BigDecimal calculateTotal()
         +BigDecimal calculatePaid()
         +BigDecimal calculateBalance()
         +void registerPayment(Payment payment)
     }
-
     class SaleItem {
         -BeerProduct product
         -SalePresentation presentation
@@ -77,14 +65,12 @@ classDiagram
         +BigDecimal calculateSubtotal()
         +int calculateUnitsToDeduct()
     }
-
     class Payment {
         -String paymentId
         -BigDecimal amount
         -LocalDateTime createdAt
         -PaymentType type
     }
-
     Sale "1" *-- "1..*" SaleItem : contiene
     Sale "1" *-- "0..*" Payment : pagos
     SaleItem --> BeerProduct
@@ -98,17 +84,14 @@ classDiagram
         -LocalDate expectedDate
         -PurchaseOrderStatus status
         -List~PurchaseOrderItem~ items
-        +void addItem(PurchaseOrderItem item)
         +void registerReceipt(String productId, int cratesReceived)
     }
-
     class PurchaseOrderItem {
         -BeerProduct product
         -int cratesOrdered
         -int cratesReceived
         +int calculatePendingCrates()
     }
-
     PurchaseOrder "1" *-- "1..*" PurchaseOrderItem : contiene
     PurchaseOrderItem --> BeerProduct
 
@@ -126,7 +109,6 @@ classDiagram
     class AccountReceivableService
     class PurchaseOrderService
     class CashMovementService
-
     SaleService --> Sale
     SaleService --> InventoryService
     SaleService --> AccountReceivableService
@@ -137,13 +119,15 @@ classDiagram
     CashMovementService --> CashMovement
 ~~~~
 
-## Notas de diseño
+## Decisiones representadas
 
-- Person concentra los datos comunes; Customer y Seller representan roles diferentes.
-- BeerProduct conserva el conteo de canastas completas y unidades sueltas, y puede calcular el total equivalente.
-- SalePresentation separa el cálculo de unidades y de importe para vender por unidad, media canasta o canasta completa. La implementación debe utilizar los precios configurados por presentación, no derivarlos del precio unitario.
-- Sale posee sus líneas y pagos. El saldo es el total de venta menos los pagos registrados.
-- PurchaseOrder separa el pedido de la recepción física: solo la mercancía efectivamente recibida debe aumentar el inventario.
-- Los movimientos de dinero deben representar efectivo realmente recibido o pagado. Una venta fiada no equivale a efectivo recibido.
-- Las clases relacionadas con envases vacíos y cavas físicas quedan para el siguiente bloque de diseño; no se deben mezclar con la presentación comercial de una venta.
-- BigDecimal se propone para valores monetarios. Las firmas concretas se confirmarán antes de programar los módulos en paralelo.
+- Person concentra nombre, teléfono y dirección; Customer y Seller representan roles.
+- BeerProduct almacena capacidad por canasta, canastas completas y unidades sueltas.
+- Las presentaciones de venta calculan unidades e importes mediante un contrato común.
+- Media canasta equivale a 19, 15 u 8 unidades para capacidades de 38, 30 o 16.
+- Las tarifas comerciales se configuran explícitamente: menor de 750 ml, $2.500 por unidad, $45.000 media canasta y $85.000 canasta completa; Poker 750 ml, $6.000 por unidad, $45.000 media y $90.000 completa.
+- Media canasta es una presentación comercial; la cava física prestada es un objeto diferente.
+- Sale mantiene sus líneas y pagos. El saldo es total menos pagos.
+- PurchaseOrder se separa de la recepción: solo lo recibido aumenta el inventario.
+- Las clases de control detallado de envases y cavas físicas se diseñarán después.
+- BigDecimal se propone para dinero. Las firmas concretas deberán confirmarse antes del desarrollo paralelo.
