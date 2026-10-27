@@ -1,5 +1,6 @@
 package com.laexclusiva.model;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -24,18 +25,18 @@ public final class InitialCatalog {
     private static BeerProduct small(String id, String name, int ml, int perBasket,
                                      ContainerType type, String group) {
         BeerProduct p = new BeerProduct(id, name, ml, perBasket, type, group);
-        p.definePrice(SalePresentation.UNIT, 2_500);
-        p.definePrice(SalePresentation.HALF_BASKET, 45_000);
-        p.definePrice(SalePresentation.FULL_BASKET, 85_000);
+        p.definePrice(SalePresentation.UNIT, BigDecimal.valueOf(2_500L));
+        p.definePrice(SalePresentation.HALF_BASKET, BigDecimal.valueOf(45_000L));
+        p.definePrice(SalePresentation.FULL_BASKET, BigDecimal.valueOf(85_000L));
         return p;
     }
 
     private static BeerProduct poker750() {
         BeerProduct p = new BeerProduct("POKER_750", "Poker", 750, 16,
                 ContainerType.RETURNABLE_EXCLUSIVE, null);
-        p.definePrice(SalePresentation.UNIT, 6_000);
-        p.definePrice(SalePresentation.HALF_BASKET, 45_000);
-        p.definePrice(SalePresentation.FULL_BASKET, 90_000);
+        p.definePrice(SalePresentation.UNIT, BigDecimal.valueOf(6_000L));
+        p.definePrice(SalePresentation.HALF_BASKET, BigDecimal.valueOf(45_000L));
+        p.definePrice(SalePresentation.FULL_BASKET, BigDecimal.valueOf(90_000L));
         return p;
     }
 }

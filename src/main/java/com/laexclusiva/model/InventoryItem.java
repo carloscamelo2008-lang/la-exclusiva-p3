@@ -32,7 +32,12 @@ public class InventoryItem {
         if (units <= 0) {
             throw new IllegalArgumentException("La cantidad a ingresar debe ser mayor que cero.");
         }
-        totalUnits += units;
+        try {
+            totalUnits = Math.addExact(totalUnits, units); // no modifica nada si desborda
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException(
+                    "La cantidad es demasiado grande: el inventario superaría el máximo permitido.");
+        }
     }
 
     /** Indica si se pueden retirar estas unidades sin dejar el inventario en negativo. */

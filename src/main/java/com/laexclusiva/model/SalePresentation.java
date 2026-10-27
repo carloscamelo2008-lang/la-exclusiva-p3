@@ -15,6 +15,15 @@ public interface SalePresentation {
     /** Identificador estable de la presentación, usado como llave de precios. */
     String code();
 
-    /** Unidades que se descuentan del inventario al vender esta presentación. */
+    /**
+     * Unidades que se descuentan del inventario al vender esta presentación.
+     *
+     * @param unitsPerBasket capacidad de la canasta del producto. Debe ser positiva y par
+     *                       (como las capacidades admitidas por el catálogo actual: 38, 30 y 16),
+     *                       para que la media canasta sea un número entero de unidades.
+     *                       BeerProduct garantiza esta condición al construirse.
+     * @return unidades a descontar: unidad = 1; media canasta = capacidad / 2 (19, 15 u 8);
+     *         canasta completa = capacidad (38, 30 o 16)
+     */
     int unitsToDiscount(int unitsPerBasket);
 }

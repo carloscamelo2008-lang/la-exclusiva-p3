@@ -8,6 +8,7 @@ import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.repository.InMemoryProductRepository;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -37,7 +38,7 @@ class ProductServiceTest {
     void productWithoutAllPricesIsRejected() {
         BeerProduct incomplete = new BeerProduct("NEW_1", "Nueva", 330, 30,
                 ContainerType.NON_RETURNABLE_CAN, null);
-        incomplete.definePrice(SalePresentation.UNIT, 2_500);
+        incomplete.definePrice(SalePresentation.UNIT, BigDecimal.valueOf(2_500L));
         assertThrows(IllegalArgumentException.class, () -> service.register(incomplete));
     }
 
@@ -48,7 +49,7 @@ class ProductServiceTest {
 
     @Test
     void priceAndUnitsLookup() {
-        assertEquals(90_000, service.priceFor("POKER_750", SalePresentation.FULL_BASKET));
+        assertEquals(BigDecimal.valueOf(90_000L), service.priceFor("POKER_750", SalePresentation.FULL_BASKET));
         assertEquals(15, service.unitsFor("COLA_Y_POLA_LATA_330", SalePresentation.HALF_BASKET));
     }
 }

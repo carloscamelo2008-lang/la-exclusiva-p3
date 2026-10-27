@@ -129,4 +129,85 @@ class InventoryServiceTest {
         assertEquals(0, inventory.availableUnits("POKER_750"));
         assertEquals(0, inventory.getStock("POKER_750").totalUnits());
     }
+
+    // ---- Razón validada ANTES de modificar existencias
+
+    @Test
+    void addStockWithInvalidReasonDoesNotChangeStock() {
+        assertThrows(IllegalArgumentException.class, () -> inventory.addStock("POKER_750", 1, 0, null));
+        assertThrows(IllegalArgumentException.class, () -> inventory.addStock("POKER_750", 1, 0, "   "));
+        assertEquals(0, inventory.availableUnits("POKER_750"));
+        assertTrue(inventory.allMovements().isEmpty());
+    }
+
+    @Test
+    void discountSaleWithInvalidReasonDoesNotChangeStock() {
+        inventory.addStock("POKER_750", 1, 0, "inicial");
+        List<StockRequest> sale = List.of(new StockRequest("POKER_750", SalePresentation.UNIT, 1));
+        assertThrows(IllegalArgumentException.class, () -> inventory.discountSale(sale, null));
+        assertThrows(IllegalArgumentException.class, () -> inventory.discountSale(sale, " "));
+        assertEquals(16, inventory.availableUnits("POKER_750"));
+        assertTrue(inventory.allMovements().stream().noneMatch(m -> m.type() == MovementType.EXIT));
+    }
+
+    // ---- Desbordamiento numérico
+
+    @Test
+    void addStockRejectsEquivalentUnitsOverflowWithoutChangingStock() {
+        assertThrows(IllegalArgumentException.class,
+                () -> inventory.addStock("POKER_250", Integer.MAX_VALUE, 0, "x"));
+        assertEquals(0, inventory.availableUnits("POKER_250"));
+        assertTrue(inventory.allMovements().isEmpty());
+    }
+
+    @Test
+    void addStockRejectsOverflowWhenAddingToExistingStock() {
+        inventory.addStock("POKER_750", 0, Integer.MAX_VALUE, "inicial");
+        assertThrows(IllegalArgumentException.class, () -> inventory.addStock("POKER_750", 0, 1, "extra"));
+        assertEquals(Integer.MAX_VALUE, inventory.availableUnits("POKER_750"));
+        assertEquals(1, inventory.movementsOf("POKER_750").size());
+    }
+
+    @Test
+    void discountSaleRejectsLineMultiplicationOverflowWithoutChangingStock() {
+        inventory.addStock("POKER_250", 1, 0, "inicial");
+        // 38 unidades por canasta x Integer.MAX_VALUE desborda un int.
+        List<StockRequest> sale = List.of(
+                new StockRequest("POKER_250", SalePresentation.FULL_BASKET, Integer.MAX_VALUE));
+        assertThrows(IllegalArgumentException.class, () -> inventory.discountSale(sale, "Venta"));
+        assertThrows(IllegalArgumentException.class, () -> inventory.canFulfill(sale));
+        assertEquals(38, inventory.availableUnits("POKER_250"));
+        assertTrue(inventory.allMovements().stream().noneMatch(m -> m.type() == MovementType.EXIT));
+    }
+
+    @Test
+    void discountSaleRejectsAccumulationOverflowForRepeatedReference() {
+        inventory.addStock("POKER_250", 1, 0, "inicial");
+        // Cada línea da 1.900.000.000 unidades (cabe en int) pero la suma desborda.
+        List<StockRequest> sale = List.of(
+                new StockRequest("POKER_250", SalePresentation.FULL_BASKET, 50_000_000),
+                new StockRequest("POKER_250", SalePresentation.FULL_BASKET, 50_000_000));
+        assertThrows(IllegalArgumentException.class, () -> inventory.discountSale(sale, "Venta"));
+        assertEquals(38, inventory.availableUnits("POKER_250"));
+        assertTrue(inventory.allMovements().stream().noneMatch(m -> m.type() == MovementType.EXIT));
+    }
+
+    @Test
+    void largeButValidQuantityIsStillRejectedAsInsufficientStock() {
+        inventory.addStock("POKER_250", 1, 0, "inicial");
+        List<StockRequest> sale = List.of(
+                new StockRequest("POKER_250", SalePresentation.FULL_BASKET, 50_000_000)); // cabe en int
+        assertThrows(InsufficientStockException.class, () -> inventory.discountSale(sale, "Venta"));
+        assertEquals(38, inventory.availableUnits("POKER_250"));
+    }
+
+    @Test
+    void nullLineInSaleIsRejectedWithoutChangingStock() {
+        inventory.addStock("POKER_750", 1, 0, "inicial");
+        List<StockRequest> sale = new java.util.ArrayList<>();
+        sale.add(new StockRequest("POKER_750", SalePresentation.UNIT, 1));
+        sale.add(null);
+        assertThrows(IllegalArgumentException.class, () -> inventory.discountSale(sale, "Venta"));
+        assertEquals(16, inventory.availableUnits("POKER_750"));
+    }
 }

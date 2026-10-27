@@ -1,5 +1,6 @@
 package com.laexclusiva.model;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -21,7 +22,7 @@ public class BeerProduct {
     private final int unitsPerBasket;
     private final ContainerType containerType;
     private final String containerGroup; // null si el envase no se comparte
-    private final Map<String, Long> prices = new LinkedHashMap<>();
+    private final Map<String, BigDecimal> prices = new LinkedHashMap<>();
 
     public BeerProduct(String id, String name, int volumeMl, int unitsPerBasket,
                        ContainerType containerType, String containerGroup) {
@@ -53,18 +54,35 @@ public class BeerProduct {
         this.containerGroup = containerType == ContainerType.RETURNABLE_SHARED ? containerGroup : null;
     }
 
-    public void definePrice(SalePresentation presentation, long pricePesos) {
-        if (presentation == null) {
-            throw new IllegalArgumentException("La presentación es obligatoria.");
+    /**
+     * Define el precio de una presentación (importe en pesos colombianos, como BigDecimal).
+     * Ejemplo: precio de una unidad de $2.500 COP -> {@code BigDecimal.valueOf(2500L)}.
+     *
+     * @throws IllegalArgumentException si la presentación o el precio son nulos, o si el
+     *                                  precio no es mayor que cero
+     */
+    public void definePrice(SalePresentation presentation, BigDecimal price) {
+        requirePresentation(presentation);
+        if (price == null) {
+            throw new IllegalArgumentException("El precio es obligatorio.");
         }
-        if (pricePesos <= 0) {
+        if (price.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El precio debe ser mayor que cero.");
         }
-        prices.put(presentation.code(), pricePesos);
+        prices.put(presentation.code(), price);
     }
 
-    public long priceFor(SalePresentation presentation) {
-        Long price = prices.get(presentation.code());
+    /**
+     * Precio de venta de una presentación. Cada presentación tiene su propio precio: el de una
+     * canasta NO se obtiene multiplicando el precio unitario. Para calcular un subtotal, quien
+     * lo use debe operar con BigDecimal (por ejemplo {@code price.multiply(BigDecimal.valueOf(qty))}).
+     *
+     * @throws IllegalArgumentException si la presentación es nula
+     * @throws IllegalStateException    si el producto no tiene precio para esa presentación
+     */
+    public BigDecimal priceFor(SalePresentation presentation) {
+        requirePresentation(presentation);
+        BigDecimal price = prices.get(presentation.code());
         if (price == null) {
             throw new IllegalStateException("El producto " + name + " no tiene precio definido para "
                     + presentation.code() + ".");
@@ -78,17 +96,39 @@ public class BeerProduct {
                 && prices.containsKey(SalePresentation.FULL_BASKET.code());
     }
 
-    /** Unidades que descuenta del inventario vender una presentación de este producto. */
+    /**
+     * Unidades que descuenta del inventario vender una presentación de este producto.
+     *
+     * @throws IllegalArgumentException si la presentación es nula
+     */
     public int unitsFor(SalePresentation presentation) {
+        requirePresentation(presentation);
         return presentation.unitsToDiscount(unitsPerBasket);
     }
 
-    /** unidades totales = canastas completas × capacidad + unidades sueltas. */
+    /**
+     * unidades totales = canastas completas × capacidad + unidades sueltas.
+     * Usa aritmética exacta: si el resultado no cabe en un int se rechaza la operación en lugar
+     * de devolver un total incorrecto.
+     *
+     * @throws IllegalArgumentException si alguna cantidad es negativa o el total supera el rango de int
+     */
     public int equivalentUnits(int fullBaskets, int looseUnits) {
         if (fullBaskets < 0 || looseUnits < 0) {
             throw new IllegalArgumentException("Las cantidades no pueden ser negativas.");
         }
-        return fullBaskets * unitsPerBasket + looseUnits;
+        try {
+            return Math.addExact(Math.multiplyExact(fullBaskets, unitsPerBasket), looseUnits);
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException(
+                    "La cantidad es demasiado grande: el total de unidades equivalentes supera el máximo permitido.");
+        }
+    }
+
+    private static void requirePresentation(SalePresentation presentation) {
+        if (presentation == null) {
+            throw new IllegalArgumentException("La presentación es obligatoria.");
+        }
     }
 
     public boolean sharesContainerWith(BeerProduct other) {
