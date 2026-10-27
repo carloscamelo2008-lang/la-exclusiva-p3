@@ -89,16 +89,15 @@ public class InventoryService {
      * ocurre si la entrada es inválida (líneas nulas, razón vacía, cantidades que desbordan un int).
      * Cubre la prueba P6.
      *
-     * Alcance: esta garantía es lógica y aplica a repositorios en memoria. NO cubre fallos de
-     * persistencia ocurridos mientras se guardan existencias y movimientos (se guardan por
-     * separado). Esa atomicidad deberá garantizarse cuando se implemente la persistencia
-     * transaccional en una etapa posterior.
+     * Alcance: para el almacenamiento actual en memoria, los fallos de aplicación se compensan
+     * con snapshots de existencias y eliminación de movimientos creados. No es una transacción
+     * durable: si una operación de compensación también falla, el estado puede quedar parcial.
      *
      * @throws IllegalArgumentException   si la venta está vacía, hay líneas nulas, la razón es nula
      *                                    o en blanco, un producto no existe o las cantidades desbordan
      * @throws InsufficientStockException si alguna referencia no tiene existencias suficientes
      */
-    public void discountSale(List<StockRequest> lines, String reason) {
+    public DiscountReceipt discountSale(List<StockRequest> lines, String reason) {
         // Bloque 1: validar la entrada completa antes de modificar nada.
         if (lines == null || lines.isEmpty()) {
             throw new IllegalArgumentException("La venta no tiene productos.");
@@ -116,16 +115,90 @@ public class InventoryService {
             }
         }
 
-        // Bloque 4: si todo alcanza, recién ahora se descuenta y se registra cada salida.
-        // Nota: los repositorios se guardan por separado; la atomicidad ante fallos de
-        // persistencia queda pendiente para la persistencia transaccional (etapa posterior).
-        for (Map.Entry<String, Integer> entry : required.entrySet()) {
-            InventoryItem item = inventoryRepository.findByProductId(entry.getKey()).orElseThrow();
-            item.remove(entry.getValue());
-            inventoryRepository.save(item);
-            movementRepository.save(new StockMovement(entry.getKey(), MovementType.EXIT,
-                    entry.getValue(), reason, LocalDateTime.now()));
+        // La operación devuelve un recibo de compensación para que SaleService pueda
+        // revertir también stock e historial si falla después (cliente o venta).
+        DiscountReceipt receipt = new DiscountReceipt();
+        try {
+            for (Map.Entry<String, Integer> entry : required.entrySet()) {
+                InventoryItem item = inventoryRepository.findByProductId(entry.getKey()).orElseThrow();
+                receipt.previousStock.put(entry.getKey(), item.copy());
+                item.remove(entry.getValue());
+                inventoryRepository.save(item);
+                StockMovement movement = new StockMovement(entry.getKey(), MovementType.EXIT,
+                        entry.getValue(), reason, LocalDateTime.now());
+                // Guardarlo en el recibo antes de llamar a save permite quitarlo si el
+                // repositorio alcanza a persistir y después arroja una excepción.
+                receipt.createdMovements.add(movement);
+                movementRepository.save(movement);
+            }
+            return receipt;
+        } catch (RuntimeException | Error failure) {
+            try {
+                rollbackDiscount(receipt);
+            } catch (RuntimeException | Error rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            throw failure;
         }
+    }
+
+    /**
+     * Revierte el stock y los movimientos de una salida ya aplicada. Está pensado para el uso
+     * secuencial del almacenamiento actual en memoria; las excepciones de los repositorios de
+     * compensación se propagan para que el llamador no afirme atomicidad que no pudo comprobar.
+     */
+    public void rollbackDiscount(DiscountReceipt receipt) {
+        if (receipt == null) {
+            throw new IllegalArgumentException("El recibo de descuento es obligatorio.");
+        }
+        if (receipt.rolledBack) {
+            return;
+        }
+
+        RuntimeException runtimeFailure = null;
+        Error errorFailure = null;
+        for (int index = receipt.createdMovements.size() - 1; index >= 0; index--) {
+            try {
+                movementRepository.remove(receipt.createdMovements.get(index));
+            } catch (RuntimeException failure) {
+                if (runtimeFailure == null) runtimeFailure = failure;
+                else runtimeFailure.addSuppressed(failure);
+            } catch (Error failure) {
+                if (errorFailure == null) errorFailure = failure;
+                else errorFailure.addSuppressed(failure);
+            }
+        }
+
+        List<Map.Entry<String, InventoryItem>> stockEntries =
+                new java.util.ArrayList<>(receipt.previousStock.entrySet());
+        for (int index = stockEntries.size() - 1; index >= 0; index--) {
+            try {
+                inventoryRepository.save(stockEntries.get(index).getValue().copy());
+            } catch (RuntimeException failure) {
+                if (runtimeFailure == null) runtimeFailure = failure;
+                else runtimeFailure.addSuppressed(failure);
+            } catch (Error failure) {
+                if (errorFailure == null) errorFailure = failure;
+                else errorFailure.addSuppressed(failure);
+            }
+        }
+        if (runtimeFailure != null) {
+            if (errorFailure != null) runtimeFailure.addSuppressed(errorFailure);
+            throw runtimeFailure;
+        }
+        if (errorFailure != null) {
+            throw errorFailure;
+        }
+        receipt.rolledBack = true;
+    }
+
+    /** Recibo privado al flujo de venta con los snapshots necesarios para compensar. */
+    public static final class DiscountReceipt {
+        private final Map<String, InventoryItem> previousStock = new LinkedHashMap<>();
+        private final List<StockMovement> createdMovements = new java.util.ArrayList<>();
+        private boolean rolledBack;
+
+        private DiscountReceipt() { }
     }
 
     /**

@@ -14,16 +14,19 @@ public class InMemoryInventoryRepository implements InventoryRepository {
 
     @Override
     public void save(InventoryItem item) {
-        storage.put(item.getProduct().getId(), item);
+        storage.put(item.getProduct().getId(), item.copy());
     }
 
     @Override
     public Optional<InventoryItem> findByProductId(String productId) {
-        return Optional.ofNullable(storage.get(productId));
+        InventoryItem item = storage.get(productId);
+        return item == null ? Optional.empty() : Optional.of(item.copy());
     }
 
     @Override
     public List<InventoryItem> findAll() {
-        return new ArrayList<>(storage.values());
+        List<InventoryItem> copies = new ArrayList<>(storage.size());
+        storage.values().forEach(item -> copies.add(item.copy()));
+        return copies;
     }
 }

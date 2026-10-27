@@ -135,6 +135,13 @@ public class BeerProduct {
         return other != null && containerGroup != null && containerGroup.equals(other.containerGroup);
     }
 
+    /** Copia el producto y sus precios configurados para snapshots históricos. */
+    public BeerProduct copy() {
+        BeerProduct copy = new BeerProduct(id, name, volumeMl, unitsPerBasket, containerType, containerGroup);
+        copy.prices.putAll(prices);
+        return copy;
+    }
+
     public String getId() { return id; }
     public String getName() { return name; }
     public int getVolumeMl() { return volumeMl; }

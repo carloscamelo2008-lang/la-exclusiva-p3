@@ -106,6 +106,30 @@ public class CustomerModuleTest {
     }
 
     @Test
+    void publicCustomerConstructorsRejectMissingRequiredData() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new Customer(null, "Nombre", "3001112233", "Dirección"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new Customer("C010", "  ", "3001112233", "Dirección"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new Customer("C010", "Nombre", " ", "Dirección"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new Customer("C010", "Nombre", "3001112233", null));
+    }
+
+    @Test
+    void customerQueriesReturnDetachedSnapshots() {
+        customerService.registerCustomer("C011", "Cliente", "3001112233", "Dirección");
+        Customer snapshot = customerService.getCustomerById("C011");
+        snapshot.addDebt(BigDecimal.valueOf(500L));
+
+        assertEquals(BigDecimal.ZERO, customerService.getCustomerById("C011").getBalance());
+        Customer repositorySnapshot = customerRepository.findById("C011");
+        repositorySnapshot.addDebt(BigDecimal.valueOf(500L));
+        assertEquals(BigDecimal.ZERO, customerRepository.findById("C011").getBalance());
+    }
+
+    @Test
     void testUpdateNonExistentCustomerThrowsException() {
         Customer nonExistent = new Customer("C999", "Fantasma", "3000000000", "Ninguna", BigDecimal.ZERO);
         assertThrows(IllegalArgumentException.class, () -> {
