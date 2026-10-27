@@ -10,19 +10,18 @@ public class Customer {
     private BigDecimal saldo;
 
     public Customer(String id, String name, String phone, String address) {
-        this.id = id;
-        this.name = name;
-        this.phone = phone;
-        this.address = address;
-        this.saldo = BigDecimal.ZERO;
+        this(id, name, phone, address, BigDecimal.ZERO);
     }
 
     public Customer(String id, String name, String phone, String address, BigDecimal saldo) {
+        if (saldo == null || saldo.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("El saldo inicial no puede ser nulo ni negativo.");
+        }
         this.id = id;
         this.name = name;
         this.phone = phone;
         this.address = address;
-        this.saldo = saldo != null ? saldo : BigDecimal.ZERO;
+        this.saldo = saldo;
     }
 
     public String getId() { return id; }
@@ -35,14 +34,19 @@ public class Customer {
     }
 
     public void addDebt(BigDecimal amount) {
-        if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
-            this.saldo = this.saldo.add(amount);
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El monto de la deuda debe ser mayor a cero.");
         }
+        this.saldo = this.saldo.add(amount);
     }
 
     public void applyPayment(BigDecimal amount) {
-        if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
-            this.saldo = this.saldo.subtract(amount);
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El monto del abono debe ser mayor a cero.");
         }
+        if (amount.compareTo(this.saldo) > 0) {
+            throw new IllegalArgumentException("El abono no puede superar el saldo actual de la deuda.");
+        }
+        this.saldo = this.saldo.subtract(amount);
     }
 }
