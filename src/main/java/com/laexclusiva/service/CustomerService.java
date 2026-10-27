@@ -1,58 +1,63 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Customer;
-import com.laexclusiva.repository.CustomerRepository;
 import com.laexclusiva.repository.CustomerRepositoryInterface;
+import com.laexclusiva.validation.PersonValidator;
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
-/**
- * Servicio encargado de la lógica de negocio para clientes y cuentas por cobrar.
- */
 public class CustomerService {
-
     private final CustomerRepositoryInterface customerRepository;
 
     public CustomerService(CustomerRepositoryInterface customerRepository) {
+        if (customerRepository == null) {
+            throw new IllegalArgumentException("El repositorio de clientes no puede ser nulo.");
+        }
         this.customerRepository = customerRepository;
     }
 
-    public Customer registerCustomer(String name, String phone, String address) {
-        Customer customer = new Customer(name, phone, address);
+    public void registerCustomer(String id, String name, String phone, String address) {
+        PersonValidator.validateId(id);
+        PersonValidator.validateName(name);
+        PersonValidator.validatePhone(phone);
+        PersonValidator.validateAddress(address);
+
+        if (customerRepository.existsById(id)) {
+            throw new IllegalArgumentException("Ya existe un cliente registrado con el ID: " + id);
+        }
+
+        Customer customer = new Customer(id, name, phone, address);
         customerRepository.save(customer);
-        return customer;
     }
 
-    public Optional<Customer> getCustomerById(String id) {
-        return customerRepository.findById(id);
+    public Customer getCustomerById(String id) {
+        PersonValidator.validateId(id);
+        Customer customer = customerRepository.findById(id);
+        if (customer == null) {
+            throw new IllegalArgumentException("No se encontró el cliente con ID: " + id);
+        }
+        return customer;
     }
 
     public List<Customer> getAllCustomers() {
         return customerRepository.findAll();
     }
 
-    /**
-     * Registra un fiado (deuda) a un cliente específico.
-     */
     public void addDebtToCustomer(String customerId, BigDecimal amount) {
-        Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado con ID: " + customerId));
+        PersonValidator.validateId(customerId);
+        PersonValidator.validateAmount(amount);
+
+        Customer customer = getCustomerById(customerId);
         customer.addDebt(amount);
-        if (customerRepository instanceof CustomerRepository) {
-            ((CustomerRepository) customerRepository).update(customer);
-        }
+        customerRepository.update(customer);
     }
 
-    /**
-     * Registra un abono a la deuda de un cliente.
-     */
     public void applyPaymentToCustomer(String customerId, BigDecimal amount) {
-        Customer customer = customerRepository.findById(customerId)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado con ID: " + customerId));
+        PersonValidator.validateId(customerId);
+        PersonValidator.validateAmount(amount);
+
+        Customer customer = getCustomerById(customerId);
         customer.applyPayment(amount);
-        if (customerRepository instanceof CustomerRepository) {
-            ((CustomerRepository) customerRepository).update(customer);
-        }
+        customerRepository.update(customer);
     }
 }

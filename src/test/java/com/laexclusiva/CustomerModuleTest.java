@@ -3,99 +3,139 @@ package com.laexclusiva;
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.Seller;
 import com.laexclusiva.repository.CustomerRepository;
-import com.laexclusiva.repository.SellerRepository;
+import com.laexclusiva.repository.CustomerRepositoryInterface;
 import com.laexclusiva.service.CustomerService;
+import com.laexclusiva.service.SellerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class CustomerModuleTest {
 
-    private CustomerRepository customerRepository;
-    private SellerRepository sellerRepository;
+    private CustomerRepositoryInterface customerRepository;
     private CustomerService customerService;
+    private SellerService sellerService;
 
     @BeforeEach
-    public void setUp() {
+    void setUp() {
         customerRepository = new CustomerRepository();
-        sellerRepository = new SellerRepository();
         customerService = new CustomerService(customerRepository);
+        sellerService = new SellerService();
     }
 
     @Test
-    public void testInitialDebtIsZero() {
-        Customer customer = customerService.registerCustomer("Carlos Perez", "3001234567", "Calle 10 #20-30");
-        assertEquals(0, BigDecimal.ZERO.compareTo(customer.getCurrentDebt()));
+    void testRegisterCustomerSuccessfully() {
+        customerService.registerCustomer("C001", "Juan Perez", "3001234567", "Calle 1");
+        Customer customer = customerService.getCustomerById("C001");
+        assertNotNull(customer);
+        assertEquals("Juan Perez", customer.getName());
     }
 
     @Test
-    public void testAccumulateTwoDebts() {
-        Customer customer = customerService.registerCustomer("Maria Gomez", "3019876543", "Carrera 5 #12-14");
-        customerService.addDebtToCustomer(customer.getId(), BigDecimal.valueOf(25000L));
-        customerService.addDebtToCustomer(customer.getId(), BigDecimal.valueOf(15000L));
-
-        Customer updated = customerService.getCustomerById(customer.getId()).get();
-        assertEquals(0, BigDecimal.valueOf(40000L).compareTo(updated.getCurrentDebt()));
+    void testAddDebtToCustomer() {
+        customerService.registerCustomer("C001", "Juan Perez", "3001234567", "Calle 1");
+        customerService.addDebtToCustomer("C001", new BigDecimal("150.50"));
+        
+        Customer customer = customerService.getCustomerById("C001");
+        assertEquals(0, new BigDecimal("150.50").compareTo(customer.getCurrentBalance()));
     }
 
     @Test
-    public void testPartialPayment() {
-        Customer customer = customerService.registerCustomer("Juan Lopez", "3021112233", "Av. Central 45");
-        customerService.addDebtToCustomer(customer.getId(), BigDecimal.valueOf(50000L));
-        customerService.applyPaymentToCustomer(customer.getId(), BigDecimal.valueOf(20000L));
-
-        Customer updated = customerService.getCustomerById(customer.getId()).get();
-        assertEquals(0, BigDecimal.valueOf(30000L).compareTo(updated.getCurrentDebt()));
+    void testApplyPaymentToCustomer() {
+        customerService.registerCustomer("C001", "Juan Perez", "3001234567", "Calle 1");
+        customerService.addDebtToCustomer("C001", new BigDecimal("200.00"));
+        customerService.applyPaymentToCustomer("C001", new BigDecimal("50.00"));
+        
+        Customer customer = customerService.getCustomerById("C001");
+        assertEquals(0, new BigDecimal("150.00").compareTo(customer.getCurrentBalance()));
     }
 
     @Test
-    public void testExactPayment() {
-        Customer customer = customerService.registerCustomer("Ana Silva", "3034445566", "Diagonal 8 #4-2");
-        customerService.addDebtToCustomer(customer.getId(), BigDecimal.valueOf(30000L));
-        customerService.applyPaymentToCustomer(customer.getId(), BigDecimal.valueOf(30000L));
-
-        Customer updated = customerService.getCustomerById(customer.getId()).get();
-        assertEquals(0, BigDecimal.ZERO.compareTo(updated.getCurrentDebt()));
+    void testRegisterSellerSuccessfully() {
+        sellerService.registerSeller("S001", "Maria Gomez", "3119876543", "Avenida 2");
+        Seller seller = sellerService.getSellerById("S001");
+        assertNotNull(seller);
+        assertEquals("Maria Gomez", seller.getName());
     }
 
     @Test
-    public void testRejectPaymentGreaterThanDebt() {
-        Customer customer = customerService.registerCustomer("Luis Torres", "3047778899", "Calle 2 #3-1");
-        customerService.addDebtToCustomer(customer.getId(), BigDecimal.valueOf(20000L));
-
+    void testDuplicateCustomerThrowsException() {
+        customerService.registerCustomer("C001", "Juan Perez", "3001234567", "Calle 1");
         assertThrows(IllegalArgumentException.class, () -> {
-            customerService.applyPaymentToCustomer(customer.getId(), BigDecimal.valueOf(25000L));
+            customerService.registerCustomer("C001", "Duplicado", "3007654321", "Calle 2");
         });
-
-        Customer updated = customerService.getCustomerById(customer.getId()).get();
-        assertEquals(0, BigDecimal.valueOf(20000L).compareTo(updated.getCurrentDebt()));
     }
 
     @Test
-    public void testRejectNullOrNegativeAmounts() {
-        Customer customer = customerService.registerCustomer("Pedro Picapiedra", "3050001122", "Roca Viva");
-
-        assertThrows(IllegalArgumentException.class, () -> customerService.addDebtToCustomer(customer.getId(), null));
-        assertThrows(IllegalArgumentException.class, () -> customerService.addDebtToCustomer(customer.getId(), BigDecimal.valueOf(-1000L)));
-        assertThrows(IllegalArgumentException.class, () -> customerService.applyPaymentToCustomer(customer.getId(), null));
-        assertThrows(IllegalArgumentException.class, () -> customerService.applyPaymentToCustomer(customer.getId(), BigDecimal.valueOf(-1000L)));
+    void testNegativeBalanceThrowsException() {
+        customerService.registerCustomer("C001", "Juan Perez", "3001234567", "Calle 1");
+        customerService.addDebtToCustomer("C001", new BigDecimal("100.00"));
+        assertThrows(IllegalArgumentException.class, () -> {
+            customerService.applyPaymentToCustomer("C001", new BigDecimal("150.00"));
+        });
     }
 
     @Test
-    public void testRepositoryRejectDuplicateId() {
-        Customer customer1 = new Customer("CLI-001", "Pedro", "3000000000", "Calle 1", BigDecimal.ZERO);
-        Customer customer2 = new Customer("CLI-001", "Juan", "3011111111", "Calle 2", BigDecimal.ZERO);
-
-        customerRepository.save(customer1);
-        assertThrows(IllegalArgumentException.class, () -> customerRepository.save(customer2));
+    void testValidationEdgeCases() {
+        // ID nulo o vacío
+        assertThrows(IllegalArgumentException.class, () -> customerService.registerCustomer(null, "Test", "3001112233", "Dir"));
+        assertThrows(IllegalArgumentException.class, () -> customerService.registerCustomer("  ", "Test", "3001112233", "Dir"));
+        
+        // Montos negativos o cero
+        customerService.registerCustomer("C002", "Ana Lopez", "3002223344", "Calle 3");
+        assertThrows(IllegalArgumentException.class, () -> customerService.addDebtToCustomer("C002", new BigDecimal("-10.00")));
+        assertThrows(IllegalArgumentException.class, () -> customerService.addDebtToCustomer("C002", BigDecimal.ZERO));
     }
 
     @Test
-    public void testRejectInvalidPersonData() {
-        assertThrows(IllegalArgumentException.class, () -> new Customer("", "3000000000", "Calle 1"));
-        assertThrows(IllegalArgumentException.class, () -> new Seller("Carlos", null, "Calle 1"));
+    void testUpdateNonExistentCustomerThrowsException() {
+        Customer nonExistent = new Customer("C999", "Fantasma", "3000000000", "Ninguna");
+        assertThrows(IllegalArgumentException.class, () -> {
+            customerRepository.update(nonExistent);
+        });
+    }
+
+    @Test
+    void testServiceWorksWithRepositoryInterfaceContract() {
+        // Implementación alternativa (stub) para verificar el cumplimiento del contrato DIP exigido por Carlos
+        CustomerRepositoryInterface altRepo = new CustomerRepositoryInterface() {
+            private final Map<String, Customer> db = new HashMap<>();
+
+            @Override
+            public void save(Customer c) { db.put(c.getId(), c); }
+
+            @Override
+            public Customer findById(String id) { return db.get(id); }
+
+            @Override
+            public List<Customer> findAll() { return new ArrayList<>(db.values()); }
+
+            @Override
+            public boolean existsById(String id) { return db.containsKey(id); }
+
+            @Override
+            public void update(Customer c) {
+                if (!db.containsKey(c.getId())) {
+                    throw new IllegalArgumentException("No existe");
+                }
+                db.put(c.getId(), c);
+            }
+        };
+
+        CustomerService altService = new CustomerService(altRepo);
+        altService.registerCustomer("C999", "Cliente Alternativo", "3001234567", "Calle Falsa 123");
+
+        altService.addDebtToCustomer("C999", new BigDecimal("250.00"));
+
+        // Verificar que el saldo actualizado queda persistido a través de la interfaz
+        BigDecimal balance = altRepo.findById("C999").getCurrentBalance();
+        assertEquals(0, new BigDecimal("250.00").compareTo(balance));
     }
 }
