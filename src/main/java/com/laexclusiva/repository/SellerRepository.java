@@ -8,32 +8,39 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Repositorio en memoria para la gestión de vendedores.
+ * Implementación en memoria del repositorio de vendedores.
  */
-public class SellerRepository {
+public class SellerRepository implements SellerRepositoryInterface {
 
     private final Map<String, Seller> sellers = new HashMap<>();
 
-    /**
-     * Guarda o actualiza un vendedor en la memoria.
-     */
+    @Override
     public void save(Seller seller) {
         if (seller == null) {
             throw new IllegalArgumentException("El vendedor no puede ser nulo.");
         }
+        if (sellers.containsKey(seller.getId())) {
+            throw new IllegalArgumentException("Ya existe un vendedor registrado con el ID: " + seller.getId());
+        }
         sellers.put(seller.getId(), seller);
     }
 
-    /**
-     * Busca un vendedor por su ID.
-     */
+    public void update(Seller seller) {
+        if (seller == null) {
+            throw new IllegalArgumentException("El vendedor no puede ser nulo.");
+        }
+        if (!sellers.containsKey(seller.getId())) {
+            throw new IllegalArgumentException("No existe el vendedor con ID: " + seller.getId() + " para actualizar.");
+        }
+        sellers.put(seller.getId(), seller);
+    }
+
+    @Override
     public Optional<Seller> findById(String id) {
         return Optional.ofNullable(sellers.get(id));
     }
 
-    /**
-     * Retorna todos los vendedores registrados.
-     */
+    @Override
     public List<Seller> findAll() {
         return new ArrayList<>(sellers.values());
     }

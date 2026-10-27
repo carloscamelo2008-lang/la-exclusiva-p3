@@ -8,39 +8,47 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Repositorio en memoria para la gestión de clientes.
+ * Implementación en memoria del repositorio de clientes.
  */
-public class CustomerRepository {
+public class CustomerRepository implements CustomerRepositoryInterface {
 
     private final Map<String, Customer> customers = new HashMap<>();
 
-    /**
-     * Guarda o actualiza un cliente en la memoria.
-     */
+    @Override
     public void save(Customer customer) {
         if (customer == null) {
             throw new IllegalArgumentException("El cliente no puede ser nulo.");
+        }
+        if (customers.containsKey(customer.getId())) {
+            throw new IllegalArgumentException("Ya existe un cliente registrado con el ID: " + customer.getId());
         }
         customers.put(customer.getId(), customer);
     }
 
     /**
-     * Busca un cliente por su identificador único.
+     * Permite actualizar un cliente existente de forma explícita.
      */
+    public void update(Customer customer) {
+        if (customer == null) {
+            throw new IllegalArgumentException("El cliente no puede ser nulo.");
+        }
+        if (!customers.containsKey(customer.getId())) {
+            throw new IllegalArgumentException("No existe el cliente con ID: " + customer.getId() + " para actualizar.");
+        }
+        customers.put(customer.getId(), customer);
+    }
+
+    @Override
     public Optional<Customer> findById(String id) {
         return Optional.ofNullable(customers.get(id));
     }
 
-    /**
-     * Retorna la lista completa de clientes registrados.
-     */
+    @Override
     public List<Customer> findAll() {
         return new ArrayList<>(customers.values());
     }
 
-    /**
-     * Elimina un cliente por su ID.
-     */
+    @Override
     public boolean delete(String id) {
         return customers.remove(id) != null;
     }

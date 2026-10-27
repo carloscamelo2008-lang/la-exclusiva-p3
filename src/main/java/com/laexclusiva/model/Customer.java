@@ -1,10 +1,22 @@
 package com.laexclusiva.model;
 
 import com.laexclusiva.validation.PersonValidator;
+import java.math.BigDecimal;
+import java.text.NumberFormat;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Representa a un cliente dentro del sistema, incluyendo su control de saldos y fiados.
+ * Modelo que representa a un cliente del sistema La Exclusiva.
+ * <p>
+ * Mantiene la información personal del cliente y un saldo acumulado coherente.
+ * <b>Nota sobre integración con Ventas (Cuentas por Cobrar):</b> El saldo acumulado en este
+ * modelo es un indicador provisional para reflejar la deuda actual del cliente. No reemplaza
+ * ni constituye el historial completo de ventas pendientes ni la traza individual de abonos.
+ * La futura integración del módulo de ventas relacionará las cuentas por cobrar con sus
+ * respectivas fechas, ventas e importes.
+ * </p>
  */
 public class Customer {
 
@@ -12,14 +24,10 @@ public class Customer {
     private String name;
     private String phone;
     private String address;
-    private double currentDebt; // Saldo pendiente acumulado por fiados
+    private BigDecimal currentDebt;
 
     /**
-     * Constructor para un nuevo cliente con ID autogenerado único y deuda inicial en 0.
-     * 
-     * @param name Nombre obligatorio del cliente.
-     * @param phone Teléfono obligatorio.
-     * @param address Dirección obligatoria.
+     * Constructor para registrar un nuevo cliente con deuda inicial en cero.
      */
     public Customer(String name, String phone, String address) {
         PersonValidator.validatePersonData(name, phone, address);
@@ -27,20 +35,28 @@ public class Customer {
         this.name = name.trim();
         this.phone = phone.trim();
         this.address = address.trim();
-        this.currentDebt = 0.0;
+        this.currentDebt = BigDecimal.ZERO;
     }
 
     /**
-     * Constructor para reconstruir un cliente existente con saldo específico.
+     * Constructor de reconstrucción para carga o persistencia de datos.
+     * 
+     * @param id Identificador único existente.
+     * @param name Nombre completo.
+     * @param phone Teléfono de contacto.
+     * @param address Dirección de entrega.
+     * @param currentDebt Saldo acumulado (debe ser distinto de nulo y mayor o igual a cero).
      */
-    public Customer(String id, String name, String phone, String address, double currentDebt) {
-        PersonValidator.validatePersonData(name, phone, address);
+    public Customer(String id, String name, String phone, String address, BigDecimal currentDebt) {
         if (id == null || id.trim().isEmpty()) {
             throw new IllegalArgumentException("El ID del cliente no puede estar vacío.");
         }
-        if (currentDebt < 0) {
-            throw new IllegalArgumentException("La deuda no puede ser un valor negativo.");
+        Objects.requireNonNull(currentDebt, "El saldo inicial no puede ser nulo.");
+        if (currentDebt.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("El saldo inicial de deuda no puede ser negativo.");
         }
+        PersonValidator.validatePersonData(name, phone, address);
+
         this.id = id.trim();
         this.name = name.trim();
         this.phone = phone.trim();
@@ -48,34 +64,48 @@ public class Customer {
         this.currentDebt = currentDebt;
     }
 
-    // Métodos de negocio para fiados y abonos
+    // --- Métodos de Negocio para Saldos ---
 
     /**
-     * Registra un valor adeudado (fiado) al saldo del cliente.
+     * Incrementa la deuda del cliente por concepto de fiado.
+     * <p>Alcance provisional: Representa el incremento directo del saldo pendiente sin registrar el detalle de la venta.</p>
      * 
-     * @param amount Monto a fiar.
+     * @param amount Monto a fiar (debe ser estrictamente mayor que cero).
      */
-    public void addDebt(double amount) {
-        if (amount <= 0) {
-            throw new IllegalArgumentException("El monto a fiar debe ser mayor a cero.");
+    public void addDebt(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El monto a fiar debe ser mayor que cero.");
         }
-        this.currentDebt += amount;
+        this.currentDebt = this.currentDebt.add(amount);
     }
 
     /**
-     * Registra un abono al saldo adeudado del cliente.
+     * Aplica un abono o pago parcial a la deuda del cliente.
+     * <p>Alcance provisional: Reduce el saldo acumulado directo sin registrar la transacción de pago detallada.</p>
+
      * 
-     * @param amount Monto abonado.
+     * @param amount Monto a abonar (debe ser mayor que cero y no superar el saldo actual).
      */
-    public void applyPayment(double amount) {
-        if (amount <= 0) {
-            throw new IllegalArgumentException("El monto del abono debe ser mayor a cero.");
+    public void applyPayment(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El monto a abonar debe ser mayor que cero.");
         }
-        if (amount > this.currentDebt) {
-            throw new IllegalArgumentException("El abono no puede ser mayor que la deuda actual ($" + this.currentDebt + " COP).");
+        if (amount.compareTo(this.currentDebt) > 0) {
+            throw new IllegalArgumentException("El monto del abono no puede superar la deuda actual (" + currentDebt + ").");
         }
-        this.currentDebt -= amount;
+        this.currentDebt = this.currentDebt.subtract(amount);
     }
+
+    // --- Actualización con Validaciones ---
+
+    public void updateData(String name, String phone, String address) {
+        PersonValidator.validatePersonData(name, phone, address);
+        this.name = name.trim();
+        this.phone = phone.trim();
+        this.address = address.trim();
+    }
+
+    // --- Getters ---
 
     public String getId() {
         return id;
@@ -85,36 +115,22 @@ public class Customer {
         return name;
     }
 
-    public void setName(String name) {
-        PersonValidator.validatePersonData(name, this.phone, this.address);
-        this.name = name.trim();
-    }
-
     public String getPhone() {
         return phone;
-    }
-
-    public void setPhone(String phone) {
-        PersonValidator.validatePersonData(this.name, phone, this.address);
-        this.phone = phone.trim();
     }
 
     public String getAddress() {
         return address;
     }
 
-    public void setAddress(String address) {
-        PersonValidator.validatePersonData(this.name, this.phone, address);
-        this.address = address.trim();
-    }
-
-    public double getCurrentDebt() {
+    public BigDecimal getCurrentDebt() {
         return currentDebt;
     }
 
     @Override
     public String toString() {
-        return String.format("Cliente [ID: %s | Nombre: %s | Teléfono: %s | Dirección: %s | Deuda Actual: $%.2f COP]",
-                id, name, phone, address, currentDebt);
+        NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(new Locale("es", "CO"));
+        return String.format("Cliente [ID: %s, Nombre: %s, Teléfono: %s, Dirección: %s, Deuda Actual: %s]",
+                id, name, phone, address, currencyFormat.format(currentDebt));
     }
 }

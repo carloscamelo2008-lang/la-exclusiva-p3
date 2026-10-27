@@ -2,23 +2,22 @@ package com.laexclusiva.service;
 
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.repository.CustomerRepository;
+import com.laexclusiva.repository.CustomerRepositoryInterface;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Servicio encargado de la lógica de negocio para clientes y cuentas por cobrar (fiados y abonos).
+ * Servicio encargado de la lógica de negocio para clientes y cuentas por cobrar.
  */
 public class CustomerService {
 
-    private final CustomerRepository customerRepository;
+    private final CustomerRepositoryInterface customerRepository;
 
-    public CustomerService(CustomerRepository customerRepository) {
+    public CustomerService(CustomerRepositoryInterface customerRepository) {
         this.customerRepository = customerRepository;
     }
 
-    /**
-     * Registra un nuevo cliente validando sus datos y lo guarda en memoria.
-     */
     public Customer registerCustomer(String name, String phone, String address) {
         Customer customer = new Customer(name, phone, address);
         customerRepository.save(customer);
@@ -36,20 +35,24 @@ public class CustomerService {
     /**
      * Registra un fiado (deuda) a un cliente específico.
      */
-    public void addDebtToCustomer(String customerId, double amount) {
+    public void addDebtToCustomer(String customerId, BigDecimal amount) {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado con ID: " + customerId));
         customer.addDebt(amount);
-        customerRepository.save(customer);
+        if (customerRepository instanceof CustomerRepository) {
+            ((CustomerRepository) customerRepository).update(customer);
+        }
     }
 
     /**
-     * Registra un abono o pago parcial a la deuda de un cliente.
+     * Registra un abono a la deuda de un cliente.
      */
-    public void applyPaymentToCustomer(String customerId, double amount) {
+    public void applyPaymentToCustomer(String customerId, BigDecimal amount) {
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado con ID: " + customerId));
         customer.applyPayment(amount);
-        customerRepository.save(customer);
+        if (customerRepository instanceof CustomerRepository) {
+            ((CustomerRepository) customerRepository).update(customer);
+        }
     }
 }
