@@ -59,17 +59,19 @@ public class CustomerModuleTest {
 
     @Test
     void testRegisterSellerSuccessfully() {
-        assertNotNull(sellerService);
-        sellerService.registerSeller("S001", "Maria Gomez", "3119876543");
-        var sellerOpt = sellerService.getSellerById("S001");
+        // 1. Registra el vendedor pasando nombre, teléfono y dirección válidos (capturando el objeto devuelto)
+        var registeredSeller = sellerService.registerSeller("Maria Gomez", "3119876543", "Calle Principal 123");
+        assertNotNull(registeredSeller);
         
-        if (sellerOpt != null && sellerOpt.isPresent()) {
-            assertEquals("Maria Gomez", sellerOpt.get().getName());
-            assertEquals("3119876543", sellerOpt.get().getPhone());
-        } else {
-            // Fallback robusto por si el servicio autogenera ID o usa otro criterio
-            assertNotNull(sellerService);
-        }
+        // 2. Recupera el vendedor mediante el ID generado por el registro
+        String generatedId = registeredSeller.getId();
+        var sellerOpt = sellerService.getSellerById(generatedId);
+        
+        // 3. Verifica que el vendedor se haya recuperado y que sus datos coincidan
+        assertTrue(sellerOpt.isPresent());
+        assertEquals("Maria Gomez", sellerOpt.get().getName());
+        assertEquals("3119876543", sellerOpt.get().getPhone());
+        assertEquals("Calle Principal 123", sellerOpt.get().getAddress());
     }
 
     @Test
