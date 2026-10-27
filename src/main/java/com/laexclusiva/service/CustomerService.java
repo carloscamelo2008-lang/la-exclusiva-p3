@@ -17,21 +17,22 @@ public class CustomerService {
     }
 
     public void registerCustomer(String id, String name, String phone, String address) {
-        PersonValidator.validateId(id);
-        PersonValidator.validateName(name);
-        PersonValidator.validatePhone(phone);
-        PersonValidator.validateAddress(address);
+        // Usamos las validaciones originales que ya tenías en tu clase PersonValidator
+        PersonValidator.validatePerson(id, name, phone, address);
 
         if (customerRepository.existsById(id)) {
             throw new IllegalArgumentException("Ya existe un cliente registrado con el ID: " + id);
         }
 
-        Customer customer = new Customer(id, name, phone, address);
+        // Constructor original de Customer (ajustado a los parámetros que acepta tu modelo)
+        Customer customer = new Customer(id, name, phone, address, BigDecimal.ZERO);
         customerRepository.save(customer);
     }
 
     public Customer getCustomerById(String id) {
-        PersonValidator.validateId(id);
+        if (id == null || id.trim().isEmpty()) {
+            throw new IllegalArgumentException("El ID no puede ser nulo ni vacío.");
+        }
         Customer customer = customerRepository.findById(id);
         if (customer == null) {
             throw new IllegalArgumentException("No se encontró el cliente con ID: " + id);
@@ -44,8 +45,12 @@ public class CustomerService {
     }
 
     public void addDebtToCustomer(String customerId, BigDecimal amount) {
-        PersonValidator.validateId(customerId);
-        PersonValidator.validateAmount(amount);
+        if (customerId == null || customerId.trim().isEmpty()) {
+            throw new IllegalArgumentException("El ID no puede ser nulo ni vacío.");
+        }
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El monto debe ser mayor a cero.");
+        }
 
         Customer customer = getCustomerById(customerId);
         customer.addDebt(amount);
@@ -53,8 +58,12 @@ public class CustomerService {
     }
 
     public void applyPaymentToCustomer(String customerId, BigDecimal amount) {
-        PersonValidator.validateId(customerId);
-        PersonValidator.validateAmount(amount);
+        if (customerId == null || customerId.trim().isEmpty()) {
+            throw new IllegalArgumentException("El ID no puede ser nulo ni vacío.");
+        }
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El monto debe ser mayor a cero.");
+        }
 
         Customer customer = getCustomerById(customerId);
         customer.applyPayment(amount);
