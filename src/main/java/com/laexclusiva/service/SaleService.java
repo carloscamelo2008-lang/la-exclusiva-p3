@@ -155,6 +155,17 @@ public class SaleService {
         }
     }
 
+    /** Calcula el total de una venta candidata con las tarifas configuradas, sin cambiar estado. */
+    public BigDecimal previewTotal(List<StockRequest> lines) {
+        List<StockRequest> requests = validateAndCopyRequests(lines);
+        List<SaleLine> saleLines = new ArrayList<>(requests.size());
+        for (StockRequest request : requests) {
+            saleLines.add(new SaleLine(productService.findById(request.productId()),
+                    request.presentation(), request.quantity()));
+        }
+        return Sale.calculateTotal(saleLines);
+    }
+
     /** Busca una venta por ID o falla con un mensaje de dominio. */
     public Sale findById(String saleId) {
         requireIdentifier(saleId, "El identificador de la venta es obligatorio.");

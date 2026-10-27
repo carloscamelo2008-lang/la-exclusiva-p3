@@ -81,7 +81,8 @@ public final class Sale {
         return new Seller(seller.getId(), seller.getName(), seller.getPhone(), seller.getAddress());
     }
 
-    private static BigDecimal calculateTotal(List<SaleLine> lines) {
+    /** Suma los subtotales de líneas para cotizar una venta sin registrarla. */
+    public static BigDecimal calculateTotal(List<SaleLine> lines) {
         BigDecimal total = BigDecimal.ZERO;
         for (SaleLine line : lines) {
             total = total.add(line.getSubtotal());
