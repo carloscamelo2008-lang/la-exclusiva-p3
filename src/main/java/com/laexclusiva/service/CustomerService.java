@@ -2,7 +2,6 @@ package com.laexclusiva.service;
 
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.repository.CustomerRepositoryInterface;
-import com.laexclusiva.validation.PersonValidator;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -17,14 +16,23 @@ public class CustomerService {
     }
 
     public void registerCustomer(String id, String name, String phone, String address) {
-        // Usamos las validaciones originales que ya tenías en tu clase PersonValidator
-        PersonValidator.validatePerson(id, name, phone, address);
+        if (id == null || id.trim().isEmpty()) {
+            throw new IllegalArgumentException("El ID no puede ser nulo ni vacío.");
+        }
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("El nombre no puede ser nulo ni vacío.");
+        }
+        if (phone == null || phone.trim().isEmpty()) {
+            throw new IllegalArgumentException("El teléfono no puede ser nulo ni vacío.");
+        }
+        if (address == null || address.trim().isEmpty()) {
+            throw new IllegalArgumentException("La dirección no puede ser nula ni vacía.");
+        }
 
         if (customerRepository.existsById(id)) {
             throw new IllegalArgumentException("Ya existe un cliente registrado con el ID: " + id);
         }
 
-        // Constructor original de Customer (ajustado a los parámetros que acepta tu modelo)
         Customer customer = new Customer(id, name, phone, address, BigDecimal.ZERO);
         customerRepository.save(customer);
     }
