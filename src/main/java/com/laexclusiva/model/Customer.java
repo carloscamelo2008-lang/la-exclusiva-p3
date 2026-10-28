@@ -14,6 +14,18 @@ public class Customer {
     }
 
     public Customer(String id, String name, String phone, String address, BigDecimal saldo) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("El ID del cliente es obligatorio y no puede estar vacío.");
+        }
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("El nombre del cliente es obligatorio y no puede estar vacío.");
+        }
+        if (phone == null || phone.isBlank()) {
+            throw new IllegalArgumentException("El teléfono del cliente es obligatorio y no puede estar vacío.");
+        }
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("La dirección del cliente es obligatoria y no puede estar vacía.");
+        }
         if (saldo == null || saldo.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("El saldo inicial no puede ser nulo ni negativo.");
         }
@@ -22,6 +34,11 @@ public class Customer {
         this.phone = phone;
         this.address = address;
         this.saldo = saldo;
+    }
+
+    /** Devuelve una copia independiente del cliente. */
+    public Customer copy() {
+        return new Customer(id, name, phone, address, saldo);
     }
 
     public String getId() { return id; }

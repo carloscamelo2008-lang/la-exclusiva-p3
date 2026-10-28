@@ -71,4 +71,13 @@ public class InventoryItem {
     public int totalUnits() { return totalUnits; }
 
     public BeerProduct getProduct() { return product; }
+
+    /** Copia el estado de existencias para almacenamiento y rollback. */
+    public InventoryItem copy() {
+        InventoryItem copy = new InventoryItem(product.copy());
+        if (totalUnits > 0) {
+            copy.add(totalUnits);
+        }
+        return copy;
+    }
 }

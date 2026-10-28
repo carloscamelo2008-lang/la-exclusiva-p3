@@ -11,6 +11,9 @@ public interface StockMovementRepository {
 
     void save(StockMovement movement);
 
+    /** Elimina una ocurrencia del movimiento para compensar una operación incompleta. */
+    boolean remove(StockMovement movement);
+
     List<StockMovement> findAll();
 
     List<StockMovement> findByProductId(String productId);

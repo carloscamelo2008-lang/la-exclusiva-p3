@@ -17,7 +17,7 @@ public class CustomerRepository implements CustomerRepositoryInterface {
         if (customers.containsKey(customer.getId())) {
             throw new IllegalArgumentException("Ya existe un cliente con el ID: " + customer.getId());
         }
-        customers.put(customer.getId(), customer);
+        customers.put(customer.getId(), customer.copy());
     }
 
     @Override
@@ -25,12 +25,15 @@ public class CustomerRepository implements CustomerRepositoryInterface {
         if (id == null || id.trim().isEmpty()) {
             throw new IllegalArgumentException("El ID no puede ser nulo ni vacío.");
         }
-        return customers.get(id);
+        Customer customer = customers.get(id);
+        return customer == null ? null : customer.copy();
     }
 
     @Override
     public List<Customer> findAll() {
-        return new ArrayList<>(customers.values());
+        List<Customer> copies = new ArrayList<>(customers.size());
+        customers.values().forEach(customer -> copies.add(customer.copy()));
+        return copies;
     }
 
     @Override
@@ -49,6 +52,6 @@ public class CustomerRepository implements CustomerRepositoryInterface {
         if (!customers.containsKey(customer.getId())) {
             throw new IllegalArgumentException("No se puede actualizar: el cliente con ID " + customer.getId() + " no existe.");
         }
-        customers.put(customer.getId(), customer);
+        customers.put(customer.getId(), customer.copy());
     }
 }

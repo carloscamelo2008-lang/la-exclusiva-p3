@@ -15,6 +15,17 @@ public class InMemoryStockMovementRepository implements StockMovementRepository 
     }
 
     @Override
+    public boolean remove(StockMovement movement) {
+        for (int index = storage.size() - 1; index >= 0; index--) {
+            if (storage.get(index).equals(movement)) {
+                storage.remove(index);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
     public List<StockMovement> findAll() {
         return new ArrayList<>(storage);
     }
