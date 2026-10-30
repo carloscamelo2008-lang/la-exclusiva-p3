@@ -1,13 +1,27 @@
 package com.laexclusiva.model;
 
-/** Venta de una canasta completa (38, 30 o 16 unidades según la referencia). */
+/**
+ * Presentación comercial de una canasta completa. La cantidad de unidades depende de la
+ * capacidad configurada para cada producto.
+ */
 public class FullBasketPresentation implements SalePresentation {
 
+    /**
+     * {@inheritDoc}
+     *
+     * @return código estable {@code FULL_BASKET}
+     */
     @Override
     public String code() {
         return "FULL_BASKET";
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @param unitsPerBasket capacidad de la canasta del producto
+     * @return la capacidad completa expresada en unidades
+     */
     @Override
     public int unitsToDiscount(int unitsPerBasket) {
         return unitsPerBasket;

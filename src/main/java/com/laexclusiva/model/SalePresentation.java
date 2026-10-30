@@ -1,18 +1,27 @@
 package com.laexclusiva.model;
 
 /**
- * Contrato de una presentación comercial (unidad, media canasta, canasta completa).
+ * Contrato para representar una presentación comercial de un producto: unidad, media canasta
+ * o canasta completa. {@link BeerProduct} usa el código como llave del precio configurado y
+ * delega aquí el cálculo de unidades que debe descontar el inventario.
  *
- * GRASP: Polymorphism. SOLID: OCP (agregar una presentación nueva = una clase nueva,
+ * GRASP: Polimorfismo. SOLID: OCP (agregar una presentación nueva = una clase nueva,
  * sin modificar BeerProduct) y LSP (todas respetan el mismo contrato).
  */
 public interface SalePresentation {
 
+    /** Presentación de una unidad individual. */
     SalePresentation UNIT = new UnitPresentation();
+    /** Presentación de media canasta. */
     SalePresentation HALF_BASKET = new HalfBasketPresentation();
+    /** Presentación de una canasta completa. */
     SalePresentation FULL_BASKET = new FullBasketPresentation();
 
-    /** Identificador estable de la presentación, usado como llave de precios. */
+    /**
+     * Devuelve el identificador estable de esta presentación, usado como llave de precios.
+     *
+     * @return código de la presentación, por ejemplo {@code UNIT} o {@code HALF_BASKET}
+     */
     String code();
 
     /**

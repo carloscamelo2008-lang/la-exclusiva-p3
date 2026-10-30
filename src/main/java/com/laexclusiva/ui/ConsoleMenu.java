@@ -22,7 +22,11 @@ import java.util.Objects;
 import java.util.Scanner;
 import java.util.UUID;
 
-/** Menú de consola para ventas y las operaciones mínimas que las habilitan. */
+/**
+ * Interfaz de consola para consultar el catálogo y el inventario, gestionar personas y operar
+ * ventas y abonos. Delega las reglas de negocio a los servicios recibidos por constructor;
+ * conserva aquí la navegación, la lectura de entradas y la presentación de resultados.
+ */
 public final class ConsoleMenu {
 
     private static final DateTimeFormatter SALE_DATE_FORMAT =
@@ -36,6 +40,20 @@ public final class ConsoleMenu {
     private final Scanner scanner;
     private final PrintStream out;
 
+    /**
+     * Crea el menú con los servicios de cada módulo y los flujos de entrada y salida.
+     * El menú usa el {@link Scanner} y el {@link PrintStream}, pero no los cierra porque su
+     * ciclo de vida pertenece al punto de entrada de la aplicación.
+     *
+     * @param productService servicio de consulta del catálogo y precios
+     * @param inventoryService servicio de consulta y actualización de existencias
+     * @param customerService servicio de registro y consulta de clientes
+     * @param sellerService servicio de registro y consulta de vendedores
+     * @param saleService servicio de cálculo y registro de ventas y abonos
+     * @param scanner fuente de líneas ingresadas por el usuario
+     * @param out destino de los mensajes del menú
+     * @throws NullPointerException si alguna dependencia o flujo de consola es nulo
+     */
     public ConsoleMenu(ProductService productService, InventoryService inventoryService,
                        CustomerService customerService, SellerService sellerService,
                        SaleService saleService, Scanner scanner, PrintStream out) {
@@ -48,7 +66,10 @@ public final class ConsoleMenu {
         this.out = Objects.requireNonNull(out, "La salida de consola es obligatoria.");
     }
 
-    /** Inicia el ciclo de consola. El Scanner y el PrintStream pertenecen al punto de entrada. */
+    /**
+     * Ejecuta el ciclo principal y dirige cada opción al submenú correspondiente.
+     * Una entrada finalizada termina el ciclo; la opción de salida muestra el mensaje de cierre.
+     */
     public void start() {
         boolean running = true;
         while (running) {
@@ -57,6 +78,7 @@ public final class ConsoleMenu {
             if (option == null) {
                 return;
             }
+            // Cada módulo conserva su navegación; las opciones aún no implementadas informan su estado.
             switch (option) {
                 case "1" -> inventoryMenu();
                 case "2" -> salesMenu();
@@ -87,6 +109,7 @@ public final class ConsoleMenu {
         out.print("Seleccione una opción: ");
     }
 
+    /** Mantiene el submenú de inventario abierto hasta volver al principal o terminar la entrada. */
     private void inventoryMenu() {
         boolean back = false;
         while (!back) {
@@ -142,6 +165,7 @@ public final class ConsoleMenu {
         }
     }
 
+    /** Agrupa la navegación de consulta y registro de clientes y vendedores. */
     private void peopleMenu() {
         boolean back = false;
         while (!back) {
@@ -185,6 +209,7 @@ public final class ConsoleMenu {
         if (phone == null) return;
         String address = readLine("Dirección: ");
         if (address == null) return;
+        // El servicio recibe el identificador ya generado; la consola evita reutilizar uno existente.
         String customerId = generateCustomerId();
         try {
             customerService.registerCustomer(customerId, name, phone, address);
@@ -230,6 +255,7 @@ public final class ConsoleMenu {
         }
     }
 
+    /** Mantiene las opciones de venta y abonos disponibles hasta volver al menú principal. */
     private void salesMenu() {
         boolean back = false;
         while (!back) {
@@ -260,6 +286,7 @@ public final class ConsoleMenu {
         }
         List<StockRequest> lines = new ArrayList<>();
         boolean addLine = true;
+        // Se reúne y cotiza el detalle primero; hasta la confirmación no se solicita registrar cambios.
         while (addLine) {
             out.println("Productos disponibles:");
             showCatalogAndInventory();
@@ -275,6 +302,7 @@ public final class ConsoleMenu {
             addLine = another;
         }
 
+        // La prevalidación evita continuar con una venta imposible; el servicio vuelve a validar al registrarla.
         if (!inventoryService.canFulfill(lines)) {
             out.println("Stock insuficiente para una o más líneas. No se registró la venta.");
             return;
@@ -294,6 +322,7 @@ public final class ConsoleMenu {
 
         String customerId = null;
         if (initialPayment.compareTo(total) < 0) {
+            // Solo se asocia un cliente cuando la venta queda con saldo pendiente.
             Customer customer = chooseCustomer();
             if (customer == null) return;
             customerId = customer.getId();
@@ -310,6 +339,7 @@ public final class ConsoleMenu {
             return;
         }
 
+        // SaleService coordina el descuento, la deuda del cliente y el guardado de la venta.
         try {
             Sale sale = saleService.registerSale(lines, seller.getId(), customerId, initialPayment);
             out.println("Venta registrada correctamente.");
@@ -379,6 +409,7 @@ public final class ConsoleMenu {
         BigDecimal amount = readPositiveMoney("Valor del abono (COP; use coma para decimales): ");
         if (amount == null) return;
         try {
+            // El servicio actualiza el pago de la venta y el saldo asignado al cliente.
             Sale updatedSale = saleService.registerPayment(saleId, amount);
             out.println("Abono registrado correctamente.");
             out.println("Total pagado: " + formatMoney(updatedSale.calculateTotalPaid()));
@@ -495,6 +526,7 @@ public final class ConsoleMenu {
         }
     }
 
+    /** Lee un importe no negativo, admite coma o punto decimal y devuelve {@code null} al finalizar la entrada. */
     private BigDecimal readMoney(String prompt) {
         while (true) {
             String value = readLine(prompt);
@@ -529,6 +561,7 @@ public final class ConsoleMenu {
         }
     }
 
+    /** Lee y recorta una línea; devuelve {@code null} cuando no quedan datos de entrada. */
     private String readLine(String prompt) {
         out.print(prompt);
         if (!scanner.hasNextLine()) return null;

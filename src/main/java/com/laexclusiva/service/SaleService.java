@@ -13,7 +13,13 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Coordina el registro de ventas y los pagos asociados a una venta existente. */
+/**
+ * Coordina los casos de uso de ventas y sus abonos.
+ *
+ * Obtiene productos, clientes y vendedores mediante los servicios correspondientes, registra
+ * las ventas en {@link SaleRepository} y coordina con {@link InventoryService} y
+ * {@link CustomerService} los cambios de existencias y saldo asociados.
+ */
 public class SaleService {
 
     private final SaleRepository saleRepository;
@@ -22,6 +28,16 @@ public class SaleService {
     private final CustomerService customerService;
     private final SellerService sellerService;
 
+    /**
+     * Crea el servicio con las dependencias necesarias para validar y registrar una venta.
+     *
+     * @param saleRepository repositorio de ventas
+     * @param productService servicio que consulta el catálogo y los precios
+     * @param inventoryService servicio que valida y actualiza las existencias
+     * @param customerService servicio que mantiene los saldos de clientes
+     * @param sellerService servicio que consulta los vendedores
+     * @throws IllegalArgumentException si alguna dependencia es nula
+     */
     public SaleService(SaleRepository saleRepository, ProductService productService,
                        InventoryService inventoryService, CustomerService customerService,
                        SellerService sellerService) {
@@ -37,8 +53,26 @@ public class SaleService {
     }
 
     /**
-     * Registra una venta. Primero valida las líneas, las entidades, el pago y el stock; después
-     * aplica la salida, deuda y venta con compensaciones para el almacenamiento actual en memoria.
+     * Valida y registra una venta con sus líneas y pago inicial.
+     *
+     * Antes de modificar datos comprueba los productos, el vendedor, el cliente requerido, el
+     * importe y las existencias. Si queda saldo pendiente, lo asigna al cliente. Después registra
+     * la salida de inventario y la venta. Ante un fallo de escritura intenta compensar los cambios
+     * ya aplicados; este mecanismo corresponde a los repositorios actuales en memoria y no ofrece
+     * una transacción durable.
+     *
+     * @param lines productos, presentaciones y cantidades de la venta; debe haber al menos una línea
+     * @param sellerId identificador de un vendedor registrado
+     * @param customerId identificador del cliente; es obligatorio si queda saldo pendiente y puede ser
+     *                   nulo si el pago inicial cubre el total
+     * @param initialPayment importe recibido al registrar la venta, entre cero y el total inclusive
+     * @return copia de la venta registrada, con su identificador generado y pagos iniciales
+     * @throws IllegalArgumentException si las líneas, identificadores, entidades o el pago son inválidos,
+     *                                  o si falta un producto, vendedor o cliente requerido
+     * @throws IllegalStateException si el stock no alcanza, hay una inconsistencia de saldos
+     *                               o se detecta un identificador de venta duplicado
+     * @throws com.laexclusiva.model.InsufficientStockException si las existencias cambian entre la
+     *                                                          comprobación previa y el descuento
      */
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                             BigDecimal initialPayment) {
@@ -58,6 +92,7 @@ public class SaleService {
 
         List<SaleLine> saleLines = new ArrayList<>(requests.size());
         for (StockRequest request : requests) {
+            // Cada línea captura el precio vigente para conservarlo como parte del historial.
             saleLines.add(new SaleLine(productService.findById(request.productId()),
                     request.presentation(), request.quantity()));
         }
@@ -66,6 +101,7 @@ public class SaleService {
         if (saleRepository.findById(sale.getId()).isPresent()) {
             throw new IllegalStateException("Ya existe una venta con el ID " + sale.getId() + ".");
         }
+        // Esta comprobación ocurre antes de escribir; discountSale vuelve a validar al descontar.
         if (!inventoryService.canFulfill(requests)) {
             throw new IllegalStateException(
                     "No hay existencias suficientes para completar todas las líneas de la venta.");
@@ -78,6 +114,7 @@ public class SaleService {
         boolean saleSaveAttempted = false;
         boolean customerDebtUpdateAttempted = false;
         try {
+            // La secuencia de escrituras no es una transacción: se guardan snapshots para compensar.
             discount = inventoryService.discountSale(requests, "Venta " + sale.getId());
             if (pendingBalance.signum() > 0) {
                 customerDebtUpdateAttempted = true;
@@ -104,7 +141,18 @@ public class SaleService {
         }
     }
 
-    /** Registra el mismo importe en la venta y en la deuda asociada a ventas del cliente. */
+    /**
+     * Registra un abono en la venta y reduce por el mismo importe la deuda de ventas del cliente.
+     * El abono debe ser positivo, no superar el saldo de esta venta y corresponder a una venta
+     * asociada a un cliente. Si una escritura falla, intenta restaurar los dos estados previos.
+     *
+     * @param saleId identificador de la venta pendiente
+     * @param amount importe del abono
+     * @return copia actualizada de la venta
+     * @throws IllegalArgumentException si el identificador o importe es inválido, la venta no existe,
+     *                                  no tiene cliente asociado o el abono supera el saldo disponible
+     * @throws IllegalStateException si el saldo agregado del cliente no coincide con sus ventas
+     */
     public Sale registerPayment(String saleId, BigDecimal amount) {
         requireIdentifier(saleId, "El identificador de la venta es obligatorio.");
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -136,6 +184,7 @@ public class SaleService {
         boolean saleUpdateAttempted = false;
         boolean customerPaymentAttempted = false;
         try {
+            // Se actualiza el saldo del cliente y luego el registro de la venta; ambos se compensan si falla uno.
             customerPaymentAttempted = true;
             customerService.applyPaymentToSaleDebt(customerId, amount);
             saleUpdateAttempted = true;
@@ -155,7 +204,16 @@ public class SaleService {
         }
     }
 
-    /** Calcula el total de una venta candidata con las tarifas configuradas, sin cambiar estado. */
+    /**
+     * Calcula el total de una venta candidata con los precios actuales del catálogo, sin registrar
+     * la venta ni modificar las existencias o los saldos.
+     *
+     * @param lines líneas propuestas para la venta
+     * @return suma de subtotales con el precio configurado para cada presentación
+     * @throws IllegalArgumentException si la lista está vacía, contiene una línea nula o un producto
+     *                                  no existe
+     * @throws IllegalStateException si falta el precio de una presentación para algún producto
+     */
     public BigDecimal previewTotal(List<StockRequest> lines) {
         List<StockRequest> requests = validateAndCopyRequests(lines);
         List<SaleLine> saleLines = new ArrayList<>(requests.size());
@@ -166,18 +224,34 @@ public class SaleService {
         return Sale.calculateTotal(saleLines);
     }
 
-    /** Busca una venta por ID o falla con un mensaje de dominio. */
+    /**
+     * Busca una venta registrada por su identificador.
+     *
+     * @param saleId identificador de la venta
+     * @return copia de la venta encontrada
+     * @throws IllegalArgumentException si el identificador es nulo, vacío o no existe
+     */
     public Sale findById(String saleId) {
         requireIdentifier(saleId, "El identificador de la venta es obligatorio.");
         return saleRepository.findById(saleId)
                 .orElseThrow(() -> new IllegalArgumentException("No existe la venta con ID " + saleId + "."));
     }
 
-    /** Lista snapshots independientes de las ventas registradas. */
+    /**
+     * Lista copias independientes de las ventas registradas.
+     *
+     * @return ventas en el orden proporcionado por el repositorio
+     */
     public List<Sale> listAll() {
         return saleRepository.findAll();
     }
 
+    /**
+     * Comprueba que la suma de saldos de las ventas coincida con la asignación de deuda de ventas
+     * del cliente y que esa asignación no supere su saldo agregado.
+     *
+     * @param customerId identificador del cliente que se valida
+     */
     private void assertSalesDebtConsistency(String customerId) {
         BigDecimal salesBalance = saleRepository.findAll().stream()
                 .filter(sale -> sale.getCustomer() != null
@@ -195,6 +269,7 @@ public class SaleService {
     }
 
     private static void compensate(Throwable failure, List<Runnable> compensations) {
+        // Se intentan todas las restauraciones; los fallos secundarios quedan asociados al original.
         for (Runnable compensation : compensations) {
             try {
                 compensation.run();
