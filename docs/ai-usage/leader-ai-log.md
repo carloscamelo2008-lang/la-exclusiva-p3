@@ -16,6 +16,19 @@
 - **Qué debe verificarse:** compilación Maven en un entorno local, exactitud de las reglas de inventario y precios, revisión de los documentos por Jesús y Daniel, y consistencia del diagrama con el código final.
 - **Resultado:** configuración y documentación inicial preparadas para revisión; no se considera aprobada ni fusionada hasta completar el proceso de Pull Request.
 
+## Registro 2
+
+- **Fecha:** 2026-10-29.
+- **Herramienta:** Codex integrado en IntelliJ IDEA.
+- **Fase / tarea:** documentación Java de integración y ventas; rama `docs/javadocs-console-sales`, creada desde `origin/develop`.
+- **Objetivo:** explicar en español las responsabilidades, reglas, parámetros, retornos y excepciones de los componentes de consola y ventas sin alterar su comportamiento.
+- **Resumen de la ayuda recibida:** revisión de los contratos de ventas, presentaciones, persistencia de ventas y navegación de consola para mejorar Javadocs y comentarios donde aclaran validaciones, pagos, unidades o compensaciones.
+- **Archivos Java documentados:** `Main.java`, `ConsoleMenu.java`, `Sale.java`, `SaleLine.java`, `SalePresentation.java`, `UnitPresentation.java`, `HalfBasketPresentation.java`, `FullBasketPresentation.java`, `SaleService.java`, `SaleRepository.java` e `InMemorySaleRepository.java`.
+- **Qué se utilizó:** se ampliaron los Javadocs de clases, constructores y operaciones públicas; se aclararon el precio histórico de una línea, la conversión de presentaciones a unidades, los requisitos de pago y cliente, el orden de coordinación de ventas y el uso de copias en el repositorio en memoria. Se ajustó la descripción de los pagos para indicar que devuelve una copia, no una vista.
+- **Cambios efectuados:** solo Javadocs y comentarios internos en los once archivos anteriores. No se cambiaron firmas, reglas de negocio ni lógica ejecutable. Commit Java creado: `2c5676b` (`docs: improve JavaDoc for sales and console modules`).
+- **Verificación:** Maven 3.9.16 con JDK 17.0.18 ejecutó `clean verify`: `BUILD SUCCESS`, 100 pruebas ejecutadas, 0 fallos, 0 errores y 0 omitidas. `git diff --check` pasó antes del commit Java.
+- **Limitaciones:** `mvn` no está en el `PATH` y no existe `mvnw.cmd`; se usó Maven incluido en IntelliJ. El entorno normal bloqueó la descarga de `maven-clean-plugin:3.2.0`, así que la verificación completa requirió permitir a Maven acceder a Maven Central. No se instalaron herramientas ni se cambiaron variables globales; Maven descargó el plugin faltante a su caché local.
+
 ## Registros siguientes
 
 Añadir una sección por cada interacción relevante de IA vinculada con tareas posteriores. Describir únicamente lo que realmente se consultó, revisó y aplicó.
