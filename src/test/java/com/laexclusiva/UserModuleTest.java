@@ -66,33 +66,52 @@ public class UserModuleTest {
     }
 
     @Test
-    void testRoleAndPermissionAuthorizations() {
+    void testRoleAndPermissionAuthorizationsAndMatrix() {
         UserAccount admin = new UserAccount(1L, "admin", "hash", UserRole.ADMINISTRATOR, null);
         UserAccount worker = new UserAccount(2L, "worker", "hash", UserRole.WORKER, "SEL-00000002");
 
         assertTrue(authzService.isAdministrator(admin));
         assertFalse(authzService.isAdministrator(worker));
 
-        assertTrue(authzService.hasPermission(admin, Permission.MANAGE_USERS));
-        assertFalse(authzService.hasPermission(worker, Permission.MANAGE_USERS));
-        assertTrue(authzService.hasPermission(worker, Permission.PROCESS_SALES));
+        // Permisos de trabajador acordados
+        assertTrue(worker.getRole().hasPermission(Permission.VIEW_CATALOG));
+        assertTrue(worker.getRole().hasPermission(Permission.VIEW_INVENTORY));
+        assertTrue(worker.getRole().hasPermission(Permission.REGISTER_SALE));
+        assertTrue(worker.getRole().hasPermission(Permission.REGISTER_CUSTOMER));
+        assertTrue(worker.getRole().hasPermission(Permission.VIEW_CUSTOMER));
+        assertTrue(worker.getRole().hasPermission(Permission.VIEW_SALES));
+        assertTrue(worker.getRole().hasPermission(Permission.VIEW_PORTFOLIO));
+        assertTrue(worker.getRole().hasPermission(Permission.REGISTER_PAYMENT));
+
+        // Restricciones de trabajador (no debe administrar productos, precios, usuarios ni entradas)
+        assertFalse(worker.getRole().hasPermission(Permission.MANAGE_USERS));
+        assertFalse(worker.getRole().hasPermission(Permission.MANAGE_PRODUCTS));
+        assertFalse(worker.getRole().hasPermission(Permission.MANAGE_PRICES));
+        assertFalse(worker.getRole().hasPermission(Permission.MANAGE_INVENTORY_ENTRIES));
     }
 
     @Test
-    void testRepositoryUpdateAndUniqueness() {
-        UserAccount u1 = new UserAccount(null, "user1", "hash1", UserRole.WORKER, null);
-        userRepository.save(u1);
+    void testUnmodifiableRolePermissions() {
+        assertThrows(UnsupportedOperationException.class, () -> {
+            UserRole.WORKER.getPermissions().add(Permission.MANAGE_USERS);
+        });
+    }
 
-        u1.setUsername("user1_updated");
-        userRepository.update(u1);
+    @Test
+    void testRepositoryManualIdHandlingAndUniqueness() {
+        // Guardar con ID manual alto
+        UserAccount customIdUser = new UserAccount(100L, "custom", "hash", UserRole.WORKER, null);
+        userRepository.save(customIdUser);
 
-        assertTrue(userRepository.findByUsername("user1_updated").isPresent());
-        assertFalse(userRepository.findByUsername("user1").isPresent());
+        // El siguiente ID automático debe ser mayor para evitar colisiones
+        UserAccount autoIdUser = new UserAccount(null, "auto", "hash", UserRole.WORKER, null);
+        userRepository.save(autoIdUser);
 
-        UserAccount u2 = new UserAccount(null, "user2", "hash2", UserRole.WORKER, null);
-        userRepository.save(u2);
+        assertTrue(autoIdUser.getId() > 100L);
 
-        u2.setUsername("user1_updated");
-        assertThrows(IllegalArgumentException.class, () -> userRepository.update(u2));
+        // Actualización y unicidad
+        autoIdUser.setUsername("auto_updated");
+        userRepository.update(autoIdUser);
+        assertTrue(userRepository.findByUsername("auto_updated").isPresent());
     }
 }

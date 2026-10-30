@@ -34,6 +34,8 @@ public class InMemoryUserRepository implements UserRepository {
 
         if (user.getId() == null) {
             user.setId(idCounter.getAndIncrement());
+        } else {
+            idCounter.updateAndGet(current -> Math.max(current, user.getId() + 1));
         }
         storage.put(user.getId(), user);
     }

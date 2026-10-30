@@ -1,5 +1,6 @@
 package com.laexclusiva.model;
 
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -10,7 +11,16 @@ import java.util.Set;
  */
 public enum UserRole {
     ADMINISTRATOR(EnumSet.allOf(Permission.class)),
-    WORKER(EnumSet.of(Permission.MANAGE_CUSTOMERS, Permission.PROCESS_SALES));
+    WORKER(EnumSet.of(
+        Permission.VIEW_CATALOG,
+        Permission.VIEW_INVENTORY,
+        Permission.REGISTER_SALE,
+        Permission.REGISTER_CUSTOMER,
+        Permission.VIEW_CUSTOMER,
+        Permission.VIEW_SALES,
+        Permission.VIEW_PORTFOLIO,
+        Permission.REGISTER_PAYMENT
+    ));
 
     private final Set<Permission> permissions;
 
@@ -19,7 +29,7 @@ public enum UserRole {
     }
 
     public Set<Permission> getPermissions() {
-        return permissions;
+        return Collections.unmodifiableSet(permissions);
     }
 
     public boolean hasPermission(Permission permission) {
