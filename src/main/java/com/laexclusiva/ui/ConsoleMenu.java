@@ -3,11 +3,14 @@ package com.laexclusiva.ui;
 import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.InsufficientStockException;
+import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
+import com.laexclusiva.model.UserSession;
 import com.laexclusiva.model.StockRequest;
 import com.laexclusiva.model.StockSnapshot;
+import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
@@ -22,7 +25,11 @@ import java.util.Objects;
 import java.util.Scanner;
 import java.util.UUID;
 
-/** Menú de consola para ventas y las operaciones mínimas que las habilitan. */
+/**
+ * Interfaz de consola para consultar el catálogo y el inventario, gestionar personas y operar
+ * ventas y abonos. Delega las reglas de negocio a los servicios recibidos por constructor;
+ * conserva aquí la navegación, la lectura de entradas y la presentación de resultados.
+ */
 public final class ConsoleMenu {
 
     private static final DateTimeFormatter SALE_DATE_FORMAT =
@@ -35,10 +42,26 @@ public final class ConsoleMenu {
     private final SaleService saleService;
     private final Scanner scanner;
     private final PrintStream out;
+    private final UserSession session;
+    private final AuthorizationService authorizationService;
 
+    /**
+     * Crea el menú con los servicios de cada módulo y los flujos de entrada y salida.
+     * El menú usa el {@link Scanner} y el {@link PrintStream}, pero no los cierra porque su
+     * ciclo de vida pertenece al punto de entrada de la aplicación.
+     *
+     * @param productService servicio de consulta del catálogo y precios
+     * @param inventoryService servicio de consulta y actualización de existencias
+     * @param customerService servicio de registro y consulta de clientes
+     * @param sellerService servicio de registro y consulta de vendedores
+     * @param saleService servicio de cálculo y registro de ventas y abonos
+     * @param scanner fuente de líneas ingresadas por el usuario
+     * @param out destino de los mensajes del menú
+     * @throws NullPointerException si alguna dependencia o flujo de consola es nulo
+     */
     public ConsoleMenu(ProductService productService, InventoryService inventoryService,
                        CustomerService customerService, SellerService sellerService,
-                       SaleService saleService, Scanner scanner, PrintStream out) {
+                       SaleService saleService, Scanner scanner, PrintStream out, UserSession session, AuthorizationService authorizationService) {
         this.productService = Objects.requireNonNull(productService, "El servicio de productos es obligatorio.");
         this.inventoryService = Objects.requireNonNull(inventoryService, "El servicio de inventario es obligatorio.");
         this.customerService = Objects.requireNonNull(customerService, "El servicio de clientes es obligatorio.");
@@ -46,10 +69,22 @@ public final class ConsoleMenu {
         this.saleService = Objects.requireNonNull(saleService, "El servicio de ventas es obligatorio.");
         this.scanner = Objects.requireNonNull(scanner, "La entrada de consola es obligatoria.");
         this.out = Objects.requireNonNull(out, "La salida de consola es obligatoria.");
+        this.session = session;
+        this.authorizationService = Objects.requireNonNull(authorizationService, "El servicio de autorización es obligatorio.");
+        if (session == null || !session.getUserAccount().isActive()) {
+            throw new IllegalArgumentException("Se requiere una sesión activa.");
+        }
     }
 
-    /** Inicia el ciclo de consola. El Scanner y el PrintStream pertenecen al punto de entrada. */
+    /**
+     * Ejecuta el ciclo principal y dirige cada opción al submenú correspondiente.
+     * Una entrada finalizada termina el ciclo; la opción de salida muestra el mensaje de cierre.
+     */
     public void start() {
+        if (!session.getUserAccount().isActive()) {
+            out.println("Acceso denegado: la cuenta está inactiva.");
+            return;
+        }
         boolean running = true;
         while (running) {
             showMainMenu();
@@ -57,12 +92,12 @@ public final class ConsoleMenu {
             if (option == null) {
                 return;
             }
+            // Cada módulo conserva su navegación; las opciones aún no implementadas informan su estado.
             switch (option) {
                 case "1" -> inventoryMenu();
                 case "2" -> salesMenu();
                 case "3" -> peopleMenu();
-                case "4" -> showPendingModule("Ingresos y egresos");
-                case "5" -> showPendingModule("Consultas y reportes");
+                case "5" -> portfolioMenu();
                 case "0" -> {
                     out.println("Gracias por utilizar La Exclusiva.");
                     running = false;
@@ -78,22 +113,23 @@ public final class ConsoleMenu {
         out.println("              LA EXCLUSIVA");
         out.println("       Sistema de administración");
         out.println("======================================");
-        out.println("1. Productos e inventario");
-        out.println("2. Ventas");
-        out.println("3. Clientes y vendedores");
-        out.println("4. Ingresos y egresos");
-        out.println("5. Consultas y reportes");
+        if ((can(Permission.VIEW_CATALOG) && can(Permission.VIEW_INVENTORY)) || can(Permission.MANAGE_INVENTORY_ENTRIES)) out.println("1. Productos e inventario");
+        if (can(Permission.REGISTER_SALE) || can(Permission.VIEW_SALES) || can(Permission.REGISTER_PAYMENT)) out.println("2. Ventas");
+        if (can(Permission.REGISTER_CUSTOMER) || can(Permission.VIEW_CUSTOMER) || can(Permission.VIEW_SELLERS) || can(Permission.REGISTER_SELLERS)) out.println("3. Clientes y vendedores");
+        if (can(Permission.VIEW_PORTFOLIO)) out.println("5. Consultar cartera");
         out.println("0. Salir");
         out.print("Seleccione una opción: ");
     }
 
+    /** Mantiene el submenú de inventario abierto hasta volver al principal o terminar la entrada. */
     private void inventoryMenu() {
+        if (!requireAny(Permission.VIEW_CATALOG, Permission.VIEW_INVENTORY, Permission.MANAGE_INVENTORY_ENTRIES)) return;
         boolean back = false;
         while (!back) {
             out.println();
             out.println("--- Productos e inventario ---");
-            out.println("1. Consultar catálogo e inventario");
-            out.println("2. Registrar ingreso de existencias");
+            if (can(Permission.VIEW_CATALOG) && can(Permission.VIEW_INVENTORY)) out.println("1. Consultar catálogo e inventario");
+            if (can(Permission.MANAGE_INVENTORY_ENTRIES)) out.println("2. Registrar ingreso de existencias");
             out.println("0. Volver al menú principal");
             String option = readLine("Seleccione una opción: ");
             if (option == null) return;
@@ -107,6 +143,7 @@ public final class ConsoleMenu {
     }
 
     private void showCatalogAndInventory() {
+        if (!requireAll(Permission.VIEW_CATALOG, Permission.VIEW_INVENTORY)) return;
         List<BeerProduct> products = productService.listAll();
         if (products.isEmpty()) {
             out.println("No hay productos registrados en el catálogo.");
@@ -121,6 +158,7 @@ public final class ConsoleMenu {
     }
 
     private void registerStockEntry() {
+        if (!require(Permission.MANAGE_INVENTORY_ENTRIES)) return;
         BeerProduct product = chooseProduct("Ingrese el ID del producto para el ingreso (vacío para volver): ");
         if (product == null) return;
         Integer baskets = readNonNegativeInt("Canastas completas recibidas: ");
@@ -142,15 +180,17 @@ public final class ConsoleMenu {
         }
     }
 
+    /** Agrupa la navegación de consulta y registro de clientes y vendedores. */
     private void peopleMenu() {
+        if (!requireAny(Permission.REGISTER_CUSTOMER, Permission.VIEW_CUSTOMER, Permission.VIEW_SELLERS, Permission.REGISTER_SELLERS)) return;
         boolean back = false;
         while (!back) {
             out.println();
             out.println("--- Clientes y vendedores ---");
-            out.println("1. Listar clientes");
-            out.println("2. Registrar cliente");
-            out.println("3. Listar vendedores");
-            out.println("4. Registrar vendedor");
+            if (can(Permission.VIEW_CUSTOMER)) out.println("1. Listar clientes");
+            if (can(Permission.REGISTER_CUSTOMER)) out.println("2. Registrar cliente");
+            if (can(Permission.VIEW_SELLERS)) out.println("3. Listar vendedores");
+            if (can(Permission.REGISTER_SELLERS)) out.println("4. Registrar vendedor");
             out.println("0. Volver al menú principal");
             String option = readLine("Seleccione una opción: ");
             if (option == null) return;
@@ -166,6 +206,7 @@ public final class ConsoleMenu {
     }
 
     private void listCustomers() {
+        if (!require(Permission.VIEW_CUSTOMER)) return;
         List<Customer> customers = customerService.getAllCustomers();
         if (customers.isEmpty()) {
             out.println("No hay clientes registrados.");
@@ -179,12 +220,14 @@ public final class ConsoleMenu {
     }
 
     private void registerCustomer() {
+        if (!require(Permission.REGISTER_CUSTOMER)) return;
         String name = readLine("Nombre del cliente: ");
         if (name == null) return;
         String phone = readLine("Teléfono: ");
         if (phone == null) return;
         String address = readLine("Dirección: ");
         if (address == null) return;
+        // El servicio recibe el identificador ya generado; la consola evita reutilizar uno existente.
         String customerId = generateCustomerId();
         try {
             customerService.registerCustomer(customerId, name, phone, address);
@@ -204,6 +247,7 @@ public final class ConsoleMenu {
     }
 
     private void listSellers() {
+        if (!require(Permission.VIEW_SELLERS)) return;
         List<Seller> sellers = sellerService.getAllSellers();
         if (sellers.isEmpty()) {
             out.println("No hay vendedores registrados.");
@@ -216,6 +260,7 @@ public final class ConsoleMenu {
     }
 
     private void registerSeller() {
+        if (!require(Permission.REGISTER_SELLERS)) return;
         String name = readLine("Nombre del vendedor: ");
         if (name == null) return;
         String phone = readLine("Teléfono: ");
@@ -230,15 +275,19 @@ public final class ConsoleMenu {
         }
     }
 
+    /** Mantiene las opciones de venta y abonos disponibles hasta volver al menú principal. */
     private void salesMenu() {
+        if (!requireAny(Permission.REGISTER_SALE, Permission.VIEW_SALES, Permission.REGISTER_PAYMENT)) return;
         boolean back = false;
         while (!back) {
             out.println();
             out.println("--- Ventas ---");
-            out.println("1. Registrar venta");
-            out.println("2. Listar ventas");
-            out.println("3. Consultar venta por ID");
-            out.println("4. Registrar abono");
+            if (can(Permission.REGISTER_SALE)) out.println("1. Registrar venta");
+            if (can(Permission.VIEW_SALES)) {
+                out.println("2. Listar ventas");
+                out.println("3. Consultar venta por ID");
+            }
+            if (can(Permission.REGISTER_PAYMENT)) out.println("4. Registrar abono");
             out.println("0. Volver al menú principal");
             String option = readLine("Seleccione una opción: ");
             if (option == null) return;
@@ -254,12 +303,14 @@ public final class ConsoleMenu {
     }
 
     private void registerSale() {
+        if (!require(Permission.REGISTER_SALE)) return;
         if (productService.listAll().isEmpty()) {
             out.println("No hay productos disponibles en el catálogo.");
             return;
         }
         List<StockRequest> lines = new ArrayList<>();
         boolean addLine = true;
+        // Se reúne y cotiza el detalle primero; hasta la confirmación no se solicita registrar cambios.
         while (addLine) {
             out.println("Productos disponibles:");
             showCatalogAndInventory();
@@ -275,6 +326,7 @@ public final class ConsoleMenu {
             addLine = another;
         }
 
+        // La prevalidación evita continuar con una venta imposible; el servicio vuelve a validar al registrarla.
         if (!inventoryService.canFulfill(lines)) {
             out.println("Stock insuficiente para una o más líneas. No se registró la venta.");
             return;
@@ -282,7 +334,17 @@ public final class ConsoleMenu {
         BigDecimal total = saleService.previewTotal(lines);
         showSalePreview(lines, total);
 
-        Seller seller = chooseSeller();
+        Seller seller;
+        if (authorizationService.isAdministrator(session)) {
+            seller = chooseSeller();
+        } else {
+            String associatedSellerId = session.getUserAccount().getSellerId();
+            seller = associatedSellerId == null ? null : sellerService.getSellerById(associatedSellerId).orElse(null);
+            if (seller == null) {
+                out.println("No se puede registrar la venta: la cuenta no tiene un vendedor válido asociado.");
+                return;
+            }
+        }
         if (seller == null) return;
         BigDecimal initialPayment = readMoney("Pago inicial (COP; use coma para decimales): ");
         if (initialPayment == null) return;
@@ -294,6 +356,7 @@ public final class ConsoleMenu {
 
         String customerId = null;
         if (initialPayment.compareTo(total) < 0) {
+            // Solo se asocia un cliente cuando la venta queda con saldo pendiente.
             Customer customer = chooseCustomer();
             if (customer == null) return;
             customerId = customer.getId();
@@ -310,6 +373,7 @@ public final class ConsoleMenu {
             return;
         }
 
+        // SaleService coordina el descuento, la deuda del cliente y el guardado de la venta.
         try {
             Sale sale = saleService.registerSale(lines, seller.getId(), customerId, initialPayment);
             out.println("Venta registrada correctamente.");
@@ -333,6 +397,7 @@ public final class ConsoleMenu {
     }
 
     private void listSales() {
+        if (!require(Permission.VIEW_SALES)) return;
         List<Sale> sales = saleService.listAll();
         if (sales.isEmpty()) {
             out.println("No hay ventas registradas.");
@@ -344,6 +409,7 @@ public final class ConsoleMenu {
     }
 
     private void findSale() {
+        if (!require(Permission.VIEW_SALES)) return;
         String saleId = readLine("ID de la venta (vacío para volver): ");
         if (saleId == null || saleId.isBlank()) return;
         try {
@@ -362,6 +428,7 @@ public final class ConsoleMenu {
     }
 
     private void registerPayment() {
+        if (!require(Permission.REGISTER_PAYMENT)) return;
         String saleId = readLine("ID de la venta pendiente (vacío para volver): ");
         if (saleId == null || saleId.isBlank()) return;
         Sale sale;
@@ -379,6 +446,7 @@ public final class ConsoleMenu {
         BigDecimal amount = readPositiveMoney("Valor del abono (COP; use coma para decimales): ");
         if (amount == null) return;
         try {
+            // El servicio actualiza el pago de la venta y el saldo asignado al cliente.
             Sale updatedSale = saleService.registerPayment(saleId, amount);
             out.println("Abono registrado correctamente.");
             out.println("Total pagado: " + formatMoney(updatedSale.calculateTotalPaid()));
@@ -495,6 +563,7 @@ public final class ConsoleMenu {
         }
     }
 
+    /** Lee un importe no negativo, admite coma o punto decimal y devuelve {@code null} al finalizar la entrada. */
     private BigDecimal readMoney(String prompt) {
         while (true) {
             String value = readLine(prompt);
@@ -529,6 +598,7 @@ public final class ConsoleMenu {
         }
     }
 
+    /** Lee y recorta una línea; devuelve {@code null} cuando no quedan datos de entrada. */
     private String readLine(String prompt) {
         out.print(prompt);
         if (!scanner.hasNextLine()) return null;
@@ -546,7 +616,43 @@ public final class ConsoleMenu {
         return "$ " + amount.stripTrailingZeros().toPlainString() + " COP";
     }
 
-    private void showPendingModule(String moduleName) {
-        out.println(moduleName + ": funcionalidad pendiente de implementación.");
+    private void portfolioMenu() {
+        if (!require(Permission.VIEW_PORTFOLIO)) return;
+        List<Customer> debtors = customerService.getAllCustomers().stream()
+                .filter(customer -> customer.getBalance().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+        if (debtors.isEmpty()) {
+            out.println("No hay clientes con saldo pendiente.");
+            return;
+        }
+        out.println("Cartera pendiente:");
+        debtors.forEach(customer -> out.printf("- %s | %s | Saldo: %s%n",
+                customer.getId(), customer.getName(), formatMoney(customer.getBalance())));
+    }
+
+    private boolean can(Permission permission) {
+        return authorizationService.hasPermission(session, permission);
+    }
+
+    private boolean require(Permission permission) {
+        if (session.getUserAccount().isActive() && can(permission)) return true;
+        out.println("Acceso denegado: permiso " + permission + " requerido.");
+        return false;
+    }
+
+    private boolean requireAny(Permission... permissions) {
+        for (Permission permission : permissions) if (can(permission)) return true;
+        out.println("Acceso denegado: no tiene permisos para esta opción.");
+        return false;
+    }
+
+    private boolean requireAll(Permission... permissions) {
+        for (Permission permission : permissions) {
+            if (!can(permission)) {
+                out.println("Acceso denegado: permiso " + permission + " requerido.");
+                return false;
+            }
+        }
+        return true;
     }
 }

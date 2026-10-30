@@ -7,11 +7,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Repositorio en memoria que conserva el orden de registro de las ventas. */
+/**
+ * Implementación en memoria de {@link SaleRepository}.
+ * Conserva el orden de registro y almacena copias de las ventas para aislar el estado interno de
+ * los objetos que entregan los llamadores. Los datos se pierden al finalizar el proceso.
+ */
 public class InMemorySaleRepository implements SaleRepository {
 
     private final Map<String, Sale> storage = new LinkedHashMap<>();
 
+    /** {@inheritDoc} */
     @Override
     public void save(Sale sale) {
         if (sale == null) {
@@ -27,6 +32,7 @@ public class InMemorySaleRepository implements SaleRepository {
         storage.put(id, sale.copy());
     }
 
+    /** {@inheritDoc} */
     @Override
     public void update(Sale sale) {
         if (sale == null || sale.getId() == null || sale.getId().isBlank()) {
@@ -38,17 +44,28 @@ public class InMemorySaleRepository implements SaleRepository {
         storage.put(sale.getId(), sale.copy());
     }
 
+    /** {@inheritDoc} */
     @Override
     public void deleteById(String id) {
         storage.remove(id);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @return una copia independiente de la venta o un resultado vacío si el ID no está almacenado
+     */
     @Override
     public Optional<Sale> findById(String id) {
         Sale sale = storage.get(id);
         return sale == null ? Optional.empty() : Optional.of(sale.copy());
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @return copias independientes en el orden en que se registraron las ventas
+     */
     @Override
     public List<Sale> findAll() {
         List<Sale> copies = new ArrayList<>(storage.size());

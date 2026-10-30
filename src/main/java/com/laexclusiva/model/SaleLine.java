@@ -3,9 +3,10 @@ package com.laexclusiva.model;
 import java.math.BigDecimal;
 
 /**
- * Línea inmutable de una venta. Conserva el precio de la presentación configurado
- * en el producto al construir la línea, de modo que cambios futuros del catálogo
- * no alteren el subtotal histórico.
+ * Representa una línea de venta y vincula un producto, una presentación, una cantidad y el precio
+ * aplicado. Conserva una copia del producto y el precio configurado al construirla, de modo que
+ * cambios posteriores del catálogo no alteren el subtotal histórico. Conserva y expone la
+ * referencia a la presentación recibida.
  */
 public final class SaleLine {
 
@@ -14,6 +15,16 @@ public final class SaleLine {
     private final int quantity;
     private final BigDecimal unitPrice;
 
+    /**
+     * Crea una línea y captura el precio vigente para el producto y la presentación indicados.
+     *
+     * @param product producto del catálogo con precio configurado
+     * @param presentation presentación comercial vendida
+     * @param quantity cantidad de presentaciones, mayor que cero
+     * @throws IllegalArgumentException si el producto o la presentación son nulos, la cantidad
+     *                                  no es positiva o el precio no es positivo
+     * @throws IllegalStateException si el producto no tiene precio configurado para la presentación
+     */
     public SaleLine(BeerProduct product, SalePresentation presentation, int quantity) {
         if (product == null) {
             throw new IllegalArgumentException("El producto de la línea es obligatorio.");
@@ -43,11 +54,20 @@ public final class SaleLine {
         this.unitPrice = unitPrice;
     }
 
-    /** Copia los datos de la línea y conserva el precio histórico aplicado. */
+    /**
+     * Copia los datos de la línea y conserva el precio histórico aplicado.
+     *
+     * @return nueva línea con los mismos datos y el precio histórico aplicado
+     */
     public SaleLine copy() {
         return new SaleLine(product, presentation, quantity, unitPrice);
     }
 
+    /**
+     * Devuelve una copia del producto guardado en la línea.
+     *
+     * @return copia del producto con el precio vigente al crear esta línea
+     */
     public BeerProduct getProduct() {
         return product.copy();
     }
@@ -60,12 +80,20 @@ public final class SaleLine {
         return quantity;
     }
 
-    /** Precio por unidad de presentación aplicado al registrar la línea. */
+    /**
+     * Devuelve el precio de una presentación aplicado al registrar la línea.
+     *
+     * @return precio histórico unitario de la presentación
+     */
     public BigDecimal getUnitPrice() {
         return unitPrice;
     }
 
-    /** Precio aplicado multiplicado por la cantidad de presentaciones vendidas. */
+    /**
+     * Calcula el subtotal multiplicando el precio aplicado por la cantidad vendida.
+     *
+     * @return subtotal de esta línea
+     */
     public BigDecimal getSubtotal() {
         return unitPrice.multiply(BigDecimal.valueOf(quantity));
     }
