@@ -1,29 +1,30 @@
 package com.laexclusiva.model;
 
-public class UserSession {
-    private final String userId;
-    private final String username;
-    private final UserRole role;
-    private final String sellerId;
+import java.time.LocalDateTime;
 
-    public UserSession(String userId, String username, UserRole role, String sellerId) {
-        if (userId == null || userId.trim().isEmpty()) {
-            throw new IllegalArgumentException("El ID de usuario es obligatorio para la sesión.");
+/**
+ * Representa la sesión activa de un usuario en el sistema.
+ * 
+ * @author Daniel Arrieta
+ */
+public class UserSession {
+
+    private final UserAccount userAccount;
+    private final LocalDateTime loginTime;
+
+    public UserSession(UserAccount userAccount) {
+        if (userAccount == null) {
+            throw new IllegalArgumentException("La cuenta de usuario no puede ser nula.");
         }
-        if (username == null || username.trim().isEmpty()) {
-            throw new IllegalArgumentException("El nombre de usuario es obligatorio para la sesión.");
-        }
-        if (role == null) {
-            throw new IllegalArgumentException("El rol es obligatorio para la sesión.");
-        }
-        this.userId = userId;
-        this.username = username;
-        this.role = role;
-        this.sellerId = sellerId;
+        this.userAccount = userAccount;
+        this.loginTime = LocalDateTime.now();
     }
 
-    public String getUserId() { return userId; }
-    public String getUsername() { return username; }
-    public UserRole getRole() { return role; }
-    public String getSellerId() { return sellerId; }
+    public UserAccount getUserAccount() {
+        return userAccount;
+    }
+
+    public LocalDateTime getLoginTime() {
+        return loginTime;
+    }
 }

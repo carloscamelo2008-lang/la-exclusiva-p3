@@ -1,15 +1,14 @@
 package com.laexclusiva.model;
 
+/**
+ * Enum que define los permisos del sistema.
+ * 
+ * @author Daniel Arrieta
+ */
 public enum Permission {
-    VIEW_CATALOG,
-    REGISTER_SALE,
-    REGISTER_CLIENT,
-    VIEW_CLIENTS,
-    VIEW_SALES,
-    REGISTER_PAYMENT,
-    MANAGE_STOCK,       // Restringido al Administrador
-    MANAGE_USERS,       // Restringido al Administrador
-    MANAGE_ORDERS,      // Futuro
-    MANAGE_CASH,        // Futuro
-    VIEW_REPORTS        // Futuro
+    MANAGE_USERS,
+    MANAGE_CUSTOMERS,
+    MANAGE_PRODUCTS,
+    PROCESS_SALES,
+    VIEW_REPORTS
 }

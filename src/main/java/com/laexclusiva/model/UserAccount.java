@@ -1,74 +1,58 @@
 package com.laexclusiva.model;
 
-import java.util.Objects;
+import java.time.LocalDateTime;
 
 /**
- * Representa una cuenta de usuario dentro del sistema, gestionando sus credenciales,
- * rol de acceso y estado de activaciÃ³n, asegurando la consistencia e integridad de los datos.
+ * Representa una cuenta de usuario dentro del sistema.
  * 
  * @author Daniel Arrieta
  */
 public class UserAccount {
+
     private Long id;
     private String username;
     private String passwordHash;
     private UserRole role;
     private boolean active;
+    private String sellerId;
+    private LocalDateTime createdAt;
 
-    /**
-     * Constructor principal para crear una nueva cuenta de usuario.
-     * 
-     * @param username Nombre de usuario Ãºnico.
-     * @param passwordHash Hash seguro de la contraseÃ±a.
-     * @param role Rol asignado al usuario.
-     */
-    public UserAccount(String username, String passwordHash, UserRole role) {
-        setUsername(username);
-        setPasswordHash(passwordHash);
-        setRole(role);
-        this.active = true; // Por defecto activo al registrarse
+    public UserAccount() {
+        this.active = true;
+        this.createdAt = LocalDateTime.now();
     }
 
-    /**
-     * Establece el ID Ãºnico de la cuenta de usuario.
-     * 
-     * @param id Identificador numÃ©rico Ãºnico y positivo.
-     */
+    public UserAccount(Long id, String username, String passwordHash, UserRole role, String sellerId) {
+        this.id = id;
+        this.username = username;
+        this.passwordHash = passwordHash;
+        this.role = role;
+        this.sellerId = sellerId;
+        this.active = true;
+        this.createdAt = LocalDateTime.now();
+    }
+
+    public Long getId() {
+        return id;
+    }
+
     public void setId(Long id) {
-        if (id != null && id <= 0) {
-            throw new IllegalArgumentException("El ID del usuario debe ser un valor positivo.");
-        }
         this.id = id;
     }
-
-    public Long getId() { return id; }
-
-    public Long getSellerId() { return id; }
 
     public String getUsername() {
         return username;
     }
 
     public void setUsername(String username) {
-        if (username == null || username.trim().isEmpty()) {
-            throw new IllegalArgumentException("El nombre de usuario no puede ser nulo o vacÃ­o.");
-        }
-        this.username = username.trim();
+        this.username = username;
     }
 
     public String getPasswordHash() {
         return passwordHash;
     }
 
-    /**
-     * Actualiza el hash de la contraseÃ±a de forma segura, evitando estados vacÃ­os o nulos.
-     * 
-     * @param passwordHash Hash cifrado de la contraseÃ±a.
-     */
     public void setPasswordHash(String passwordHash) {
-        if (passwordHash == null || passwordHash.trim().isEmpty()) {
-            throw new IllegalArgumentException("El hash de la contraseÃ±a no puede ser nulo o vacÃ­o.");
-        }
         this.passwordHash = passwordHash;
     }
 
@@ -77,9 +61,6 @@ public class UserAccount {
     }
 
     public void setRole(UserRole role) {
-        if (role == null) {
-            throw new IllegalArgumentException("El rol de usuario no puede ser nulo.");
-        }
         this.role = role;
     }
 
@@ -91,21 +72,19 @@ public class UserAccount {
         this.active = active;
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        UserAccount that = (UserAccount) o;
-        return Objects.equals(id, that.id) && Objects.equals(username, that.username);
+    public String getSellerId() {
+        return sellerId;
     }
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(id, username);
+    public void setSellerId(String sellerId) {
+        this.sellerId = sellerId;
     }
 
-    @Override
-    public String toString() {
-        return "UserAccount{id=" + id + ", username='" + username + "', role=" + role + ", active=" + active + '}';
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 }

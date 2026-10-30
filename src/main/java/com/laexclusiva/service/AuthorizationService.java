@@ -1,51 +1,38 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Permission;
+import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 
+/**
+ * Servicio encargado de la autorización y validación de permisos de usuario o sesión.
+ * 
+ * @author Daniel Arrieta
+ */
 public class AuthorizationService {
 
-    public void requirePermission(UserSession session, Permission permission) {
-        if (session == null) {
-            throw new SecurityException("Acceso denegado: No hay una sesión activa.");
-        }
-
-        if (!hasPermission(session.getRole(), permission)) {
-            throw new SecurityException("Acceso denegado: El usuario no cuenta con el permiso requerido para esta operación.");
-        }
+    public boolean isAdministrator(UserAccount user) {
+        return user != null && user.isActive() && user.getRole() == UserRole.ADMINISTRATOR;
     }
 
-    public boolean hasPermission(UserRole role, Permission permission) {
-        if (role == null || permission == null) {
-            return false;
-        }
+    public boolean isAdministrator(UserSession session) {
+        return session != null && isAdministrator(session.getUserAccount());
+    }
 
-        // El ADMINISTRATOR tiene acceso a todo lo actual
-        if (role == UserRole.ADMINISTRATOR) {
-            return true;
-        }
+    public boolean hasRole(UserAccount user, UserRole requiredRole) {
+        return user != null && user.isActive() && requiredRole != null && user.getRole() == requiredRole;
+    }
 
-        // Permisos específicos para el WORKER (Trabajador)
-        if (role == UserRole.WORKER) {
-            switch (permission) {
-                case VIEW_CATALOG:
-                case REGISTER_SALE:
-                case REGISTER_CLIENT:
-                case VIEW_CLIENTS:
-                case VIEW_SALES:
-                case REGISTER_PAYMENT:
-                    return true;
-                case MANAGE_STOCK:
-                case MANAGE_USERS:
-                case MANAGE_ORDERS:
-                case MANAGE_CASH:
-                case VIEW_REPORTS:
-                default:
-                    return false;
-            }
-        }
+    public boolean hasRole(UserSession session, UserRole requiredRole) {
+        return session != null && hasRole(session.getUserAccount(), requiredRole);
+    }
 
-        return false;
+    public boolean hasPermission(UserAccount user, Permission permission) {
+        return user != null && user.isActive() && permission != null && user.getRole() != null && user.getRole().hasPermission(permission);
+    }
+
+    public boolean hasPermission(UserSession session, Permission permission) {
+        return session != null && hasPermission(session.getUserAccount(), permission);
     }
 }
