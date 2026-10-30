@@ -3,9 +3,10 @@ package com.laexclusiva.model;
 import java.math.BigDecimal;
 
 /**
- * Línea inmutable de una venta que vincula producto, presentación, cantidad y precio aplicado.
- * Captura el precio configurado al construirla, de modo que cambios posteriores del catálogo
- * no alteren el subtotal histórico. {@link Sale} conserva estas líneas como parte de la venta.
+ * Representa una línea de venta y vincula un producto, una presentación, una cantidad y el precio
+ * aplicado. Conserva una copia del producto y el precio configurado al construirla, de modo que
+ * cambios posteriores del catálogo no alteren el subtotal histórico. Conserva y expone la
+ * referencia a la presentación recibida.
  */
 public final class SaleLine {
 
@@ -56,7 +57,7 @@ public final class SaleLine {
     /**
      * Copia los datos de la línea y conserva el precio histórico aplicado.
      *
-     * @return copia independiente de la línea
+     * @return nueva línea con los mismos datos y el precio histórico aplicado
      */
     public SaleLine copy() {
         return new SaleLine(product, presentation, quantity, unitPrice);

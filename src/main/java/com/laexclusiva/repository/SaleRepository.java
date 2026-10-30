@@ -39,14 +39,14 @@ public interface SaleRepository {
      * Busca una venta por su identificador.
      *
      * @param id identificador de la venta
-     * @return la venta encontrada o {@link Optional#empty()} si no existe
+     * @return la venta asociada al identificador o {@link Optional#empty()} si no existe
      */
     Optional<Sale> findById(String id);
 
     /**
      * Devuelve todas las ventas registradas.
      *
-     * @return lista de ventas en el orden definido por la implementación
+     * @return lista con las ventas registradas
      */
     List<Sale> findAll();
 }

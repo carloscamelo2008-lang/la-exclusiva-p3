@@ -55,18 +55,18 @@ public class SaleService {
     /**
      * Valida y registra una venta con sus líneas y pago inicial.
      *
-     * Antes de modificar datos comprueba los productos, el vendedor, el cliente requerido, el
-     * importe y las existencias. Si queda saldo pendiente, lo asigna al cliente. Después registra
-     * la salida de inventario y la venta. Ante un fallo de escritura intenta compensar los cambios
-     * ya aplicados; este mecanismo corresponde a los repositorios actuales en memoria y no ofrece
-     * una transacción durable.
+     * Antes de escribir valida los productos, el vendedor, el cliente requerido, el importe y las
+     * existencias. Luego descuenta el inventario, actualiza la deuda del cliente si queda saldo
+     * pendiente y almacena la venta, en ese orden. Si falla una escritura, intenta compensar los
+     * cambios ya aplicados; con los repositorios actuales en memoria esto no constituye una
+     * transacción durable.
      *
      * @param lines productos, presentaciones y cantidades de la venta; debe haber al menos una línea
      * @param sellerId identificador de un vendedor registrado
      * @param customerId identificador del cliente; es obligatorio si queda saldo pendiente y puede ser
      *                   nulo si el pago inicial cubre el total
      * @param initialPayment importe recibido al registrar la venta, entre cero y el total inclusive
-     * @return copia de la venta registrada, con su identificador generado y pagos iniciales
+     * @return venta registrada, con su identificador generado y pagos iniciales
      * @throws IllegalArgumentException si las líneas, identificadores, entidades o el pago son inválidos,
      *                                  o si falta un producto, vendedor o cliente requerido
      * @throws IllegalStateException si el stock no alcanza, hay una inconsistencia de saldos
@@ -148,7 +148,7 @@ public class SaleService {
      *
      * @param saleId identificador de la venta pendiente
      * @param amount importe del abono
-     * @return copia actualizada de la venta
+     * @return venta actualizada
      * @throws IllegalArgumentException si el identificador o importe es inválido, la venta no existe,
      *                                  no tiene cliente asociado o el abono supera el saldo disponible
      * @throws IllegalStateException si el saldo agregado del cliente no coincide con sus ventas
@@ -228,7 +228,7 @@ public class SaleService {
      * Busca una venta registrada por su identificador.
      *
      * @param saleId identificador de la venta
-     * @return copia de la venta encontrada
+     * @return venta encontrada
      * @throws IllegalArgumentException si el identificador es nulo, vacío o no existe
      */
     public Sale findById(String saleId) {
@@ -238,9 +238,9 @@ public class SaleService {
     }
 
     /**
-     * Lista copias independientes de las ventas registradas.
+     * Lista las ventas registradas.
      *
-     * @return ventas en el orden proporcionado por el repositorio
+     * @return ventas devueltas por el repositorio
      */
     public List<Sale> listAll() {
         return saleRepository.findAll();
