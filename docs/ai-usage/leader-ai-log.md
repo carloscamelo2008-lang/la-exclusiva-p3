@@ -29,6 +29,15 @@
 - **Verificación:** Maven 3.9.16 con JDK 17.0.18 ejecutó `clean verify`: `BUILD SUCCESS`, 100 pruebas ejecutadas, 0 fallos, 0 errores y 0 omitidas. `git diff --check` pasó antes del commit Java.
 - **Limitaciones:** `mvn` no está en el `PATH` y no existe `mvnw.cmd`; se usó Maven incluido en IntelliJ. El entorno normal bloqueó la descarga de `maven-clean-plugin:3.2.0`, así que la verificación completa requirió permitir a Maven acceder a Maven Central. No se instalaron herramientas ni se cambiaron variables globales; Maven descargó el plugin faltante a su caché local.
 
+## Registro 3
+
+- **Fecha:** 2026-10-29.
+- **Herramienta:** Codex integrado en IntelliJ IDEA.
+- **Fase / tarea:** auditoría y corrección final de Javadocs de ventas; rama `docs/javadocs-console-sales`.
+- **Hallazgos:** el Javadoc de `SaleService.registerSale` podía sugerir un orden distinto al real; `SaleLine` se describía como inmutable aunque conserva y expone la referencia a `SalePresentation`; algunas descripciones de servicio prometían copias que no exige el contrato `SaleRepository`.
+- **Cambios efectuados:** se documentó el orden inventario, deuda condicional y almacenamiento de la venta, junto con las compensaciones respaldadas por el código; se describieron las referencias y copias de `SaleLine` sin prometer independencia total; se limitaron los retornos de `SaleService` y `SaleRepository` al contrato, dejando las copias defensivas documentadas en `InMemorySaleRepository`. No se modificó lógica ejecutable. Commit Java: `2aa67ab` (`docs: correct sales JavaDoc contracts`).
+- **Verificación:** Maven 3.9.16 con JDK 17.0.18 ejecutó `clean verify`: `BUILD SUCCESS`, 100 pruebas ejecutadas, 0 fallos, 0 errores y 0 omitidas. `mvn javadoc:javadoc` terminó en `BUILD SUCCESS` y generó `target/reports/apidocs/index.html`; DocLint informó 100 advertencias de comentarios o etiquetas faltantes en otros fuentes y 0 errores, sin advertencias en los tres archivos corregidos. Se comprobó el HTML de las tres clases y `git diff --check` pasó antes de registrar esta entrada. Maven se ejecutó con variables de proceso, sin cambiar la configuración global.
+
 ## Registros siguientes
 
 Añadir una sección por cada interacción relevante de IA vinculada con tareas posteriores. Describir únicamente lo que realmente se consultó, revisó y aplicó.
