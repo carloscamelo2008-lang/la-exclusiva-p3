@@ -18,15 +18,33 @@ public class InMemoryUserRepository implements UserRepository {
     private final Map<Long, UserAccount> storage = new ConcurrentHashMap<>();
     private final AtomicLong idCounter = new AtomicLong(1);
 
+    private String normalizeUsername(String username) {
+        if (username == null || username.trim().isEmpty()) {
+            throw new IllegalArgumentException("El nombre de usuario no puede ser nulo ni vacío.");
+        }
+        return username.trim().toLowerCase();
+    }
+
+    private void validateUserAccount(UserAccount user) {
+        if (user == null) {
+            throw new IllegalArgumentException("La cuenta de usuario no puede ser nula.");
+        }
+        normalizeUsername(user.getUsername());
+        if (user.getPasswordHash() == null || user.getPasswordHash().trim().isEmpty()) {
+            throw new IllegalArgumentException("El hash de contraseña no puede ser nulo ni vacío.");
+        }
+        if (user.getRole() == null) {
+            throw new IllegalArgumentException("El rol de usuario no puede ser nulo.");
+        }
+    }
+
     @Override
     public void save(UserAccount user) {
-        if (user == null || user.getUsername() == null || user.getUsername().trim().isEmpty()) {
-            throw new IllegalArgumentException("La cuenta de usuario y el username no pueden ser nulos ni vacíos.");
-        }
+        validateUserAccount(user);
         
-        String username = user.getUsername().trim().toLowerCase();
+        String normalizedUsername = normalizeUsername(user.getUsername());
         boolean usernameExists = storage.values().stream()
-                .anyMatch(u -> u.getUsername() != null && u.getUsername().equalsIgnoreCase(username));
+                .anyMatch(u -> normalizeUsername(u.getUsername()).equals(normalizedUsername));
         
         if (usernameExists) {
             throw new IllegalArgumentException("El nombre de usuario ya se encuentra registrado.");
@@ -35,6 +53,12 @@ public class InMemoryUserRepository implements UserRepository {
         if (user.getId() == null) {
             user.setId(idCounter.getAndIncrement());
         } else {
+            if (user.getId() <= 0) {
+                throw new IllegalArgumentException("El ID del usuario debe ser mayor a cero.");
+            }
+            if (storage.containsKey(user.getId())) {
+                throw new IllegalArgumentException("Ya existe una cuenta registrada con el ID especificado.");
+            }
             idCounter.updateAndGet(current -> Math.max(current, user.getId() + 1));
         }
         storage.put(user.getId(), user);
@@ -60,7 +84,7 @@ public class InMemoryUserRepository implements UserRepository {
         }
         String target = username.trim().toLowerCase();
         return storage.values().stream()
-                .filter(u -> u.getUsername() != null && u.getUsername().equalsIgnoreCase(target))
+                .filter(u -> u.getUsername() != null && u.getUsername().trim().toLowerCase().equals(target))
                 .findFirst();
     }
 
@@ -71,19 +95,19 @@ public class InMemoryUserRepository implements UserRepository {
 
     @Override
     public void update(UserAccount user) {
-        if (user == null || user.getId() == null || user.getUsername() == null || user.getUsername().trim().isEmpty()) {
-            throw new IllegalArgumentException("El usuario, ID y nombre deben ser válidos para actualizar.");
+        validateUserAccount(user);
+        if (user.getId() == null || user.getId() <= 0) {
+            throw new IllegalArgumentException("El ID debe ser un valor válido mayor a cero para actualizar.");
         }
 
         if (!storage.containsKey(user.getId())) {
             throw new IllegalArgumentException("No existe un usuario con el ID especificado para actualizar.");
         }
 
-        String newUsername = user.getUsername().trim().toLowerCase();
+        String newUsername = normalizeUsername(user.getUsername());
         boolean usernameTaken = storage.values().stream()
                 .anyMatch(u -> !u.getId().equals(user.getId()) && 
-                               u.getUsername() != null && 
-                               u.getUsername().equalsIgnoreCase(newUsername));
+                               normalizeUsername(u.getUsername()).equals(newUsername));
 
         if (usernameTaken) {
             throw new IllegalArgumentException("El nuevo nombre de usuario ya pertenece a otra cuenta.");
