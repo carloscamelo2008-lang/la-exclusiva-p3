@@ -49,6 +49,15 @@
 - **Commits funcionales:** `ad79b33` (`Enforce role permissions in console menu`) y `65c7ffe` (`Test menu authorization and worker sales`).
 - **Alcance del cierre:** se conservaron los cuatro commits documentales anteriores de la rama. Esta entrada registra el trabajo y la verificación reportada; no cambia el código funcional.
 
+## Registro 5
+
+- **Fecha:** 2026-10-30.
+- **Herramienta:** Codex en la aplicación de escritorio.
+- **Fase / tarea:** corrección documental final previa a publicar la rama `feature/auth-demo-integration`.
+- **Cambio efectuado:** se separó la etiqueta `@param args` del texto descriptivo en el Javadoc de `Main.main`. No se modificó funcionalidad ni pruebas.
+- **Verificación:** `git diff --check` pasó. `mvn javadoc:javadoc` terminó en `BUILD SUCCESS`; DocLint informó 100 advertencias en otros fuentes y 0 errores. No hubo advertencias en el Javadoc corregido de `Main.main`.
+- **Commit:** `docs: fix Main entry point JavaDoc`.
+
 ## Registros siguientes
 
 Añadir una sección por cada interacción relevante de IA vinculada con tareas posteriores. Describir únicamente lo que realmente se consultó, revisó y aplicó.

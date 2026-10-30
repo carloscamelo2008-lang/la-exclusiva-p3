@@ -15,7 +15,11 @@ import java.util.Scanner;
 public final class Main {
     private Main() { }
 
-    /** Construye dependencias, autentica al usuario y ejecuta el menú. @param args argumentos de línea de comandos */
+    /**
+     * Construye dependencias, autentica al usuario y ejecuta el menú.
+     *
+     * @param args argumentos de línea de comandos
+     */
     public static void main(String[] args) {
         InMemoryProductRepository productRepository = new InMemoryProductRepository();
         InMemoryInventoryRepository inventoryRepository = new InMemoryInventoryRepository();
