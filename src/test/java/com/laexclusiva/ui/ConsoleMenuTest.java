@@ -2,6 +2,7 @@ package com.laexclusiva.ui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.laexclusiva.model.InitialCatalog;
@@ -9,12 +10,16 @@ import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
 import com.laexclusiva.model.StockRequest;
+import com.laexclusiva.model.UserAccount;
+import com.laexclusiva.model.UserRole;
+import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.CustomerRepository;
 import com.laexclusiva.repository.InMemoryInventoryRepository;
 import com.laexclusiva.repository.InMemoryProductRepository;
 import com.laexclusiva.repository.InMemorySaleRepository;
 import com.laexclusiva.repository.InMemoryStockMovementRepository;
 import com.laexclusiva.repository.SellerRepository;
+import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
@@ -191,18 +196,67 @@ class ConsoleMenuTest {
         assertTrue(output.contains("Gracias por utilizar La Exclusiva."));
     }
 
+    @Test
+    void workerSeesOnlyPermittedOptionsAndDeniedHandlersDoNotRun() {
+        UserSession worker = session(UserRole.WORKER, seller.getId());
+        String output = runConsole(String.join("\n", "1", "2", "0", "3", "3", "4", "0", "2", "4", "0", "0"), worker);
+
+        assertTrue(output.contains("1. Consultar catálogo e inventario"));
+        assertFalse(output.contains("2. Registrar ingreso de existencias"));
+        assertFalse(output.contains("3. Listar vendedores"));
+        assertFalse(output.contains("4. Registrar vendedor"));
+        assertTrue(output.contains("Acceso denegado"));
+        assertEquals(0, inventory.availableUnits("POKER_250"));
+        assertEquals(1, sellers.getAllSellers().size());
+    }
+
+    @Test
+    void administratorSeesInventoryAndSellerManagementPermissions() {
+        String output = runConsole(String.join("\n", "1", "2", "POKER_250", "1", "0", "0",
+                "3", "4", "Vendedor nuevo", "3009999999", "Dirección nueva", "0", "0"));
+
+        assertTrue(output.contains("2. Registrar ingreso de existencias"));
+        assertTrue(output.contains("3. Listar vendedores"));
+        assertTrue(output.contains("4. Registrar vendedor"));
+        assertTrue(output.contains("Existencias registradas."));
+        assertTrue(output.contains("Vendedor registrado con ID"));
+        assertEquals(products.findById("POKER_250").getUnitsPerBasket(), inventory.availableUnits("POKER_250"));
+        assertEquals(2, sellers.getAllSellers().size());
+    }
+
+    @Test
+    void rejectsNullAndInactiveSessions() {
+        assertThrows(IllegalArgumentException.class, () -> createMenu(null));
+        UserAccount inactive = new UserAccount(1L, "inactivo", "hash", UserRole.ADMINISTRATOR, null);
+        inactive.setActive(false);
+        assertThrows(IllegalArgumentException.class, () -> createMenu(new UserSession(inactive)));
+    }
+
     private Sale createPendingSale() {
         return sales.registerSale(List.of(new StockRequest("POKER_250",
                 SalePresentation.FULL_BASKET, 1)), seller.getId(), "C001", new BigDecimal("20000"));
     }
 
     private String runConsole(String input) {
+        return runConsole(input, session(UserRole.ADMINISTRATOR, null));
+    }
+
+    private String runConsole(String input, UserSession userSession) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         Scanner scanner = new Scanner(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)),
                 StandardCharsets.UTF_8);
         ConsoleMenu menu = new ConsoleMenu(products, inventory, customers, sellers, sales,
-                scanner, new PrintStream(output, true, StandardCharsets.UTF_8));
+                scanner, new PrintStream(output, true, StandardCharsets.UTF_8), userSession, new AuthorizationService());
         menu.start();
         return output.toString(StandardCharsets.UTF_8);
+    }
+
+    private ConsoleMenu createMenu(UserSession userSession) {
+        return new ConsoleMenu(products, inventory, customers, sellers, sales, new Scanner(""),
+                new PrintStream(new ByteArrayOutputStream()), userSession, new AuthorizationService());
+    }
+
+    private UserSession session(UserRole role, String sellerId) {
+        return new UserSession(new UserAccount(1L, role.name().toLowerCase(), "hash", role, sellerId));
     }
 }
