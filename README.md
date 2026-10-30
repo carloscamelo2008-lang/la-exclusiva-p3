@@ -8,11 +8,11 @@ Organizar la operación del negocio mediante módulos de productos e inventario,
 
 ## Estado del proyecto
 
-El repositorio está en la fase inicial de análisis, diseño y preparación del desarrollo.
+La aplicación cuenta con una interfaz de consola en español para productos e inventario, ventas, clientes, vendedores, pagos parciales, abonos y consulta de cartera. La autenticación y los permisos del menú se aplican con cuentas de administrador y trabajador.
 
 - **Primer avance:** aplicación de consola en español y funcionalidades prioritarias.
 - **Interfaz final:** JavaFX se contempla para la entrega final; los mockups visuales se diseñarán por separado antes de implementar las ventanas.
-- **Persistencia del primer avance:** se utilizarán colecciones en memoria detrás de repositorios. Los datos temporales no sobrevivirán al cierre del programa.
+- **Persistencia actual:** los repositorios guardan los datos en memoria. Las cuentas, el inventario, clientes, vendedores y ventas no sobreviven al cierre del programa.
 - **Base de datos:** PostgreSQL y JDBC quedan para una etapa posterior. La integración no está implementada.
 - **Diseño:** análisis, requerimientos, diagramas iniciales y propuesta GRASP/SOLID en revisión.
 
@@ -34,13 +34,27 @@ Compilar y comprobar:
 mvn clean verify
 ~~~~
 
-Ejecutar el menú inicial:
+Ejecutar la aplicación:
 
 ~~~~bash
 mvn exec:java
 ~~~~
 
-El menú actual es un esqueleto inicial. Las funcionalidades se implementarán mediante ramas de trabajo y Pull Requests revisados.
+En el primer inicio normal, la aplicación solicita un nombre de usuario y una contraseña para crear la cuenta inicial de administrador. Después solicita esas credenciales para iniciar sesión. Como las cuentas se guardan en memoria, este aprovisionamiento vuelve a solicitarse en cada ejecución normal.
+
+### Modo demo
+
+El modo demo carga existencias, un cliente ficticio, dos vendedores y una venta parcialmente pagada. También crea las cuentas `admin.demo` y `trabajador.demo`; sus contraseñas se leen de variables de entorno y se usan para iniciar sesión:
+
+~~~~bash
+export LAEXCLUSIVA_DEMO_ADMIN_PASSWORD='contraseña-admin'
+export LAEXCLUSIVA_DEMO_WORKER_PASSWORD='contraseña-trabajador'
+mvn exec:java -Dexec.args="--demo"
+~~~~
+
+En PowerShell, configura las mismas variables con `$env:LAEXCLUSIVA_DEMO_ADMIN_PASSWORD` y `$env:LAEXCLUSIVA_DEMO_WORKER_PASSWORD` antes de ejecutar `mvn exec:java "-Dexec.args=--demo"`. Si alguna falta o está vacía, la aplicación informa que ambas son obligatorias y termina. El modo demo y sus cuentas también son temporales y se vuelven a crear al iniciar una nueva ejecución.
+
+El administrador tiene todos los permisos definidos. El trabajador puede consultar catálogo e inventario, registrar ventas y clientes, consultar clientes, ventas y cartera, y registrar abonos; no puede ingresar existencias ni consultar o registrar vendedores. En las ventas del trabajador, el vendedor se toma de la cuenta autenticada.
 
 ## Organización del código
 

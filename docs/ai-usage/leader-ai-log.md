@@ -38,6 +38,17 @@
 - **Cambios efectuados:** se documentó el orden inventario, deuda condicional y almacenamiento de la venta, junto con las compensaciones respaldadas por el código; se describieron las referencias y copias de `SaleLine` sin prometer independencia total; se limitaron los retornos de `SaleService` y `SaleRepository` al contrato, dejando las copias defensivas documentadas en `InMemorySaleRepository`. No se modificó lógica ejecutable. Commit Java: `2aa67ab` (`docs: correct sales JavaDoc contracts`).
 - **Verificación:** Maven 3.9.16 con JDK 17.0.18 ejecutó `clean verify`: `BUILD SUCCESS`, 100 pruebas ejecutadas, 0 fallos, 0 errores y 0 omitidas. `mvn javadoc:javadoc` terminó en `BUILD SUCCESS` y generó `target/reports/apidocs/index.html`; DocLint informó 100 advertencias de comentarios o etiquetas faltantes en otros fuentes y 0 errores, sin advertencias en los tres archivos corregidos. Se comprobó el HTML de las tres clases y `git diff --check` pasó antes de registrar esta entrada. Maven se ejecutó con variables de proceso, sin cambiar la configuración global.
 
+## Registro 4
+
+- **Fecha:** 2026-10-29.
+- **Herramientas:** Codex en la aplicación de escritorio, PowerShell, Git y Maven 3.9.16 con JDK 17.0.18.
+- **Fase / tarea:** integración de autenticación, autorización por rol, inicialización demo y protección del menú de consola; rama `feature/auth-demo-integration`.
+- **Objetivo:** conectar el inicio de sesión con el menú, aplicar los permisos de administrador y trabajador, y asegurar que las ventas del trabajador usen el vendedor de su cuenta.
+- **Cambios aceptados:** `Main` construye la autenticación y autorización, solicita credenciales y conecta la sesión al menú. En el arranque normal solicita crear la cuenta inicial de administrador cuando no hay usuarios. El modo `--demo` carga datos ficticios y crea las cuentas `admin.demo` y `trabajador.demo`, con contraseñas leídas de `LAEXCLUSIVA_DEMO_ADMIN_PASSWORD` y `LAEXCLUSIVA_DEMO_WORKER_PASSWORD`. `ConsoleMenu` filtra opciones y comprueba permisos en sus manejadores; requiere una sesión activa y no permite al trabajador escoger vendedor para una venta. Se agregaron permisos para consultar y registrar vendedores. Los datos y las cuentas están en repositorios en memoria.
+- **Pruebas y verificación reportada:** `mvn clean verify` usando JDK 17 terminó con `BUILD SUCCESS`: 121 pruebas ejecutadas, 0 fallos, 0 errores y 0 omitidas. Las pruebas actualizadas cubren permisos de ambos roles, accesos denegados, rechazo de sesiones nulas o inactivas y asociación de ventas al vendedor de la cuenta autenticada.
+- **Commits funcionales:** `ad79b33` (`Enforce role permissions in console menu`) y `65c7ffe` (`Test menu authorization and worker sales`).
+- **Alcance del cierre:** se conservaron los cuatro commits documentales anteriores de la rama. Esta entrada registra el trabajo y la verificación reportada; no cambia el código funcional.
+
 ## Registros siguientes
 
 Añadir una sección por cada interacción relevante de IA vinculada con tareas posteriores. Describir únicamente lo que realmente se consultó, revisó y aplicó.
