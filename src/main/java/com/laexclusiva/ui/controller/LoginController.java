@@ -3,9 +3,14 @@ package com.laexclusiva.ui.controller;
 import com.laexclusiva.service.AuthenticationService;
 import com.laexclusiva.model.UserSession;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+import javafx.stage.Stage;
+import java.io.IOException;
 import java.util.Optional;
 
 public class LoginController {
@@ -31,19 +36,32 @@ public class LoginController {
         }
 
         try {
-            // createSession devuelve Optional<UserSession>
             Optional<UserSession> sessionOpt = authenticationService.createSession(username.trim(), password);
             
             if (sessionOpt.isPresent()) {
-                errorLabel.setStyle("-fx-text-fill: green;");
-                errorLabel.setText("¡Inicio de sesión exitoso!");
+                UserSession session = sessionOpt.get();
+                
+                // Cargar la vista del menú principal
+                FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
+                Parent root = loader.load();
+                
+                // Obtener el controlador del menú y pasarle la sesión activa
+                MainController mainController = loader.getController();
+                mainController.initSession(session);
+                
+                // Cambiar la escena en la ventana actual
+                Stage stage = (Stage) usernameField.getScene().getWindow();
+                stage.setScene(new Scene(root, 800, 600));
+                stage.setTitle("La Exclusiva - Menú Principal");
+                stage.centerOnScreen();
+                
             } else {
                 errorLabel.setStyle("-fx-text-fill: red;");
                 errorLabel.setText("Credenciales inválidas o cuenta inactiva.");
             }
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | IOException e) {
             errorLabel.setStyle("-fx-text-fill: red;");
-            errorLabel.setText("Credenciales inválidas o cuenta inactiva.");
+            errorLabel.setText("Error al iniciar sesión o cargar la vista.");
         }
     }
 }
