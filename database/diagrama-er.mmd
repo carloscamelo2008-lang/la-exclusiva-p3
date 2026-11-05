@@ -1,0 +1,82 @@
+%% Todas las relaciones FK tienen ON DELETE RESTRICT; no se usa borrado en cascada.
+%% timestamp representa PostgreSQL TIMESTAMP WITHOUT TIME ZONE; numeric monetario es NUMERIC(19,2).
+erDiagram
+    BEER_PRODUCT ||--o| INVENTORY_ITEM : "tiene existencias"
+    BEER_PRODUCT ||--o{ PRODUCT_PRICE : "ofrece precios"
+    BEER_PRODUCT ||--o{ STOCK_MOVEMENT : "registra movimientos"
+    BEER_PRODUCT ||--o{ SALE_LINE : "se vende en"
+    SELLER ||--o{ SALE : "atiende"
+    CUSTOMER o|--o{ SALE : "se asocia a"
+    SELLER o|--o{ USER_ACCOUNT : "puede tener cuenta"
+    SALE ||--|{ SALE_LINE : "incluye"
+    SALE ||--o{ SALE_PAYMENT : "recibe"
+
+    BEER_PRODUCT {
+        varchar(64) id PK
+        varchar(200) name
+        integer volume_ml
+        integer units_per_basket
+        varchar(32) container_type
+        varchar(100) container_group "nullable"
+    }
+    PRODUCT_PRICE {
+        varchar(64) product_id PK,FK
+        varchar(32) presentation_code PK
+        numeric(19,2) price
+    }
+    INVENTORY_ITEM {
+        bigint id PK
+        varchar(64) product_id FK,UK
+        integer total_units
+    }
+    STOCK_MOVEMENT {
+        bigint id PK
+        varchar(64) product_id FK
+        varchar(16) type
+        integer units
+        text reason
+        timestamp timestamp
+    }
+    CUSTOMER {
+        varchar(64) id PK
+        varchar(200) name
+        varchar(50) phone
+        text address
+        numeric(19,2) balance
+    }
+    SELLER {
+        varchar(32) id PK
+        varchar(200) name
+        varchar(50) phone
+        text address
+    }
+    SALE {
+        varchar(48) id PK
+        timestamp created_at
+        varchar(32) seller_id FK
+        varchar(64) customer_id FK "nullable"
+    }
+    SALE_LINE {
+        bigint id PK
+        varchar(48) sale_id FK
+        varchar(64) product_id FK
+        varchar(32) presentation_code
+        integer quantity
+        integer units_per_basket_snapshot
+        numeric(19,2) unit_price
+    }
+    SALE_PAYMENT {
+        bigint id PK
+        varchar(48) sale_id FK
+        numeric(19,2) amount
+        timestamp timestamp
+    }
+    USER_ACCOUNT {
+        bigint id PK
+        varchar(100) username "unique lower(trim(username))"
+        varchar(255) password_hash
+        varchar(32) role
+        boolean active
+        varchar(32) seller_id FK "nullable"
+        timestamp created_at
+    }
