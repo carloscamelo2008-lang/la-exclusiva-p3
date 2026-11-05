@@ -103,7 +103,7 @@ La infraestructura ya proporciona JdbcTransactionManager; la integración de los
 
 Los precios admiten como máximo dos decimales. No redondear silenciosamente valores con más de dos decimales. Usar BigDecimal y comparar importes con compareTo.
 
-La rehidratación de líneas de venta debe conservar unit_price y units_per_basket_snapshot leídos de la fila histórica; nunca reconstruirlos con precios/capacidades actuales del catálogo.
+La rehidratación de líneas de venta debe conservar unit_price y units_per_basket_snapshot leídos de la fila histórica; nunca reconstruirlos con precios/capacidades actuales del catálogo. Las columnas temporales usan TIMESTAMP(6), por lo que los LocalDateTime deben normalizarse a precisión de microsegundos antes de persistirlos para que las comparaciones de pruebas sean consistentes.
 
 ## Migración SQL
 
