@@ -92,11 +92,28 @@ La infraestructura ya proporciona JdbcTransactionManager; la integración de los
 ## Contratos de repositorio y reglas acordadas
 
 - ProductRepository.save(product): inserta un producto nuevo y sus tres precios iniciales. Si el ID ya existe, debe fallar; no es un upsert.
-- ProductRepository.updatePrice(...): cambia un precio existente. No crea silenciosamente la fila que falta.
-- ProductRepository.addMissingPrice(...): crea un precio solo si no existe. Si ya existe, debe fallar.
-- InventoryRepository.save(item): inserta o actualiza por product_id (upsert).
-- InventoryRepository.findByProductId(...): consulta normal, sin bloqueo.
-- InventoryRepository.findByProductIdForUpdate(...): ejecuta SELECT ... FOR UPDATE y requiere transacción activa.
+Firmas propuestas para ProductRepository:
+
+```java
+void updatePrice(String productId, SalePresentation presentation, BigDecimal newPrice);
+void addMissingPrice(String productId, SalePresentation presentation, BigDecimal price);
+```
+
+updatePrice cambia únicamente una fila de precio que ya exista; si no existe, falla. addMissingPrice inserta únicamente cuando falta esa presentación; si ya existe, falla. Ambos métodos validan producto, presentación y precio antes de escribir.
+
+Reglas de InventoryRepository:
+
+```java
+void save(InventoryItem item);
+
+Optional<InventoryItem> findByProductId(String productId);
+
+default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
+    return findByProductId(productId);
+}
+```
+
+save inserta o actualiza por product_id (upsert). findByProductId es una consulta normal. findByProductIdForUpdate es el método explícito de bloqueo: el adaptador JDBC lo sobrescribe con SELECT ... FOR UPDATE y exige una transacción activa. El método default permite que el adaptador en memoria conserve su comportamiento sin implementar bloqueos reales.
 - SalePresentation.fromCode(String): convierte únicamente UNIT, HALF_BASKET y FULL_BASKET; un código nulo o desconocido se rechaza.
 - StockMovementRepository.remove(...): la implementación JDBC lanza UnsupportedOperationException con explicación. El historial no se borra para compensar una operación; la transacción revierte inserciones.
 - InventoryService.discountSale(...) procesa las referencias en orden ascendente por ID de producto antes de bloquearlas.
