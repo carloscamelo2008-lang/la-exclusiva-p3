@@ -12,6 +12,7 @@ CREATE TABLE beer_product (
     units_per_basket INTEGER NOT NULL,
     container_type VARCHAR(32) NOT NULL,
     container_group VARCHAR(100),
+    CONSTRAINT ck_beer_product_id CHECK (btrim(id) <> ''),
     CONSTRAINT ck_beer_product_name CHECK (btrim(name) <> ''),
     CONSTRAINT ck_beer_product_volume CHECK (volume_ml > 0),
     CONSTRAINT ck_beer_product_basket CHECK (units_per_basket > 0 AND units_per_basket % 2 = 0),
@@ -66,6 +67,7 @@ CREATE TABLE customer (
     phone VARCHAR(50) NOT NULL,
     address TEXT NOT NULL,
     balance NUMERIC(19,2) NOT NULL DEFAULT 0,
+    CONSTRAINT ck_customer_id CHECK (btrim(id) <> ''),
     CONSTRAINT ck_customer_name CHECK (btrim(name) <> ''),
     CONSTRAINT ck_customer_phone CHECK (btrim(phone) <> ''),
     CONSTRAINT ck_customer_address CHECK (btrim(address) <> ''),
@@ -77,6 +79,7 @@ CREATE TABLE seller (
     name VARCHAR(200) NOT NULL,
     phone VARCHAR(50) NOT NULL,
     address TEXT NOT NULL,
+    CONSTRAINT ck_seller_id CHECK (btrim(id) <> ''),
     CONSTRAINT ck_seller_name CHECK (btrim(name) <> ''),
     CONSTRAINT ck_seller_phone CHECK (btrim(phone) <> ''),
     CONSTRAINT ck_seller_address CHECK (btrim(address) <> '')
@@ -87,6 +90,7 @@ CREATE TABLE sale (
     created_at TIMESTAMP(6) WITHOUT TIME ZONE NOT NULL,
     seller_id VARCHAR(32) NOT NULL,
     customer_id VARCHAR(64),
+    CONSTRAINT ck_sale_id CHECK (btrim(id) <> ''),
     CONSTRAINT fk_sale_seller FOREIGN KEY (seller_id)
         REFERENCES seller (id) ON DELETE RESTRICT,
     CONSTRAINT fk_sale_customer FOREIGN KEY (customer_id)
