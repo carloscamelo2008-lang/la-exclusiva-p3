@@ -10,11 +10,11 @@ Convención: nombres de tablas y columnas en `snake_case` inglés; documentació
 
 - `beer_product` contiene referencias, volumen, capacidad de unidades por canasta y tipo/grupo de envase. Los tres precios actuales se modelan en `product_price`, una fila por producto y código de presentación (`UNIT`, `HALF_BASKET`, `FULL_BASKET`).
 - `inventory_item` mantiene exactamente una existencia por producto. `total_units` es la fuente de verdad; canastas completas y sueltas se derivan por división y residuo con la capacidad vigente del producto.
-- `stock_movement` registra producto, dirección, unidades, razón y fecha. No contiene actor ni referencia a venta en el modelo actual.
+- `stock_movement` registra producto, tipo de movimiento (`movement_type`), unidades, razón y fecha (`occurred_at`). No contiene actor ni referencia a venta en el modelo actual. En Java se mapean esos campos a `StockMovement.type()` y `StockMovement.timestamp()`.
 - `customer` guarda identidad/datos de contacto y saldo agregado (`balance`). `Customer.getBalance()` se mapea a esta columna; el atributo Java existente `saldo` puede mantenerse.
 - `sale` registra fecha, vendedor requerido y cliente opcional. Una venta tiene al menos una `sale_line` y cero o más `sale_payment`.
 - `sale_line` conserva producto, presentación, cantidad y precio unitario aplicado. Se recomienda además guardar `units_per_basket_snapshot` para que las unidades equivalentes no cambien si luego cambia la capacidad del catálogo. El subtotal es cantidad × precio histórico y no requiere persistencia independiente.
-- `sale_payment` es cada pago/abono positivo de una venta, con fecha. El pago inicial positivo también es una fila. No se guarda pago cero.
+- `sale_payment` es cada pago/abono positivo de una venta, con fecha (`occurred_at`). El pago inicial positivo también es una fila. No se guarda pago cero.
 - `user_account` representa credenciales, rol, estado, fecha de creación y vínculo opcional con un vendedor.
 
 ## Claves y reglas de integridad
@@ -73,7 +73,7 @@ Para un abono: iniciar la misma unidad de trabajo, bloquear venta y cliente, rec
 
 Todas las FK usan explícitamente `ON DELETE RESTRICT`, sin cascadas. En particular, no se puede borrar físicamente una venta con líneas o pagos. Los productos, clientes y vendedores referenciados también quedan protegidos. Compensaciones se resuelven revirtiendo la transacción, no borrando cascadas.
 
-Recomendaciones de índices y eliminación de duplicados: `product_price(product_id, presentation_code)` es PK y cubre su FK por el prefijo `product_id`; `inventory_item.product_id` es UNIQUE. Considerar índices no cubiertos para `stock_movement(product_id, timestamp)`, `sale_line(sale_id)`, `sale_line(product_id)`, `sale_payment(sale_id)`, `sale(seller_id)`, `sale(customer_id, created_at)`, `sale(created_at)` y `user_account(seller_id)`. Un índice compuesto que inicia con una columna puede cubrir búsquedas por esa columna; no agregar una copia simple sin patrón de consulta que la justifique. Confirmar solapamientos antes de crear índices físicos.
+Recomendaciones de índices y eliminación de duplicados: `product_price(product_id, presentation_code)` es PK y cubre su FK por el prefijo `product_id`; `inventory_item.product_id` es UNIQUE. Considerar índices no cubiertos para `stock_movement(product_id, occurred_at)`, `sale_line(sale_id)`, `sale_line(product_id)`, `sale_payment(sale_id)`, `sale(seller_id)`, `sale(customer_id, created_at)`, `sale(created_at)` y `user_account(seller_id)`. Un índice compuesto que inicia con una columna puede cubrir búsquedas por esa columna; no agregar una copia simple sin patrón de consulta que la justifique. Confirmar solapamientos antes de crear índices físicos.
 
 ## Tablas actuales frente a módulos futuros
 
