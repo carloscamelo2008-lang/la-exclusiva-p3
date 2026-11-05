@@ -66,6 +66,16 @@ public final class JdbcTransactionManager {
         }
     }
 
+    /**
+     * Indica si el hilo actual participa en una transacción administrada por este coordinador.
+     * Los DAO deben exigir este estado antes de ejecutar consultas SELECT ... FOR UPDATE.
+     *
+     * @return true cuando existe una transacción activa en el hilo actual
+     */
+    public boolean isTransactionActive() {
+        return connectionProvider.hasActiveTransaction();
+    }
+
     /** Variante para operaciones que no necesitan devolver un resultado. */
     public void inTransaction(Runnable operation) {
         if (operation == null) {
