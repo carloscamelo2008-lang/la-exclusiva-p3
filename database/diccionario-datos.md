@@ -37,10 +37,10 @@ Tipos PostgreSQL orientativos. `VARCHAR(n)` requiere que el equipo apruebe lími
 |---|---|---|
 | `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | PK técnica |
 | `product_id` | `VARCHAR(64)` | NOT NULL, FK a `beer_product` |
-| `type` | `VARCHAR(16)` | NOT NULL; `ENTRY` o `EXIT` |
+| `movement_type` | `VARCHAR(16)` | NOT NULL; `ENTRY` o `EXIT` |
 | `units` | `INTEGER` | NOT NULL, `> 0` |
 | `reason` | `TEXT` | NOT NULL, no vacío |
-| `timestamp` | `TIMESTAMP WITHOUT TIME ZONE` | NOT NULL |
+| `occurred_at` | `TIMESTAMP(6) WITHOUT TIME ZONE` | NOT NULL |
 
 No se incluye columna de actor o venta: no existen en `StockMovement` actual.
 
@@ -121,7 +121,7 @@ Al leer una venta, recuperar `unit_price` y `units_per_basket_snapshot` directam
 
 Todas las claves foráneas se definen explícitamente con `ON DELETE RESTRICT`, sin cascadas. Así no se puede eliminar una venta con líneas o pagos, ni eliminar catálogo/personas que tengan referencias históricas. Las operaciones fallidas deben usar `ROLLBACK` de la transacción.
 
-Índices sugeridos que no quedan cubiertos por PK/UNIQUE: `sale_line(sale_id)`, `sale_line(product_id)`, `sale_payment(sale_id)`, `sale(seller_id)`, `sale(customer_id, created_at)`, `sale(created_at)`, `stock_movement(product_id, timestamp)` y `user_account(seller_id)`. El índice compuesto de `sale(customer_id, created_at)` cubre búsquedas por `customer_id`; no hace falta otro índice simple para esa columna. La PK compuesta de `product_price(product_id, presentation_code)` ya cubre búsquedas por `product_id`; no crear índice adicional. `inventory_item(product_id)` ya queda indexado por UNIQUE.
+Índices sugeridos que no quedan cubiertos por PK/UNIQUE: `sale_line(sale_id)`, `sale_line(product_id)`, `sale_payment(sale_id)`, `sale(seller_id)`, `sale(customer_id, created_at)`, `sale(created_at)`, `stock_movement(product_id, occurred_at)` y `user_account(seller_id)`. El índice compuesto de `sale(customer_id, created_at)` cubre búsquedas por `customer_id`; no hace falta otro índice simple para esa columna. La PK compuesta de `product_price(product_id, presentation_code)` ya cubre búsquedas por `product_id`; no crear índice adicional. `inventory_item(product_id)` ya queda indexado por UNIQUE.
 
 No repetir índices derivados de PK/UNIQUE ni crear un índice simple cuando el mismo prefijo está cubierto por uno compuesto.
 
