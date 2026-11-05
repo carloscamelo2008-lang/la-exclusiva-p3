@@ -32,10 +32,10 @@ erDiagram
     STOCK_MOVEMENT {
         bigint id PK
         varchar(64) product_id FK
-        varchar(16) type
+        varchar(16) movement_type
         integer units
         text reason
-        timestamp timestamp
+        timestamp occurred_at
     }
     CUSTOMER {
         varchar(64) id PK
@@ -69,7 +69,7 @@ erDiagram
         bigint id PK
         varchar(48) sale_id FK
         numeric(19,2) amount
-        timestamp timestamp
+        timestamp occurred_at
     }
     USER_ACCOUNT {
         bigint id PK
