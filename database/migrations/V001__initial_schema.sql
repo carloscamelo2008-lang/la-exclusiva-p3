@@ -50,13 +50,13 @@ CREATE TABLE inventory_item (
 CREATE TABLE stock_movement (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     product_id VARCHAR(64) NOT NULL,
-    type VARCHAR(16) NOT NULL,
+    movement_type VARCHAR(16) NOT NULL,
     units INTEGER NOT NULL,
     reason TEXT NOT NULL,
-    timestamp TIMESTAMP(6) WITHOUT TIME ZONE NOT NULL,
+    occurred_at TIMESTAMP(6) WITHOUT TIME ZONE NOT NULL,
     CONSTRAINT fk_stock_movement_product FOREIGN KEY (product_id)
         REFERENCES beer_product (id) ON DELETE RESTRICT,
-    CONSTRAINT ck_stock_movement_type CHECK (type IN ('ENTRY', 'EXIT')),
+    CONSTRAINT ck_stock_movement_type CHECK (movement_type IN ('ENTRY', 'EXIT')),
     CONSTRAINT ck_stock_movement_units CHECK (units > 0),
     CONSTRAINT ck_stock_movement_reason CHECK (btrim(reason) <> '')
 );
@@ -121,7 +121,7 @@ CREATE TABLE sale_payment (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     sale_id VARCHAR(48) NOT NULL,
     amount NUMERIC(19,2) NOT NULL,
-    timestamp TIMESTAMP(6) WITHOUT TIME ZONE NOT NULL,
+    occurred_at TIMESTAMP(6) WITHOUT TIME ZONE NOT NULL,
     CONSTRAINT fk_sale_payment_sale FOREIGN KEY (sale_id)
         REFERENCES sale (id) ON DELETE RESTRICT,
     CONSTRAINT ck_sale_payment_amount CHECK (amount > 0)
@@ -146,7 +146,7 @@ CREATE UNIQUE INDEX uq_user_account_username_normalized
     ON user_account (lower(btrim(username)));
 
 CREATE INDEX idx_stock_movement_product_timestamp
-    ON stock_movement (product_id, timestamp);
+    ON stock_movement (product_id, occurred_at);
 CREATE INDEX idx_sale_line_sale_id ON sale_line (sale_id);
 CREATE INDEX idx_sale_line_product_id ON sale_line (product_id);
 CREATE INDEX idx_sale_payment_sale_id ON sale_payment (sale_id);
