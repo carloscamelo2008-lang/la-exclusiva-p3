@@ -95,7 +95,7 @@ Subtotal derivado: `quantity * unit_price`. Unidades equivalentes derivadas con 
 | `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | PK técnica |
 | `sale_id` | `VARCHAR(48)` | NOT NULL, FK a `sale` |
 | `amount` | `NUMERIC(19,2)` | NOT NULL, `> 0` |
-| `timestamp` | `TIMESTAMP WITHOUT TIME ZONE` | NOT NULL |
+| `occurred_at` | `TIMESTAMP(6) WITHOUT TIME ZONE` | NOT NULL |
 
 El pago inicial positivo y cada abono son filas separadas. La suma no debe exceder el total de la venta; validar en operación transaccional.
 
