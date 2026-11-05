@@ -1,35 +1,50 @@
 # Contrato de integración JDBC
 
-Este documento fija el contrato mínimo entre la infraestructura de Carlos y los DAO de productos e inventario de Jesús. El objetivo es que ambos puedan trabajar en ramas separadas sin inventar firmas ni administrar conexiones de forma incompatible.
+Este documento fija la interfaz de integración entre la infraestructura JDBC de Carlos y los DAO de productos, inventario y movimientos de Jesús. Su objetivo es que ambas ramas puedan avanzar sin duplicar la administración de conexiones ni definir firmas incompatibles.
 
-## Rama e integración
+## Ramas y flujo
 
-- Infraestructura: **feature/jdbc-infrastructure** (Carlos).
-- DAO de productos e inventario: **feature/product-inventory-jdbc** (Jesús).
-- Base de integración: **develop**.
-- La rama de Jesús debe partir de develop una vez integrada la infraestructura. Si necesita comenzar antes, puede partir temporalmente de feature/jdbc-infrastructure; después debe actualizar su rama contra develop cuando se fusione la infraestructura.
+- Infraestructura: `feature/jdbc-infrastructure` (Carlos).
+- DAO de productos e inventario: `feature/product-inventory-jdbc` (Jesús).
+- Rama de integración: `develop`.
+- Jesús parte inicialmente de `feature/jdbc-infrastructure` para poder compilar contra las clases nuevas. Cuando la infraestructura se integre en `develop`, actualizará su rama con esa base y abrirá su PR hacia `develop`.
 
-## Configuración
+## Configuración de bases locales
 
-Se utilizan estas variables de entorno, sin credenciales en archivos versionados:
+No guardar credenciales en Git. Las variables son:
 
-- LAEXCLUSIVA_DB_URL
-- LAEXCLUSIVA_DB_USER
-- LAEXCLUSIVA_DB_PASSWORD
+| Variable | Uso |
+|---|---|
+| `LAEXCLUSIVA_DB_URL` | URL de desarrollo |
+| `LAEXCLUSIVA_TEST_DB_URL` | URL exclusiva para pruebas de integración |
+| `LAEXCLUSIVA_DB_USER` | Usuario local PostgreSQL, compartido por ambas URL |
+| `LAEXCLUSIVA_DB_PASSWORD` | Contraseña local, compartida por ambas URL |
 
-URL local de desarrollo: jdbc:postgresql://localhost:5432/la_exclusiva.
+URL de desarrollo:
 
-La configuración Java queda en com.laexclusiva.persistence.jdbc.DatabaseConfig. Falla al iniciar si falta alguna variable o la URL no corresponde a PostgreSQL.
+```text
+jdbc:postgresql://localhost:5432/la_exclusiva
+```
 
-## Firma acordada para los DAO
+URL de pruebas:
 
-La firma pública es:
+```text
+jdbc:postgresql://localhost:5432/la_exclusiva_test
+```
+
+`DatabaseConfig.fromEnvironment()` lee la URL de desarrollo. `DatabaseConfig.fromTestEnvironment()` lee `LAEXCLUSIVA_TEST_DB_URL`, reutiliza usuario/contraseña y valida que el nombre de la base sea exactamente `la_exclusiva_test`. No se debe usar la URL de desarrollo para pruebas que limpien o preparen datos.
+
+Las pruebas unitarias no requieren PostgreSQL ni variables de entorno. Las pruebas de integración PostgreSQL se omiten cuando `LAEXCLUSIVA_TEST_DB_URL` no está configurada. Si está configurada pero apunta a otra base, la prueba debe fallar antes de ejecutar SQL.
+
+## Conexiones y firma para los DAO
+
+La firma pública del proveedor es:
 
 ```java
 public <T> T withConnection(SqlFunction<T> operation)
 ```
 
-El callback tiene esta forma:
+El callback es:
 
 ```java
 @FunctionalInterface
@@ -38,70 +53,97 @@ public interface SqlFunction<T> {
 }
 ```
 
-Ejemplo de uso:
+Ejemplo:
 
 ```java
 return connectionProvider.withConnection(connection -> {
     try (PreparedStatement statement = connection.prepareStatement(sql)) {
-        // Configurar parámetros y ejecutar la sentencia.
+        statement.setString(1, productId);
         try (ResultSet resultSet = statement.executeQuery()) {
             // Mapear el resultado.
         }
     }
-    return result;
+    return product;
 });
 ```
 
 Reglas obligatorias:
 
-1. El DAO cierra sus PreparedStatement y ResultSet con try-with-resources.
-2. El DAO no cierra la Connection recibida.
-3. El DAO no ejecuta commit, rollback ni modifica autoCommit.
-4. Si existe una transacción activa en el hilo, todas las llamadas a withConnection reutilizan exactamente la misma conexión.
-5. Fuera de una transacción, el proveedor abre y cierra una conexión para la operación.
-6. Los errores SQL se traducen a JdbcPersistenceException.
+1. El DAO cierra sus `PreparedStatement` y `ResultSet` con try-with-resources.
+2. El DAO no cierra la `Connection` recibida.
+3. El DAO no ejecuta `commit`, `rollback` ni modifica `autoCommit`.
+4. Cuando hay una transacción activa en el hilo, cada llamada a `withConnection` reutiliza exactamente la misma conexión.
+5. Fuera de una transacción, el proveedor abre y cierra una conexión por operación. Esa conexión funciona con autocommit.
+6. Los errores SQL se traducen a `JdbcPersistenceException`.
 
-## Transacciones
+## Transacciones y DAO con varias escrituras
 
-La API pública del coordinador es:
+La API del coordinador es:
 
 ```java
 transactionManager.inTransaction(() -> {
-    // Llamadas a servicios y repositorios que deban confirmarse juntas.
+    // Operación que debe confirmarse completa o revertirse completa.
 });
 ```
 
 También permite devolver un resultado:
 
 ```java
-Sale sale = transactionManager.inTransaction(() -> saleService.registerSale(...));
+Sale sale = transactionManager.inTransaction(
+        () -> saleService.registerSale(...));
 ```
 
-Las llamadas anidadas se unen a la transacción exterior. Solo la operación que abrió la conexión ejecuta el commit o rollback. Si una operación interna falla, la transacción queda marcada para rollback incluso si una capa superior captura la excepción. No trasladar una operación transaccional a otro hilo.
+Las llamadas anidadas se unen a la transacción exterior. Solo quien abrió la conexión hace `commit` o `rollback`. Si una llamada interna falla, el contexto queda marcado como rollback-only incluso si una capa superior captura la excepción. No trasladar una operación transaccional a otro hilo.
 
-Límites de atomicidad que deben respetarse al integrar servicios:
-
-- Alta de producto y sus tres precios.
-- Entrada de inventario y su movimiento.
-- Descuento de inventario y todos sus movimientos.
-- Venta, líneas, pago inicial, inventario, movimientos y saldo del cliente.
-- Abono y actualización de saldo del cliente.
-
-La infraestructura ya proporciona JdbcTransactionManager; la integración de los límites de transacción en los casos de uso debe realizarse antes de activar los DAO en la aplicación.
-
-## Contratos de repositorio y reglas acordadas
-
-- ProductRepository.save(product): inserta un producto nuevo y sus tres precios iniciales. Si el ID ya existe, debe fallar; no es un upsert.
-Firmas propuestas para ProductRepository:
+**Todo DAO que realice varias escrituras relacionadas debe recibir ambas dependencias**:
 
 ```java
-void updatePrice(String productId, SalePresentation presentation, BigDecimal newPrice);
-void addMissingPrice(String productId, SalePresentation presentation, BigDecimal price);
+public ProductRepositoryJdbc(
+        JdbcConnectionProvider connectionProvider,
+        JdbcTransactionManager transactionManager) {
+    // Guardar las dos dependencias.
+}
 ```
 
-updatePrice cambia únicamente una fila de precio que ya exista; si no existe, falla. addMissingPrice inserta únicamente cuando falta esa presentación; si ya existe, falla. Ambos métodos validan producto, presentación y precio antes de escribir.
+El método `ProductRepositoryJdbc.save(product)` inserta `beer_product` y sus tres filas `product_price` dentro de una única transacción:
 
-Reglas de InventoryRepository:
+```java
+transactionManager.inTransaction(() ->
+    connectionProvider.withConnection(connection -> {
+        // INSERT del producto y de sus tres precios usando la misma conexión.
+        return null;
+    })
+);
+```
+
+Si ya existe una transacción exterior, el método se une a ella y no confirma por separado. Si se invoca sin transacción exterior, abre una transacción propia. Esta regla garantiza que nunca quede un producto insertado solo con uno o dos precios.
+
+Los métodos de una sola sentencia pueden utilizar `withConnection` directamente. Los límites que coordinan más de un repositorio pertenecen al servicio/caso de uso y deberán envolverse en `transactionManager.inTransaction(...)`.
+
+## Contratos de repositorio
+
+### Productos
+
+```java
+void save(BeerProduct product);
+
+void updatePrice(
+        String productId,
+        SalePresentation presentation,
+        BigDecimal newPrice);
+
+void addMissingPrice(
+        String productId,
+        SalePresentation presentation,
+        BigDecimal price);
+```
+
+- `save(product)`: inserta producto y sus tres precios. Si el ID ya existe, falla; no es upsert.
+- `updatePrice(...)`: actualiza únicamente un precio existente. Si no existe, falla.
+- `addMissingPrice(...)`: inserta únicamente si falta la presentación. Si ya existe, falla.
+- Las operaciones validan producto, presentación y precio. Los importes admiten como máximo dos decimales; no se redondean silenciosamente.
+
+### Inventario
 
 ```java
 void save(InventoryItem item);
@@ -113,32 +155,53 @@ default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
 }
 ```
 
-save inserta o actualiza por product_id (upsert). findByProductId es una consulta normal. findByProductIdForUpdate es el método explícito de bloqueo: el adaptador JDBC lo sobrescribe con SELECT ... FOR UPDATE y exige una transacción activa. El método default permite que el adaptador en memoria conserve su comportamiento sin implementar bloqueos reales.
-- SalePresentation.fromCode(String): convierte únicamente UNIT, HALF_BASKET y FULL_BASKET; un código nulo o desconocido se rechaza.
-- StockMovementRepository.remove(...): la implementación JDBC lanza UnsupportedOperationException con explicación. El historial no se borra para compensar una operación; la transacción revierte inserciones.
-- InventoryService.discountSale(...) procesa las referencias en orden ascendente por ID de producto antes de bloquearlas.
+- `save(item)`: inserta o actualiza por `product_id` (upsert).
+- `findByProductId(...)`: consulta normal sin bloqueo.
+- `findByProductIdForUpdate(...)`: el adaptador JDBC sobrescribe el método con `SELECT ... FOR UPDATE`. Debe exigir `transactionManager.isTransactionActive()`; de lo contrario lanza `IllegalStateException`. El método default mantiene compatible la implementación en memoria, que no necesita bloqueo SQL.
 
-Los precios admiten como máximo dos decimales. No redondear silenciosamente valores con más de dos decimales. Usar BigDecimal y comparar importes con compareTo.
+### Presentaciones y movimientos
 
-La rehidratación de líneas de venta debe conservar unit_price y units_per_basket_snapshot leídos de la fila histórica; nunca reconstruirlos con precios/capacidades actuales del catálogo. Las columnas temporales usan TIMESTAMP(6), por lo que los LocalDateTime deben normalizarse a precisión de microsegundos antes de persistirlos para que las comparaciones de pruebas sean consistentes.
+- `SalePresentation.fromCode(String)`: convierte únicamente `UNIT`, `HALF_BASKET` y `FULL_BASKET`. Un valor nulo o desconocido se rechaza.
+- `StockMovementRepository.remove(...)`: la implementación JDBC lanza `UnsupportedOperationException` con un mensaje claro. El historial no se borra para compensar una operación; el rollback revierte las inserciones.
+- `InventoryService.discountSale(...)` procesa los IDs de producto en orden ascendente antes de bloquear las filas, reduciendo el riesgo de deadlocks.
+
+Los snapshots de líneas de venta deben conservar `unit_price` y `units_per_basket_snapshot` leídos de la fila histórica; nunca se reconstruyen con los precios ni la capacidad actuales del catálogo.
+
+## Nombres de columnas acordados
+
+Se evitan nombres genéricos para que los DAO lean el esquema sin ambigüedad:
+
+| Tabla | Columna SQL | Significado |
+|---|---|---|
+| `stock_movement` | `movement_type` | `ENTRY` o `EXIT` |
+| `stock_movement` | `occurred_at` | Fecha/hora del movimiento |
+| `sale_payment` | `occurred_at` | Fecha/hora del pago |
+
+Los nombres del modelo Java actual no necesitan cambiar: `StockMovement.type()`, `StockMovement.timestamp()` y el accessor temporal de `SalePayment` se mapean desde estos nombres SQL.
+
+Las columnas temporales usan `TIMESTAMP(6) WITHOUT TIME ZONE`. Normalizar `LocalDateTime` a microsegundos al persistir para que las comparaciones de pruebas sean consistentes.
 
 ## Migración SQL
 
-El esquema inicial ejecutable está en:
+El esquema ejecutable está en:
 
-database/migrations/V001__initial_schema.sql
+`database/migrations/V001__initial_schema.sql`
 
-Ejecutarlo una sola vez desde pgAdmin Query Tool sobre una base vacía llamada la_exclusiva. No ejecutarlo dos veces ni sobre una base que ya tenga tablas del proyecto. La migración no inserta productos de catálogo; ese trabajo corresponde al inicializador Java idempotente.
+Ejecutarlo una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea las diez tablas, restricciones e índices. No inserta productos ni existencias iniciales: esa responsabilidad corresponde al inicializador Java idempotente. La migración falla si se intenta ejecutar por segunda vez sobre la misma base.
 
-## Pruebas de integración
+## Pruebas y seguridad de los datos
 
-Las pruebas que requieren PostgreSQL deben usar una base separada llamada exactamente la_exclusiva_test, nunca la base local de desarrollo. Reutilizan las variables LAEXCLUSIVA_DB_URL, LAEXCLUSIVA_DB_USER y LAEXCLUSIVA_DB_PASSWORD, pero el URL debe apuntar a /la_exclusiva_test.
-
-Si falta alguna variable, las pruebas de integración se omiten. Si las variables están presentes pero el URL no apunta a la_exclusiva_test, la prueba debe fallar antes de ejecutar SQL destructivo. Nunca ejecutar TRUNCATE, DROP o limpieza de fixtures contra una base que no tenga ese nombre.
+- Las pruebas unitarias se ejecutan sin PostgreSQL.
+- Las pruebas de integración con PostgreSQL usan exclusivamente `LAEXCLUSIVA_TEST_DB_URL` y la base `la_exclusiva_test`.
+- Si falta esa variable, las pruebas de integración se omiten.
+- Si está definida pero la ruta de base no termina exactamente en `/la_exclusiva_test`, las pruebas fallan antes de limpiar o modificar datos.
+- No ejecutar `DROP`, `TRUNCATE` ni limpieza de fixtures en `la_exclusiva`.
+- Utilizar únicamente datos ficticios.
 
 ## División de responsabilidades
 
-- Carlos entrega migración, dependencia, configuración, proveedor de conexiones y coordinador de transacciones.
-- Jesús implementa los DAO de producto, inventario y movimientos, SalePresentation.fromCode, las operaciones de precios y el inicializador de catálogo.
-- La integración de transacciones en servicios y la sustitución de compensaciones manuales se revisa después, sobre la misma API.
-- Daniel puede continuar el esqueleto JavaFX sin ejecutar SQL ni asumir tareas DAO/JDBC.
+- Carlos: migración, dependencia, configuración, proveedor de conexiones, coordinador transaccional e integración de límites transaccionales en servicios.
+- Jesús: DAO de producto, precios, inventario y movimientos; `SalePresentation.fromCode`; inicializador idempotente; pruebas unitarias de JDBC y pruebas con driver simulado.
+- Daniel: interfaz JavaFX, FXML, controladores y CSS, sin tareas SQL/DAO/JDBC.
+
+La conexión de los DAO a `Main` se realizará después de revisar la sustitución de las compensaciones manuales por transacciones reales.
