@@ -19,7 +19,7 @@
                   <Insets bottom="20.0" left="20.0" top="25.0" />
                </VBox.margin>
             </Label>
-            <Button fx:id="btnDashboard" mnemonicParsing5="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  📊 Resumen / Inicio">
+            <Button fx:id="btnDashboard" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  📊 Resumen / Inicio">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
