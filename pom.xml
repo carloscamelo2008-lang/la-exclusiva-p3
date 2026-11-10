@@ -54,7 +54,8 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.0</version>
                 <configuration>
-                    <mainClass>com.laexclusiva.ui.App</mainClass>
+                    <!-- Apunta a Main para manejar la transición consola/JavaFX -->
+                    <mainClass>com.laexclusiva.Main</mainClass>
                 </configuration>
             </plugin>
             <plugin>
