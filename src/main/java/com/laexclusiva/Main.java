@@ -15,12 +15,17 @@ import java.util.Scanner;
 public final class Main {
     private Main() { }
 
-    /**
-     * Construye dependencias, autentica al usuario y ejecuta el menú o la UI.
-     *
-     * @param args argumentos de línea de comandos
-     */
     public static void main(String[] args) {
+        // 1. Validar el modo consola al puro inicio, antes de cualquier repositorio o servicio
+        boolean consoleMode = java.util.Arrays.asList(args).contains("--console");
+        
+        if (!consoleMode) {
+            // Si no se pasa --console, lanza inmediatamente JavaFX y sale del main
+            com.laexclusiva.ui.App.launch(com.laexclusiva.ui.App.class, args);
+            return;
+        }
+
+        // 2. Flujo de consola clásico (solo se ejecuta si se pasa --console)
         InMemoryProductRepository productRepository = new InMemoryProductRepository();
         InMemoryInventoryRepository inventoryRepository = new InMemoryInventoryRepository();
         InMemoryStockMovementRepository movementRepository = new InMemoryStockMovementRepository();
@@ -65,26 +70,18 @@ public final class Main {
             userRepository.save(new UserAccount(null, username, PasswordHasher.hash(password), UserRole.ADMINISTRATOR, null));
         }
 
-        // Transición controlada: Si se pasa el argumento --console, arranca la consola clásica.
-        // De lo contrario, por defecto abre la interfaz gráfica JavaFX (App).
-        boolean consoleMode = java.util.Arrays.asList(args).contains("--console");
-        if (consoleMode) {
-            System.out.print("Usuario: "); 
-            String username = scanner.nextLine();
-            System.out.print("Contraseña: "); 
-            String password = scanner.nextLine();
-            UserSession session = authenticationService.createSession(username, password).orElse(null);
-            if (session == null) { 
-                System.err.println("Credenciales incorrectas."); 
-                return; 
-            }
-            if (!authorizationService.hasRole(session, session.getUserAccount().getRole())) return;
-            ConsoleMenu menu = new ConsoleMenu(productService, inventoryService, customerService, sellerService,
-                    saleService, scanner, System.out, session, authorizationService);
-            menu.start();
-        } else {
-            // Lanza la aplicación JavaFX configurada en la capa de UI
-            com.laexclusiva.ui.App.launch(com.laexclusiva.ui.App.class, args);
+        System.out.print("Usuario: "); 
+        String username = scanner.nextLine();
+        System.out.print("Contraseña: "); 
+        String password = scanner.nextLine();
+        UserSession session = authenticationService.createSession(username, password).orElse(null);
+        if (session == null) { 
+            System.err.println("Credenciales incorrectas."); 
+            return; 
         }
+        if (!authorizationService.hasRole(session, session.getUserAccount().getRole())) return;
+        ConsoleMenu menu = new ConsoleMenu(productService, inventoryService, customerService, sellerService,
+                saleService, scanner, System.out, session, authorizationService);
+        menu.start();
     }
 }
