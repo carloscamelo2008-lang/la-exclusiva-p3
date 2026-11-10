@@ -16,7 +16,7 @@ public final class Main {
     private Main() { }
 
     /**
-     * Construye dependencias, autentica al usuario y ejecuta el menú.
+     * Construye dependencias, autentica al usuario y ejecuta el menú o la UI.
      *
      * @param args argumentos de línea de comandos
      */
@@ -27,40 +27,64 @@ public final class Main {
         InMemorySaleRepository saleRepository = new InMemorySaleRepository();
         CustomerRepository customerRepository = new CustomerRepository();
         SellerRepository sellerRepository = new SellerRepository();
+        
         ProductService productService = new ProductService(productRepository);
         productService.registerAll(InitialCatalog.create());
+        
         InventoryService inventoryService = new InventoryService(productService, inventoryRepository, movementRepository);
         CustomerService customerService = new CustomerService(customerRepository);
         SellerService sellerService = new SellerService(sellerRepository);
         SaleService saleService = new SaleService(saleRepository, productService, inventoryService, customerService, sellerService);
+        
         UserRepository userRepository = new InMemoryUserRepository();
         AuthenticationService authenticationService = new AuthenticationService(userRepository);
         AuthorizationService authorizationService = new AuthorizationService();
         Scanner scanner = new Scanner(System.in);
+        
         boolean demo = java.util.Arrays.asList(args).contains("--demo");
         if (demo) {
             String adminPassword = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
             String workerPassword = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
             if (adminPassword == null || adminPassword.isBlank() || workerPassword == null || workerPassword.isBlank()) {
-                System.err.println("Defina LAEXCLUSIVA_DEMO_ADMIN_PASSWORD y LAEXCLUSIVA_DEMO_WORKER_PASSWORD."); return;
+                System.err.println("Defina LAEXCLUSIVA_DEMO_ADMIN_PASSWORD y LAEXCLUSIVA_DEMO_WORKER_PASSWORD."); 
+                return;
             }
             DemoDataInitializer initializer = new DemoDataInitializer(productService, inventoryService, customerService, sellerService, saleService);
             DemoDataInitializer.DemoResult result = initializer.initialize();
             userRepository.save(new UserAccount(null, "admin.demo", PasswordHasher.hash(adminPassword), UserRole.ADMINISTRATOR, result.adminSellerId()));
             userRepository.save(new UserAccount(null, "trabajador.demo", PasswordHasher.hash(workerPassword), UserRole.WORKER, result.workerSellerId()));
         } else if (userRepository.findAll().isEmpty()) {
-            System.out.print("Usuario administrador inicial: "); String username = scanner.nextLine().trim();
-            System.out.print("Contraseña: "); String password = scanner.nextLine();
-            if (username.isEmpty() || password.isEmpty()) { System.err.println("Usuario y contraseña son obligatorios."); return; }
+            System.out.print("Usuario administrador inicial: "); 
+            String username = scanner.nextLine().trim();
+            System.out.print("Contraseña: "); 
+            String password = scanner.nextLine();
+            if (username.isEmpty() || password.isEmpty()) { 
+                System.err.println("Usuario y contraseña son obligatorios."); 
+                return; 
+            }
             userRepository.save(new UserAccount(null, username, PasswordHasher.hash(password), UserRole.ADMINISTRATOR, null));
         }
-        System.out.print("Usuario: "); String username = scanner.nextLine();
-        System.out.print("Contraseña: "); String password = scanner.nextLine();
-        UserSession session = authenticationService.createSession(username, password).orElse(null);
-        if (session == null) { System.err.println("Credenciales incorrectas."); return; }
-        if (!authorizationService.hasRole(session, session.getUserAccount().getRole())) return;
-        ConsoleMenu menu = new ConsoleMenu(productService, inventoryService, customerService, sellerService,
-                saleService, scanner, System.out, session, authorizationService);
-        menu.start();
+
+        // Transición controlada: Si se pasa el argumento --console, arranca la consola clásica.
+        // De lo contrario, por defecto abre la interfaz gráfica JavaFX (App).
+        boolean consoleMode = java.util.Arrays.asList(args).contains("--console");
+        if (consoleMode) {
+            System.out.print("Usuario: "); 
+            String username = scanner.nextLine();
+            System.out.print("Contraseña: "); 
+            String password = scanner.nextLine();
+            UserSession session = authenticationService.createSession(username, password).orElse(null);
+            if (session == null) { 
+                System.err.println("Credenciales incorrectas."); 
+                return; 
+            }
+            if (!authorizationService.hasRole(session, session.getUserAccount().getRole())) return;
+            ConsoleMenu menu = new ConsoleMenu(productService, inventoryService, customerService, sellerService,
+                    saleService, scanner, System.out, session, authorizationService);
+            menu.start();
+        } else {
+            // Lanza la aplicación JavaFX configurada en la capa de UI
+            com.laexclusiva.ui.App.launch(com.laexclusiva.ui.App.class, args);
+        }
     }
 }
