@@ -15,13 +15,29 @@ import java.sql.SQLException;
  */
 public final class JdbcConnectionProvider {
     private final DatabaseConfig config;
+    private final ConnectionFactory connectionFactory;
     private final ThreadLocal<TransactionState> transactionState = new ThreadLocal<>();
 
+    /** Fuente de conexiones inyectable para pruebas sin PostgreSQL real. */
+    @FunctionalInterface
+    interface ConnectionFactory {
+        Connection open() throws SQLException;
+    }
+
     public JdbcConnectionProvider(DatabaseConfig config) {
+        this(config, () -> DriverManager.getConnection(config.getUrl(), config.getUser(), config.getPassword()));
+    }
+
+    /** Constructor accesible solo en el paquete para pruebas unitarias. */
+    JdbcConnectionProvider(DatabaseConfig config, ConnectionFactory connectionFactory) {
         if (config == null) {
             throw new IllegalArgumentException("La configuración JDBC es obligatoria.");
         }
+        if (connectionFactory == null) {
+            throw new IllegalArgumentException("La fábrica de conexiones JDBC es obligatoria.");
+        }
         this.config = config;
+        this.connectionFactory = connectionFactory;
     }
 
     /**
@@ -59,7 +75,7 @@ public final class JdbcConnectionProvider {
     }
 
     Connection openConnection() throws SQLException {
-        return DriverManager.getConnection(config.getUrl(), config.getUser(), config.getPassword());
+        return connectionFactory.open();
     }
 
     boolean hasActiveTransaction() {
