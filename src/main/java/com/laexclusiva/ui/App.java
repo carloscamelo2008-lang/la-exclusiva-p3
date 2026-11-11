@@ -21,34 +21,36 @@ public class App extends Application {
         return userRepository;
     }
 
-    public void initializeDemoAccountsIfRequested(Parameters params) {
+    public void initializeDemoAccounts(String adminPass, String workerPass) {
+        if (adminPass == null || adminPass.isBlank() || workerPass == null || workerPass.isBlank()) {
+            throw new IllegalStateException("Modo demo activado pero faltan las contraseñas requeridas.");
+        }
+        userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
+        userRepository.save(new UserAccount(2L, "worker", PasswordHasher.hash(workerPass), UserRole.WORKER, null));
+    }
+
+    public void initializeInitialAdmin(String adminPass) {
+        if (adminPass == null || adminPass.isBlank()) {
+            throw new IllegalStateException("Arranque normal requiere definir la contraseña inicial del administrador mediante LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD.");
+        }
+        userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
+    }
+
+    public void processInitialization(Parameters params) {
         boolean isDemo = params != null && params.getRaw().contains("--demo");
         if (isDemo) {
             String adminPass = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
             String workerPass = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
-
-            if (adminPass == null || adminPass.isBlank() || workerPass == null || workerPass.isBlank()) {
-                throw new IllegalStateException("Modo demo activado pero faltan las variables de entorno LAEXCLUSIVA_DEMO_ADMIN_PASSWORD o LAEXCLUSIVA_DEMO_WORKER_PASSWORD.");
-            }
-
-            userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
-            userRepository.save(new UserAccount(2L, "worker", PasswordHasher.hash(workerPass), UserRole.WORKER, null));
-        }
-    }
-
-    public void ensureInitialAdminExists() {
-        if (userRepository.findAll().isEmpty()) {
-            String defaultAdminPass = System.getenv("LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD");
-            if (defaultAdminPass != null && !defaultAdminPass.isBlank()) {
-                userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(defaultAdminPass), UserRole.ADMINISTRATOR, null));
-            }
+            initializeDemoAccounts(adminPass, workerPass);
+        } else if (userRepository.findAll().isEmpty()) {
+            String initialAdminPass = System.getenv("LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD");
+            initializeInitialAdmin(initialAdminPass);
         }
     }
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        initializeDemoAccountsIfRequested(getParameters());
-        ensureInitialAdminExists();
+        processInitialization(getParameters());
 
         AuthenticationService authService = new AuthenticationService(userRepository);
 

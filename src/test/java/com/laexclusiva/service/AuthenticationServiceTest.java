@@ -1,18 +1,12 @@
 package com.laexclusiva.service;
 
-import com.laexclusiva.model.UserAccount;
-import com.laexclusiva.model.UserRole;
-import com.laexclusiva.repository.InMemoryUserRepository;
-import com.laexclusiva.security.PasswordHasher;
 import com.laexclusiva.ui.App;
-import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.net.URL;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,51 +17,41 @@ public class AuthenticationServiceTest {
         try {
             Platform.startup(() -> {});
         } catch (IllegalStateException e) {
-            // Toolkit ya inicializado previamente
+            // Toolkit de JavaFX ya activo
         }
     }
 
     @Test
-    public void testAppDemoAccountsInitializationWithParameters() {
+    public void testAppDemoAccountsInitializationMechanism() {
         App app = new App();
-        
-        Application.Parameters mockParams = new Application.Parameters() {
-            @Override
-            public List<String> getRaw() { return List.of("--demo"); }
-            @Override
-            public List<String> getUnnamed() { return List.of("--demo"); }
-            @Override
-            public java.util.Map<String, String> getNamed() { return java.util.Collections.emptyMap(); }
-        };
+        app.initializeDemoAccounts("passAdmin123", "passWorker123");
 
-        String adminPass = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
-        String workerPass = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
-
-        if (adminPass != null && workerPass != null && !adminPass.isBlank() && !workerPass.isBlank()) {
-            assertDoesNotThrow(() -> app.initializeDemoAccountsIfRequested(mockParams));
-            AuthenticationService authService = new AuthenticationService(app.getUserRepository());
-            assertTrue(authService.authenticate("admin", adminPass).isPresent(), "Admin demo debe autenticarse");
-            assertTrue(authService.authenticate("worker", workerPass).isPresent(), "Worker demo debe autenticarse");
-        } else {
-            assertThrows(IllegalStateException.class, () -> app.initializeDemoAccountsIfRequested(mockParams),
-                    "Debe lanzar excepción si faltan variables de entorno en modo --demo");
-        }
+        AuthenticationService authService = new AuthenticationService(app.getUserRepository());
+        assertTrue(authService.authenticate("admin", "passAdmin123").isPresent(), "Admin demo debe autenticarse correctamente");
+        assertTrue(authService.authenticate("worker", "passWorker123").isPresent(), "Worker demo debe autenticarse correctamente");
     }
 
     @Test
-    public void testNormalAppInitializationDoesNotCreateDemoAccounts() {
+    public void testAppDemoAccountsInitializationFailsWithoutPasswords() {
         App app = new App();
-        Application.Parameters mockParams = new Application.Parameters() {
-            @Override
-            public List<String> getRaw() { return List.of(); }
-            @Override
-            public List<String> getUnnamed() { return List.of(); }
-            @Override
-            public java.util.Map<String, String> getNamed() { return java.util.Collections.emptyMap(); }
-        };
+        assertThrows(IllegalStateException.class, () -> app.initializeDemoAccounts(null, "passWorker123"),
+                "Debe fallar si falta la clave del administrador demo");
+    }
 
-        app.initializeDemoAccountsIfRequested(mockParams);
-        assertTrue(app.getUserRepository().findAll().isEmpty(), "Arranque normal sin --demo no debe crear cuentas demo");
+    @Test
+    public void testInitialAdminProvisioningSuccess() {
+        App app = new App();
+        app.initializeInitialAdmin("adminSecret123");
+
+        AuthenticationService authService = new AuthenticationService(app.getUserRepository());
+        assertTrue(authService.authenticate("admin", "adminSecret123").isPresent(), "El administrador inicial debe poder autenticarse");
+    }
+
+    @Test
+    public void testInitialAdminProvisioningFailsWithoutPassword() {
+        App app = new App();
+        assertThrows(IllegalStateException.class, () -> app.initializeInitialAdmin(""),
+                "Debe exigir LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD en el arranque normal");
     }
 
     @Test
