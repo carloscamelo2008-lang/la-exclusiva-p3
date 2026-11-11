@@ -27,9 +27,20 @@ public class App extends Application {
             String adminPass = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
             String workerPass = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
 
-            if (adminPass != null && !adminPass.isBlank() && workerPass != null && !workerPass.isBlank()) {
-                userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
-                userRepository.save(new UserAccount(2L, "worker", PasswordHasher.hash(workerPass), UserRole.WORKER, null));
+            if (adminPass == null || adminPass.isBlank() || workerPass == null || workerPass.isBlank()) {
+                throw new IllegalStateException("Modo demo activado pero faltan las variables de entorno LAEXCLUSIVA_DEMO_ADMIN_PASSWORD o LAEXCLUSIVA_DEMO_WORKER_PASSWORD.");
+            }
+
+            userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
+            userRepository.save(new UserAccount(2L, "worker", PasswordHasher.hash(workerPass), UserRole.WORKER, null));
+        }
+    }
+
+    public void ensureInitialAdminExists() {
+        if (userRepository.findAll().isEmpty()) {
+            String defaultAdminPass = System.getenv("LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD");
+            if (defaultAdminPass != null && !defaultAdminPass.isBlank()) {
+                userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(defaultAdminPass), UserRole.ADMINISTRATOR, null));
             }
         }
     }
@@ -37,6 +48,7 @@ public class App extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         initializeDemoAccountsIfRequested(getParameters());
+        ensureInitialAdminExists();
 
         AuthenticationService authService = new AuthenticationService(userRepository);
 

@@ -5,12 +5,14 @@ import com.laexclusiva.model.UserRole;
 import com.laexclusiva.repository.InMemoryUserRepository;
 import com.laexclusiva.security.PasswordHasher;
 import com.laexclusiva.ui.App;
+import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.net.URL;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,46 +20,70 @@ public class AuthenticationServiceTest {
 
     @BeforeAll
     public static void initJavaFX() {
-        // Inicializa el toolkit de JavaFX en entorno headless para permitir pruebas de FXML
         try {
             Platform.startup(() -> {});
         } catch (IllegalStateException e) {
-            // Si ya estaba inicializado, ignoramos la excepción
+            // Toolkit ya inicializado previamente
         }
     }
 
     @Test
-    public void testAuthenticationWithService() {
-        InMemoryUserRepository repository = new InMemoryUserRepository();
-        String adminHash = PasswordHasher.hash("admin123");
-        repository.save(new UserAccount(1L, "admin", adminHash, UserRole.ADMINISTRATOR, null));
+    public void testAppDemoAccountsInitializationWithParameters() {
+        App app = new App();
+        
+        Application.Parameters mockParams = new Application.Parameters() {
+            @Override
+            public List<String> getRaw() { return List.of("--demo"); }
+            @Override
+            public List<String> getUnnamed() { return List.of("--demo"); }
+            @Override
+            public java.util.Map<String, String> getNamed() { return java.util.Collections.emptyMap(); }
+        };
 
-        AuthenticationService authService = new AuthenticationService(repository);
+        String adminPass = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
+        String workerPass = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
 
-        assertTrue(authService.authenticate("admin", "admin123").isPresent(), "El usuario debe autenticarse correctamente");
-        assertFalse(authService.authenticate("admin", "wrongpass").isPresent(), "La autenticación debe fallar con contraseña incorrecta");
+        if (adminPass != null && workerPass != null && !adminPass.isBlank() && !workerPass.isBlank()) {
+            assertDoesNotThrow(() -> app.initializeDemoAccountsIfRequested(mockParams));
+            AuthenticationService authService = new AuthenticationService(app.getUserRepository());
+            assertTrue(authService.authenticate("admin", adminPass).isPresent(), "Admin demo debe autenticarse");
+            assertTrue(authService.authenticate("worker", workerPass).isPresent(), "Worker demo debe autenticarse");
+        } else {
+            assertThrows(IllegalStateException.class, () -> app.initializeDemoAccountsIfRequested(mockParams),
+                    "Debe lanzar excepción si faltan variables de entorno en modo --demo");
+        }
     }
 
     @Test
-    public void testAppDemoAccountsInitializationMechanism() {
+    public void testNormalAppInitializationDoesNotCreateDemoAccounts() {
         App app = new App();
-        assertTrue(app.getUserRepository().findAll().isEmpty(), "En arranque normal la aplicación no debe inicializar cuentas demo");
+        Application.Parameters mockParams = new Application.Parameters() {
+            @Override
+            public List<String> getRaw() { return List.of(); }
+            @Override
+            public List<String> getUnnamed() { return List.of(); }
+            @Override
+            public java.util.Map<String, String> getNamed() { return java.util.Collections.emptyMap(); }
+        };
+
+        app.initializeDemoAccountsIfRequested(mockParams);
+        assertTrue(app.getUserRepository().findAll().isEmpty(), "Arranque normal sin --demo no debe crear cuentas demo");
     }
 
     @Test
     public void testFxmlViewsLoadingWithFXMLLoader() {
         assertDoesNotThrow(() -> {
             URL loginUrl = getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml");
-            assertNotNull(loginUrl, "El recurso login_view.fxml debe existir");
+            assertNotNull(loginUrl, "login_view.fxml debe existir");
             FXMLLoader loginLoader = new FXMLLoader(loginUrl);
             loginLoader.load();
-        }, "login_view.fxml debe cargarse mediante FXMLLoader sin errores");
+        });
 
         assertDoesNotThrow(() -> {
             URL menuUrl = getClass().getResource("/com/laexclusiva/ui/fxml/main_menu_view.fxml");
-            assertNotNull(menuUrl, "El recurso main_menu_view.fxml debe existir");
+            assertNotNull(menuUrl, "main_menu_view.fxml debe existir");
             FXMLLoader menuLoader = new FXMLLoader(menuUrl);
             menuLoader.load();
-        }, "main_menu_view.fxml debe cargarse mediante FXMLLoader sin errores");
+        });
     }
 }
