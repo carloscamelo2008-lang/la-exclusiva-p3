@@ -74,5 +74,20 @@ Añadir una sección por cada interacción relevante de IA vinculada con tareas 
 - **Decisiones técnicas asistidas por Codex:** mantener separado el constructor de ventas nuevas y la fábrica de reconstitución; no derivar precio histórico de catálogo; dejar explícito que la identidad de pago falta en el modelo y diseñar el update solo como anexado bajo bloqueo, sin borrar ni reescribir pagos. La propuesta de anexado sigue pendiente de validación humana.
 - **Pruebas reales:** `mvn -Dtest=SaleTest test` con Java 17.0.21 y Maven 3.10.0: BUILD SUCCESS, 12 pruebas, 0 fallos, 0 errores y 0 omitidas. No se ejecutó PostgreSQL en este bloque.
 - **Errores y resolución:** ninguno durante este bloque. Se observaron las advertencias preexistentes de los modelos Maven de JavaFX; no afectan la prueba de modelo.
-- **Commit asociado:** primer microcommit de reconstitución histórica; se registrará junto con su hash en el historial Git. No se atribuye el bloque a un commit todavía no creado.
+- **Commit asociado:** `541e0ff` (`feat(sales-jdbc): support historical sale reconstitution`).
 - **Pendiente de revisión humana:** Carlos debe revisar el contrato de anexado de pagos por `(importe, fecha)` y confirmar su adecuación antes de habilitar la integración de servicio. También quedan pendientes la implementación JDBC, su suite y la prueba PostgreSQL opcional.
+
+## Registro 7
+
+- **Fecha:** 2026-11-13.
+- **Herramienta:** Codex en la aplicación de escritorio.
+- **Fase / tarea:** adaptador JDBC de ventas y pruebas; rama `feature/sales-jdbc`.
+- **Objetivo:** persistir ventas completas atómicamente, recuperar su historial y anexar abonos sin alterar pagos previos.
+- **Resumen de la ayuda recibida:** se implementó `SaleRepositoryJdbc` con `JdbcConnectionProvider`, `JdbcTransactionManager`, sentencias parametrizadas y recursos JDBC cerrados. `save` inserta cabecera, líneas, snapshots y pagos en una transacción; consultas agrupan líneas/pagos; `update` bloquea la venta y solo añade nuevas ocurrencias; `deleteById` rechaza el borrado físico.
+- **Archivos creados o modificados:** `src/main/java/com/laexclusiva/repository/jdbc/SaleRepositoryJdbc.java`, `src/test/java/com/laexclusiva/persistence/jdbc/SaleRepositoryJdbcTest.java`, `src/test/java/com/laexclusiva/persistence/jdbc/SaleRepositoryJdbcPostgresIntegrationTest.java`, `database/sales-jdbc-integration.md` y esta bitácora.
+- **Decisiones técnicas asistidas por Codex:** `findAll()` recupera cabeceras, líneas y pagos con tres consultas; los snapshots no se reconstruyen desde precios/capacidades actuales. Como `SalePayment` carece de ID de dominio, el update serializa sobre la fila de venta y compara el multiconjunto de `(importe, occurred_at)` normalizado a dos decimales/microsegundos. La limitación y el diseño futuro de servicio quedaron documentados; requieren revisión de Carlos.
+- **Pruebas reales:** `mvn -Dtest=SaleRepositoryJdbcTest,SaleRepositoryJdbcPostgresIntegrationTest,SaleTest test`, con Java 17.0.21 y Maven 3.10.0: BUILD SUCCESS, 27 pruebas contabilizadas, 26 aprobadas y 1 omitida; 0 fallos y 0 errores. La prueba omitida requiere `LAEXCLUSIVA_TEST_DB_URL`; no se conectó a PostgreSQL ni se cambió base alguna.
+- **Errores encontrados y resolución:** (1) compilación porque `Optional.map` no acepta una carga que lanza `SQLException`; se cambió a una rama explícita dentro del callback JDBC. (2) compilación del fake JDBC porque una lambda `forEach` no propagaba `SQLException`; se reemplazó por un bucle. (3) dos aserciones comparaban `BigDecimal` ignorando la escala `NUMERIC(19,2)`; se ajustaron al valor con escala de base de datos. Las ejecuciones dirigidas finales pasaron.
+- **Advertencias observadas:** Maven mostró advertencias de modelos efectivos de JavaFX que ya aparecían en las pruebas de modelo. No hubo warnings de compilación del código nuevo.
+- **Commit asociado:** microcommit del adaptador, las pruebas y la actualización documental; su hash se anotará en la bitácora al quedar creado.
+- **Pendientes de revisión humana:** validar la clave de equivalencia de abonos por importe/fecha; revisar el documento de diseño de unidad de trabajo y contratos con los DAO de Jesús; aplicar V001 manualmente en `la_exclusiva_test` y correr la prueba PostgreSQL cuando exista un entorno dedicado.
