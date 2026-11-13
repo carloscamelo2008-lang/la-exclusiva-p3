@@ -22,7 +22,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -38,6 +40,7 @@ class SaleRepositoryJdbcTest {
     private static final LocalDateTime CREATED_AT = LocalDateTime.of(2026, 11, 1, 10, 15, 30, 123_456_789);
 
     private FakeDatabase database;
+    private JdbcConnectionProvider provider;
     private JdbcTransactionManager transactionManager;
     private SaleRepositoryJdbc repository;
     private Seller seller;
@@ -48,7 +51,7 @@ class SaleRepositoryJdbcTest {
     @BeforeEach
     void setUp() {
         database = new FakeDatabase();
-        JdbcConnectionProvider provider = new JdbcConnectionProvider(
+        provider = new JdbcConnectionProvider(
                 new DatabaseConfig("jdbc:postgresql://localhost:5432/la_exclusiva_test", "test-user", "test-pass"),
                 database::openConnection);
         transactionManager = new JdbcTransactionManager(provider);
@@ -194,40 +197,41 @@ class SaleRepositoryJdbcTest {
     }
 
     @Test
-    void updateAppendsAnAbonoOnceAndLocksTheSaleRow() {
+    void appendPaymentIsIdempotentAndLocksTheSaleRow() {
         Sale original = simpleSale("SALE-UPDATE");
         repository.save(original);
-        Sale changed = repository.findById("SALE-UPDATE").orElseThrow();
-        changed.registerPayment(new SalePayment(BigDecimal.valueOf(5_000), CREATED_AT.plusDays(1)));
-
-        repository.update(changed);
-        repository.update(changed);
+        LocalDateTime originalTime = LocalDateTime.of(2026, 11, 12, 9, 0);
+        SaleRepositoryJdbc firstAttempt = repositoryWithClock(originalTime);
+        SaleRepositoryJdbc laterRetry = repositoryWithClock(originalTime.plusDays(1));
+        SalePayment first = firstAttempt.appendPayment("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
+        SalePayment retry = laterRetry.appendPayment("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
 
         assertEquals(2, database.payments.size());
         assertTrue(database.executedSql.stream().anyMatch(sql -> sql.contains("for update of s")));
-        assertEquals(BigDecimal.valueOf(5_000).setScale(2), repository.findById("SALE-UPDATE").orElseThrow()
-                .getPayments().get(1).getAmount());
+        assertEquals(first.getTimestamp(), retry.getTimestamp());
+        assertEquals(originalTime, retry.getTimestamp());
+        assertEquals(BigDecimal.valueOf(5_000).setScale(2), retry.getAmount());
     }
 
     @Test
-    void updatePreservesMultiplicityOfIntentionallyEqualPaymentOccurrences() {
+    void distinctKeysAllowLegitimatePaymentsWithEqualAmountAndTimestamp() {
         Sale original = sale("SALE-SAME-PAYMENTS", CREATED_AT,
                 List.of(line(costenita, SalePresentation.UNIT, 1, BigDecimal.valueOf(10_000), 38)),
                 List.of(), customer);
         repository.save(original);
-        Sale changed = repository.findById(original.getId()).orElseThrow();
-        LocalDateTime sameTime = CREATED_AT.plusDays(1);
-        changed.registerPayment(new SalePayment(BigDecimal.valueOf(2_000), sameTime));
-        changed.registerPayment(new SalePayment(BigDecimal.valueOf(2_000), sameTime));
-
-        repository.update(changed);
-        repository.update(changed);
+        LocalDateTime fixedTime = LocalDateTime.of(2026, 11, 13, 12, 0);
+        SaleRepositoryJdbc fixedClockRepository = new SaleRepositoryJdbc(provider, transactionManager,
+                Clock.fixed(fixedTime.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+        SalePayment first = fixedClockRepository.appendPayment(original.getId(), BigDecimal.valueOf(2_000), "payment-a");
+        SalePayment second = fixedClockRepository.appendPayment(original.getId(), BigDecimal.valueOf(2_000), "payment-b");
 
         assertEquals(2, database.payments.size());
+        assertEquals(first.getTimestamp(), second.getTimestamp());
+        assertEquals(fixedTime, first.getTimestamp());
     }
 
     @Test
-    void updateRejectsPaymentRemovalLineChangesAndMissingSale() {
+    void updateRejectsSnapshotsAsAmbiguousIncludingStaleSnapshots() {
         Sale original = sale("SALE-IMMUTABLE", CREATED_AT,
                 List.of(line(costenita, SalePresentation.UNIT, 1, BigDecimal.valueOf(10_000), 38)),
                 List.of(new SalePayment(BigDecimal.valueOf(2_000), CREATED_AT)), customer);
@@ -238,20 +242,59 @@ class SaleRepositoryJdbcTest {
                 List.of(line(costenita, SalePresentation.UNIT, 1, BigDecimal.valueOf(9_000), 38)),
                 original.getPayments(), customer);
 
-        assertThrows(IllegalArgumentException.class, () -> repository.update(withoutOldPayment));
-        assertThrows(IllegalArgumentException.class, () -> repository.update(changedLine));
-        assertThrows(IllegalArgumentException.class, () -> repository.update(simpleSale("SALE-MISSING")));
+        assertThrows(UnsupportedOperationException.class, () -> repository.update(withoutOldPayment));
+        assertThrows(UnsupportedOperationException.class, () -> repository.update(changedLine));
+        assertThrows(UnsupportedOperationException.class, () -> repository.update(simpleSale("SALE-MISSING")));
         assertEquals(1, database.payments.size());
         assertEquals(1, database.lines.size());
     }
 
     @Test
-    void updateRejectsAnAbonoAboveTheOutstandingBalance() {
+    void appendPaymentRejectsAnAbonoAboveTheOutstandingBalance() {
         Sale sale = simpleSale("SALE-OVERPAY");
+        repository.save(sale);
         assertThrows(IllegalArgumentException.class,
-                () -> sale.registerPayment(new SalePayment(BigDecimal.valueOf(85_001), CREATED_AT.plusDays(1))));
-        assertThrows(IllegalArgumentException.class, () -> repository.update(sale));
+                () -> repository.appendPayment(sale.getId(), BigDecimal.valueOf(75_001), "too-much"));
+        assertEquals(1, database.payments.size());
+    }
+
+    @Test
+    void rejectsReusedKeyWithDifferentAmountAndNonpositiveAmounts() {
+        Sale sale = simpleSale("SALE-KEY-CONFLICT");
+        repository.save(sale);
+        repository.appendPayment(sale.getId(), BigDecimal.valueOf(5_000), "stable-key");
+        assertThrows(IllegalArgumentException.class,
+                () -> repository.appendPayment(sale.getId(), BigDecimal.valueOf(6_000), "stable-key"));
+        assertThrows(IllegalArgumentException.class,
+                () -> repository.appendPayment(sale.getId(), BigDecimal.ZERO, "zero"));
+        assertThrows(IllegalArgumentException.class,
+                () -> repository.appendPayment(sale.getId(), BigDecimal.valueOf(-1), "negative"));
+        assertEquals(2, database.payments.size());
+    }
+
+    @Test
+    void joinsOuterTransactionAndRollsBackPaymentWhenLaterSqlFails() {
+        Sale sale = simpleSale("SALE-APPENDER-OUTER");
+        assertThrows(IllegalStateException.class, () -> transactionManager.inTransaction(() -> {
+            repository.save(sale);
+            repository.appendPayment(sale.getId(), BigDecimal.valueOf(1_000), "outer-key");
+            throw new IllegalStateException("fallo posterior");
+        }));
+        assertTrue(database.sales.isEmpty());
         assertTrue(database.payments.isEmpty());
+        assertEquals(1, database.rollbacks);
+        assertEquals(0, database.commits);
+    }
+
+    @Test
+    void rollsBackWhenPaymentInsertFailsWithSqlError() {
+        Sale sale = simpleSale("SALE-APPENDER-FAIL");
+        repository.save(sale);
+        database.failOnUpdateNumber = database.updateStatements + 1;
+        assertThrows(JdbcPersistenceException.class,
+                () -> repository.appendPayment(sale.getId(), BigDecimal.valueOf(1_000), "sql-failure"));
+        assertEquals(1, database.payments.size());
+        assertEquals(1, database.rollbacks);
     }
 
     @Test
@@ -283,6 +326,11 @@ class SaleRepositoryJdbcTest {
         return sale(id, CREATED_AT,
                 List.of(line(costenita, SalePresentation.FULL_BASKET, 1, BigDecimal.valueOf(85_000), 38)),
                 List.of(new SalePayment(BigDecimal.valueOf(10_000), CREATED_AT)), customer);
+    }
+
+    private SaleRepositoryJdbc repositoryWithClock(LocalDateTime now) {
+        return new SaleRepositoryJdbc(provider, transactionManager,
+                Clock.fixed(now.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
     }
 
     private static Sale sale(String id, LocalDateTime createdAt, List<SaleLine> lines,
@@ -443,14 +491,36 @@ class SaleRepositoryJdbcTest {
                 return 1;
             }
             if (sql.startsWith("insert into sale_payment")) {
+                Object key = values.get(4);
+                if (key != null && payments.stream().anyMatch(payment ->
+                        payment.get("sale_id").equals(values.get(1)) && key.equals(payment.get("idempotency_key")))) {
+                    throw new SQLException("duplicate idempotency key", "23505");
+                }
                 payments.add(row("id", nextPaymentId++, "sale_id", values.get(1),
-                        "amount", values.get(2), "occurred_at", values.get(3)));
+                        "amount", values.get(2), "occurred_at", values.get(3), "idempotency_key", key));
                 return 1;
             }
             throw new SQLException("SQL de escritura no soportado por fake: " + sql);
         }
 
         private List<Map<String, Object>> query(String sql, Map<Integer, Object> parameters) throws SQLException {
+            if (sql.startsWith("select amount, occurred_at from sale_payment where sale_id = ?")) {
+                return payments.stream().filter(payment -> payment.get("sale_id").equals(parameters.get(1))
+                                && java.util.Objects.equals(payment.get("idempotency_key"), parameters.get(2)))
+                        .map(payment -> row("amount", payment.get("amount"),
+                                "occurred_at", payment.get("occurred_at"))).toList();
+            }
+            if (sql.startsWith("select coalesce((select sum(quantity * unit_price)")) {
+                String saleId = (String) parameters.get(1);
+                BigDecimal total = lines.stream().filter(line -> line.get("sale_id").equals(saleId))
+                        .map(line -> ((BigDecimal) line.get("unit_price")).multiply(
+                                BigDecimal.valueOf((Integer) line.get("quantity"))))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal paid = payments.stream().filter(payment -> payment.get("sale_id").equals(saleId))
+                        .map(payment -> (BigDecimal) payment.get("amount"))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                return List.of(row("total", total, "paid", paid));
+            }
             if (sql.contains("from sale s")) {
                 List<Map<String, Object>> rows = new ArrayList<>();
                 if (sql.contains("where s.id = ?")) {

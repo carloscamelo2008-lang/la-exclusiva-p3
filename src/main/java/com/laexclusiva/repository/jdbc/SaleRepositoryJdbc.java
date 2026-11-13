@@ -11,6 +11,7 @@ import com.laexclusiva.model.Seller;
 import com.laexclusiva.persistence.jdbc.JdbcConnectionProvider;
 import com.laexclusiva.persistence.jdbc.JdbcPersistenceException;
 import com.laexclusiva.persistence.jdbc.JdbcTransactionManager;
+import com.laexclusiva.repository.SalePaymentAppender;
 import com.laexclusiva.repository.SaleRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -18,9 +19,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,10 +31,10 @@ import java.util.Optional;
  * Implementación JDBC del historial de ventas.
  *
  * <p>Las inserciones de cabecera, líneas y pago inicial se confirman en una sola transacción.
- * Las actualizaciones solo anexan pagos, protegiendo la venta con bloqueo de fila; las consultas
- * cargan las relaciones uno-a-muchos por lotes y conservan los snapshots guardados en SQL.</p>
+ * Los abonos nuevos requieren una clave idempotente y bloqueo de fila; las actualizaciones por
+ * instantánea se rechazan. Las consultas cargan relaciones por lotes y conservan los snapshots SQL.</p>
  */
-public final class SaleRepositoryJdbc implements SaleRepository {
+public final class SaleRepositoryJdbc implements SaleRepository, SalePaymentAppender {
 
     private static final String SALE_SELECT = """
             SELECT s.id AS sale_id, s.created_at, se.id AS seller_id, se.name AS seller_name,
@@ -47,6 +48,7 @@ public final class SaleRepositoryJdbc implements SaleRepository {
 
     private final JdbcConnectionProvider connectionProvider;
     private final JdbcTransactionManager transactionManager;
+    private final Clock clock;
 
     /**
      * Crea el adaptador con el proveedor compartido y el coordinador transaccional de JDBC.
@@ -57,11 +59,25 @@ public final class SaleRepositoryJdbc implements SaleRepository {
      */
     public SaleRepositoryJdbc(JdbcConnectionProvider connectionProvider,
                               JdbcTransactionManager transactionManager) {
-        if (connectionProvider == null || transactionManager == null) {
-            throw new IllegalArgumentException("El proveedor JDBC y el coordinador transaccional son obligatorios.");
+        this(connectionProvider, transactionManager, Clock.systemDefaultZone());
+    }
+
+    /**
+     * Crea el adaptador con una fuente temporal controlable para pruebas deterministas.
+     *
+     * @param connectionProvider proveedor JDBC compartido
+     * @param transactionManager coordinador de transacciones
+     * @param clock reloj usado para fechar abonos nuevos
+     * @throws IllegalArgumentException si alguna dependencia es nula
+     */
+    public SaleRepositoryJdbc(JdbcConnectionProvider connectionProvider,
+                              JdbcTransactionManager transactionManager, Clock clock) {
+        if (connectionProvider == null || transactionManager == null || clock == null) {
+            throw new IllegalArgumentException("El proveedor JDBC, el coordinador y el reloj son obligatorios.");
         }
         this.connectionProvider = connectionProvider;
         this.transactionManager = transactionManager;
+        this.clock = clock;
     }
 
     /**
@@ -81,38 +97,51 @@ public final class SaleRepositoryJdbc implements SaleRepository {
                 insertLine(connection, sale.getId(), line);
             }
             for (SalePayment payment : sale.getPayments()) {
-                insertPayment(connection, sale.getId(), payment);
+                insertPayment(connection, sale.getId(), payment, null);
             }
             return null;
         }));
     }
 
     /**
-     * Anexa solo los pagos nuevos de la venta; no modifica ni elimina el historial existente.
+     * Rechaza las actualizaciones por instantánea, que no incluyen una clave de pago persistente.
      *
-     * <p>La fila de venta se bloquea hasta el fin de la transacción. Dado que el modelo no contiene
-     * ID de pagos, las ocurrencias se reconocen por importe y fecha normalizados a la precisión del
-     * esquema. Una repetición de la misma instantánea no inserta el pago dos veces.</p>
-     *
-     * @param sale snapshot con los pagos históricos y los abonos que se desean agregar
-     * @throws IllegalArgumentException si la venta no existe, se alteran sus datos/líneas o se intenta
-     *                                  retirar o modificar un pago persistido
-     * @throws JdbcPersistenceException si falla SQL; el cambio completo se revierte
+     * @param sale estado recibido; no se inspecciona ni se persiste
+     * @throws UnsupportedOperationException siempre; use {@link #appendPayment(String, BigDecimal, String)}
      */
     @Override
     public void update(Sale sale) {
-        validateSale(sale);
-        transactionManager.inTransaction(() -> connectionProvider.withConnection(connection -> {
-            Header header = findHeader(connection, sale.getId(), true)
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "No existe una venta con el ID: " + sale.getId()));
-            Sale persisted = loadSale(connection, header);
-            ensureSaleFieldsAndLinesUnchanged(persisted, sale);
-            List<SalePayment> additions = findNewPayments(persisted.getPayments(), sale.getPayments());
-            for (SalePayment payment : additions) {
-                insertPayment(connection, sale.getId(), payment);
+        throw new UnsupportedOperationException(
+                "La actualización por instantánea no es segura; registre abonos mediante appendPayment.");
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public SalePayment appendPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+        requireId(saleId, "El identificador de venta es obligatorio.");
+        if (saleId.length() > 48) throw new IllegalArgumentException("El identificador supera el límite SQL.");
+        BigDecimal normalizedAmount = requireMoney(amount, "importe del abono");
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 64) {
+            throw new IllegalArgumentException("La clave de idempotencia debe tener entre 1 y 64 caracteres.");
+        }
+        return transactionManager.inTransaction(() -> connectionProvider.withConnection(connection -> {
+            findHeader(connection, saleId, true).orElseThrow(() ->
+                    new IllegalArgumentException("No existe una venta con el ID: " + saleId));
+            SalePayment existing = findPaymentByKey(connection, saleId, idempotencyKey);
+            if (existing != null) {
+                if (existing.getAmount().compareTo(normalizedAmount) != 0) {
+                    throw new IllegalArgumentException("La clave de idempotencia ya se registró con otro importe.");
+                }
+                return existing;
             }
-            return null;
+            BigDecimal[] totals = findSaleTotals(connection, saleId);
+            BigDecimal balance = totals[0].subtract(totals[1]);
+            if (normalizedAmount.compareTo(balance) > 0) {
+                throw new IllegalArgumentException("El abono supera el saldo pendiente de la venta.");
+            }
+            SalePayment payment = new SalePayment(normalizedAmount, normalize(LocalDateTime.now(clock)));
+            insertPayment(connection, saleId, payment, idempotencyKey);
+            return payment;
         }));
     }
 
@@ -215,14 +244,45 @@ public final class SaleRepositoryJdbc implements SaleRepository {
         }
     }
 
-    private static void insertPayment(Connection connection, String saleId, SalePayment payment)
+    private static void insertPayment(Connection connection, String saleId, SalePayment payment,
+                                      String idempotencyKey)
             throws SQLException {
-        String sql = "INSERT INTO sale_payment (sale_id, amount, occurred_at) VALUES (?, ?, ?)";
+        String sql = "INSERT INTO sale_payment (sale_id, amount, occurred_at, idempotency_key) VALUES (?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, saleId);
             statement.setBigDecimal(2, requireMoney(payment.getAmount(), "importe del pago"));
             statement.setObject(3, normalize(payment.getTimestamp()));
+            statement.setString(4, idempotencyKey);
             requireOneRow(statement.executeUpdate(), "No se insertó un pago de la venta.");
+        }
+    }
+
+    private static SalePayment findPaymentByKey(Connection connection, String saleId, String key)
+            throws SQLException {
+        String sql = "SELECT amount, occurred_at FROM sale_payment WHERE sale_id = ? AND idempotency_key = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, saleId);
+            statement.setString(2, key);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) return null;
+                return new SalePayment(resultSet.getBigDecimal("amount"),
+                        resultSet.getObject("occurred_at", LocalDateTime.class));
+            }
+        }
+    }
+
+    private static BigDecimal[] findSaleTotals(Connection connection, String saleId) throws SQLException {
+        String sql = """
+                SELECT COALESCE((SELECT SUM(quantity * unit_price) FROM sale_line WHERE sale_id = ?), 0) AS total,
+                       COALESCE((SELECT SUM(amount) FROM sale_payment WHERE sale_id = ?), 0) AS paid
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, saleId);
+            statement.setString(2, saleId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) throw new SQLException("No se pudieron calcular los totales de venta.");
+                return new BigDecimal[]{resultSet.getBigDecimal("total"), resultSet.getBigDecimal("paid")};
+            }
         }
     }
 
@@ -356,61 +416,6 @@ public final class SaleRepositoryJdbc implements SaleRepository {
         return grouped;
     }
 
-    private static void ensureSaleFieldsAndLinesUnchanged(Sale persisted, Sale requested) {
-        if (!normalize(persisted.getCreatedAt()).equals(normalize(requested.getCreatedAt()))
-                || !persisted.getSeller().getId().equals(requested.getSeller().getId())
-                || !sameCustomer(persisted.getCustomer(), requested.getCustomer())
-                || persisted.getLines().size() != requested.getLines().size()) {
-            throw new IllegalArgumentException("La actualización solo puede anexar pagos; no puede alterar la venta.");
-        }
-        for (int index = 0; index < persisted.getLines().size(); index++) {
-            SaleLine oldLine = persisted.getLines().get(index);
-            SaleLine newLine = requested.getLines().get(index);
-            if (!oldLine.getProduct().getId().equals(newLine.getProduct().getId())
-                    || !oldLine.getPresentation().code().equals(newLine.getPresentation().code())
-                    || oldLine.getQuantity() != newLine.getQuantity()
-                    || oldLine.getUnitsPerBasketSnapshot() != newLine.getUnitsPerBasketSnapshot()
-                    || oldLine.getUnitPrice().compareTo(newLine.getUnitPrice()) != 0) {
-                throw new IllegalArgumentException(
-                        "La actualización no puede modificar líneas ni sus precios históricos.");
-            }
-        }
-    }
-
-    private static boolean sameCustomer(Customer first, Customer second) {
-        if (first == null || second == null) {
-            return first == second;
-        }
-        return first.getId().equals(second.getId());
-    }
-
-    private static List<SalePayment> findNewPayments(List<SalePayment> persisted, List<SalePayment> requested) {
-        Map<PaymentKey, Integer> remaining = new HashMap<>();
-        for (SalePayment payment : persisted) {
-            remaining.merge(paymentKey(payment), 1, Integer::sum);
-        }
-        List<SalePayment> additions = new ArrayList<>();
-        for (SalePayment payment : requested) {
-            PaymentKey key = paymentKey(payment);
-            int count = remaining.getOrDefault(key, 0);
-            if (count > 0) {
-                remaining.put(key, count - 1);
-            } else {
-                additions.add(payment);
-            }
-        }
-        if (remaining.values().stream().anyMatch(count -> count > 0)) {
-            throw new IllegalArgumentException(
-                    "La actualización no puede modificar ni retirar pagos que ya están en el historial.");
-        }
-        return additions;
-    }
-
-    private static PaymentKey paymentKey(SalePayment payment) {
-        return new PaymentKey(requireMoney(payment.getAmount(), "importe del pago"),
-                normalize(payment.getTimestamp()));
-    }
-
     private static void validateSale(Sale sale) {
         if (sale == null) {
             throw new IllegalArgumentException("La venta no puede ser nula.");
@@ -484,5 +489,4 @@ public final class SaleRepositoryJdbc implements SaleRepository {
 
     private record Header(String id, LocalDateTime createdAt, Seller seller, Customer customer) { }
 
-    private record PaymentKey(BigDecimal amount, LocalDateTime occurredAt) { }
 }

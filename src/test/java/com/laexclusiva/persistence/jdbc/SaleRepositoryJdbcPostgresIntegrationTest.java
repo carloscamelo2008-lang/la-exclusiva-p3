@@ -2,6 +2,7 @@ package com.laexclusiva.persistence.jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.ContainerType;
@@ -18,6 +19,10 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +30,7 @@ import org.junit.jupiter.api.Test;
 class SaleRepositoryJdbcPostgresIntegrationTest {
 
     @Test
-    void persistsReadsAndAppendsPaymentsAgainstTheDedicatedTestDatabase() {
+    void persistsAndAppendsPaymentsIdempotentlyAgainstTheDedicatedTestDatabase() throws Exception {
         String testUrl = System.getenv(DatabaseConfig.TEST_URL_ENV);
         Assumptions.assumeTrue(testUrl != null && !testUrl.isBlank(),
                 "Omitida: LAEXCLUSIVA_TEST_DB_URL no está configurada.");
@@ -80,15 +85,75 @@ class SaleRepositoryJdbcPostgresIntegrationTest {
             assertEquals(new BigDecimal("1250.00"), loaded.getLines().get(0).getUnitPrice());
             assertEquals(24, loaded.getLines().get(0).getUnitsPerBasketSnapshot());
 
-            loaded.registerPayment(new SalePayment(new BigDecimal("500.00"), createdAt.plusMinutes(1)));
-            repository.update(loaded);
-            repository.update(loaded);
+            SalePayment first = repository.appendPayment(saleId, new BigDecimal("500.00"), "retry-" + token);
+            SalePayment replay = repository.appendPayment(saleId, new BigDecimal("500.00"), "retry-" + token);
+            assertEquals(first.getTimestamp(), replay.getTimestamp());
             assertEquals(1, repository.findById(saleId).orElseThrow().getPayments().size());
+
+            assertEquals("23505", sqlStateInCause(tryDuplicate(provider, saleId, first, "retry-" + token)));
+
+            CountDownLatch start = new CountDownLatch(1);
+            ExecutorService pool = Executors.newFixedThreadPool(2);
+            try {
+                Future<SalePayment> one = pool.submit(() -> { start.await();
+                    return repository.appendPayment(saleId, new BigDecimal("100.00"), "concurrent-" + token); });
+                Future<SalePayment> two = pool.submit(() -> { start.await();
+                    return repository.appendPayment(saleId, new BigDecimal("100.00"), "concurrent-" + token); });
+                start.countDown();
+                assertEquals(one.get().getTimestamp(), two.get().getTimestamp());
+            } finally {
+                pool.shutdownNow();
+            }
+            assertEquals(2, repository.findById(saleId).orElseThrow().getPayments().size());
+
+            CountDownLatch overpayStart = new CountDownLatch(1);
+            ExecutorService overpayPool = Executors.newFixedThreadPool(2);
+            try {
+                Future<Boolean> one = overpayPool.submit(() -> attemptPayment(repository, saleId,
+                        "race-a-" + token, overpayStart));
+                Future<Boolean> two = overpayPool.submit(() -> attemptPayment(repository, saleId,
+                        "race-b-" + token, overpayStart));
+                overpayStart.countDown();
+                assertEquals(1, (one.get() ? 1 : 0) + (two.get() ? 1 : 0));
+            } finally {
+                overpayPool.shutdownNow();
+            }
+            Sale afterConcurrentPayments = repository.findById(saleId).orElseThrow();
+            assertEquals(3, afterConcurrentPayments.getPayments().size());
+            assertTrue(afterConcurrentPayments.calculateBalance().compareTo(BigDecimal.ZERO) >= 0);
             assertThrows(UnsupportedOperationException.class, () -> repository.deleteById(saleId));
         } finally {
             cleanupFixture(provider, saleId, customerId, sellerId, productId,
                     saleCreated, customerCreated, sellerCreated, productCreated);
         }
+    }
+
+    private static boolean attemptPayment(SaleRepositoryJdbc repository, String saleId,
+                                          String key, CountDownLatch start) throws InterruptedException {
+        start.await();
+        try {
+            repository.appendPayment(saleId, new BigDecimal("1000.00"), key);
+            return true;
+        } catch (IllegalArgumentException overBalance) {
+            return false;
+        }
+    }
+
+    private static RuntimeException tryDuplicate(JdbcConnectionProvider provider, String saleId,
+                                                  SalePayment original, String key) {
+        return assertThrows(JdbcPersistenceException.class, () -> insertFixture(provider, """
+                INSERT INTO sale_payment (sale_id, amount, occurred_at, idempotency_key)
+                VALUES (?, ?, ?, ?)
+                """, saleId, original.getAmount(), original.getTimestamp(), key));
+    }
+
+    private static String sqlStateInCause(Throwable failure) {
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof SQLException sqlException) return sqlException.getSQLState();
+            current = current.getCause();
+        }
+        return null;
     }
 
     private static void insertFixture(JdbcConnectionProvider provider, String sql, Object... values) {
