@@ -16,7 +16,9 @@ import com.laexclusiva.repository.jdbc.SaleRepositoryJdbc;
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -38,17 +40,17 @@ class SaleRepositoryJdbcPostgresIntegrationTest {
         DatabaseConfig config = DatabaseConfig.fromTestEnvironment();
         JdbcConnectionProvider provider = new JdbcConnectionProvider(config);
         JdbcTransactionManager transactionManager = new JdbcTransactionManager(provider);
-        SaleRepositoryJdbc repository = new SaleRepositoryJdbc(provider, transactionManager);
-
         String token = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
         String sellerId = "SEL-TST-" + token;
         String customerId = "C-TST-" + token;
         String productId = "P-TST-" + token;
         String saleId = "SALE-TST-" + token;
+        String rollbackSaleId = "SALE-RBK-" + token;
         boolean sellerCreated = false;
         boolean customerCreated = false;
         boolean productCreated = false;
         boolean saleCreated = false;
+        boolean rollbackAttempted = false;
 
         try {
             insertFixture(provider, """
@@ -74,9 +76,28 @@ class SaleRepositoryJdbcPostgresIntegrationTest {
             BeerProduct product = new BeerProduct(productId, "Producto de prueba", 330, 24,
                     ContainerType.NON_RETURNABLE_CAN, null);
             LocalDateTime createdAt = LocalDateTime.now().withNano(0);
+            LocalDateTime paymentTime = LocalDateTime.of(2026, 11, 13, 11, 0);
+            SaleRepositoryJdbc repository = new SaleRepositoryJdbc(provider, transactionManager,
+                    Clock.fixed(paymentTime.toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+
+            BeerProduct missingProduct = new BeerProduct("MISSING-" + token, "Producto ausente", 330, 24,
+                    ContainerType.NON_RETURNABLE_CAN, null);
+            Sale brokenSale = Sale.reconstitute(rollbackSaleId, createdAt, seller, customer,
+                    List.of(SaleLine.reconstitute(product, SalePresentation.UNIT, 1,
+                                    new BigDecimal("1250.00"), 24),
+                            SaleLine.reconstitute(missingProduct, SalePresentation.UNIT, 1,
+                                    new BigDecimal("900.00"), 24)), List.of());
+            assertEquals(0, countRows(provider, "sale", rollbackSaleId),
+                    "El ID aleatorio reservado para la prueba de rollback ya existe.");
+            rollbackAttempted = true;
+            assertThrows(JdbcPersistenceException.class, () -> repository.save(brokenSale));
+            assertEquals(0, countRows(provider, "sale", rollbackSaleId));
+            assertEquals(0, countRows(provider, "sale_line", rollbackSaleId));
+
             Sale sale = Sale.reconstitute(saleId, createdAt, seller, customer,
                     List.of(SaleLine.reconstitute(product, SalePresentation.UNIT, 2,
-                            new BigDecimal("1250.00"), 24)), List.of());
+                            new BigDecimal("1250.00"), 24)),
+                    List.of(new SalePayment(new BigDecimal("250.00"), createdAt.plusMinutes(1))));
 
             repository.save(sale);
             saleCreated = true;
@@ -84,13 +105,25 @@ class SaleRepositoryJdbcPostgresIntegrationTest {
             assertEquals(saleId, loaded.getId());
             assertEquals(new BigDecimal("1250.00"), loaded.getLines().get(0).getUnitPrice());
             assertEquals(24, loaded.getLines().get(0).getUnitsPerBasketSnapshot());
+            assertEquals(createdAt.plusMinutes(1), loaded.getPayments().get(0).getTimestamp());
 
-            SalePayment first = repository.appendPayment(saleId, new BigDecimal("500.00"), "retry-" + token);
-            SalePayment replay = repository.appendPayment(saleId, new BigDecimal("500.00"), "retry-" + token);
+            String retryKey = "retry-" + token;
+            SalePayment first = repository.appendPayment(saleId, new BigDecimal("500.00"), retryKey);
+            SaleRepositoryJdbc laterClockRepository = new SaleRepositoryJdbc(provider, transactionManager,
+                    Clock.fixed(paymentTime.plusDays(1).toInstant(ZoneOffset.UTC), ZoneOffset.UTC));
+            SalePayment replay = laterClockRepository.appendPayment(saleId, new BigDecimal("500.00"), retryKey);
             assertEquals(first.getTimestamp(), replay.getTimestamp());
-            assertEquals(1, repository.findById(saleId).orElseThrow().getPayments().size());
+            assertEquals(2, repository.findById(saleId).orElseThrow().getPayments().size());
+            assertThrows(IllegalArgumentException.class,
+                    () -> repository.appendPayment(saleId, new BigDecimal("600.00"), retryKey));
 
-            assertEquals("23505", sqlStateInCause(tryDuplicate(provider, saleId, first, "retry-" + token)));
+            SalePayment sameTupleOtherOperation = repository.appendPayment(saleId,
+                    new BigDecimal("500.00"), "distinct-" + token);
+            assertEquals(first.getAmount(), sameTupleOtherOperation.getAmount());
+            assertEquals(first.getTimestamp(), sameTupleOtherOperation.getTimestamp());
+            assertEquals(3, repository.findById(saleId).orElseThrow().getPayments().size());
+
+            assertEquals("23505", sqlStateInCause(tryDuplicate(provider, saleId, first, retryKey)));
 
             CountDownLatch start = new CountDownLatch(1);
             ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -104,7 +137,7 @@ class SaleRepositoryJdbcPostgresIntegrationTest {
             } finally {
                 pool.shutdownNow();
             }
-            assertEquals(2, repository.findById(saleId).orElseThrow().getPayments().size());
+            assertEquals(4, repository.findById(saleId).orElseThrow().getPayments().size());
 
             CountDownLatch overpayStart = new CountDownLatch(1);
             ExecutorService overpayPool = Executors.newFixedThreadPool(2);
@@ -119,12 +152,15 @@ class SaleRepositoryJdbcPostgresIntegrationTest {
                 overpayPool.shutdownNow();
             }
             Sale afterConcurrentPayments = repository.findById(saleId).orElseThrow();
-            assertEquals(3, afterConcurrentPayments.getPayments().size());
+            assertEquals(5, afterConcurrentPayments.getPayments().size());
             assertTrue(afterConcurrentPayments.calculateBalance().compareTo(BigDecimal.ZERO) >= 0);
+            assertThrows(IllegalArgumentException.class,
+                    () -> repository.appendPayment(saleId, new BigDecimal("151.00"), "beyond-final-balance-" + token));
             assertThrows(UnsupportedOperationException.class, () -> repository.deleteById(saleId));
         } finally {
             cleanupFixture(provider, saleId, customerId, sellerId, productId,
-                    saleCreated, customerCreated, sellerCreated, productCreated);
+                    saleCreated, customerCreated, sellerCreated, productCreated,
+                    rollbackSaleId, rollbackAttempted);
         }
     }
 
@@ -168,14 +204,37 @@ class SaleRepositoryJdbcPostgresIntegrationTest {
         });
     }
 
+    private static int countRows(JdbcConnectionProvider provider, String table, String saleId) {
+        if (!List.of("sale", "sale_line").contains(table)) {
+            throw new IllegalArgumentException("Tabla no permitida para la comprobación de rollback.");
+        }
+        String idColumn = table.equals("sale") ? "id" : "sale_id";
+        return provider.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT COUNT(*) FROM " + table + " WHERE " + idColumn + " = ?")) {
+                statement.setString(1, saleId);
+                try (java.sql.ResultSet resultSet = statement.executeQuery()) {
+                    if (!resultSet.next()) throw new SQLException("No se obtuvo el conteo del fixture.");
+                    return resultSet.getInt(1);
+                }
+            }
+        });
+    }
+
     private static void cleanupFixture(JdbcConnectionProvider provider, String saleId, String customerId,
                                        String sellerId, String productId, boolean saleCreated,
-                                       boolean customerCreated, boolean sellerCreated, boolean productCreated) {
+                                       boolean customerCreated, boolean sellerCreated, boolean productCreated,
+                                       String rollbackSaleId, boolean rollbackAttempted) {
         provider.withConnection(connection -> {
             if (saleCreated) {
                 deleteById(connection, "DELETE FROM sale_payment WHERE sale_id = ?", saleId);
                 deleteById(connection, "DELETE FROM sale_line WHERE sale_id = ?", saleId);
                 deleteById(connection, "DELETE FROM sale WHERE id = ?", saleId);
+            }
+            if (rollbackAttempted) {
+                deleteById(connection, "DELETE FROM sale_payment WHERE sale_id = ?", rollbackSaleId);
+                deleteById(connection, "DELETE FROM sale_line WHERE sale_id = ?", rollbackSaleId);
+                deleteById(connection, "DELETE FROM sale WHERE id = ?", rollbackSaleId);
             }
             if (customerCreated) deleteById(connection, "DELETE FROM customer WHERE id = ?", customerId);
             if (sellerCreated) deleteById(connection, "DELETE FROM seller WHERE id = ?", sellerId);
