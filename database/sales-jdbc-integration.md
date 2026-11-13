@@ -114,6 +114,12 @@ inventario. La integración final depende de esos contratos y requiere revisión
 - La ejecución dirigida del 2026-11-13 pasó 26 pruebas y omitió la única prueba PostgreSQL porque
   `LAEXCLUSIVA_TEST_DB_URL` no estaba configurada. No se estableció conexión ni se modificó base
   de datos alguna.
+- Verificación completa del 2026-11-13: `mvn clean verify` con Java 17.0.21 finalizó en
+  `BUILD SUCCESS`: 154 pruebas contabilizadas, 153 aprobadas, 0 fallidas, 0 errores y 1 omitida
+  por falta de `LAEXCLUSIVA_TEST_DB_URL`.
+- Maven advirtió 6 problemas de modelo efectivo en cada dependencia JavaFX; las pruebas también
+  mostraron el aviso de configuración no modular de JavaFX durante `AuthenticationServiceTest`.
+  No hubo fallos de compilación y la verificación completa pasó.
 - La integración real solo podrá conectarse mediante `LAEXCLUSIVA_TEST_DB_URL`, validada por
   `DatabaseConfig.fromTestEnvironment()` para que apunte a `la_exclusiva_test`.
 - No se ejecutan migraciones desde estas pruebas. La base de pruebas debe tener el esquema V001
@@ -128,6 +134,6 @@ del catálogo; para cálculos históricos se debe usar `SaleLine.getUnitPrice()`
 
 ## Próximos pasos
 
-1. Ejecutar `mvn clean verify` y comprobar advertencias de compilación.
-2. Revisar con Carlos el contrato de identidad/idempotencia de pagos antes de activar JDBC en producción.
-3. Implementar la coordinación de servicio cuando los DAO de inventario y cartera compartan el proveedor transaccional.
+1. Revisar con Carlos el contrato de identidad/idempotencia de pagos antes de activar JDBC en producción.
+2. Correr la prueba PostgreSQL en `la_exclusiva_test` tras preparar esa base y configurar únicamente las variables documentadas.
+3. Implementar la coordinación del servicio cuando los DAO de inventario y cartera compartan el proveedor transaccional.

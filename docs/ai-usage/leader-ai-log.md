@@ -89,5 +89,18 @@ Añadir una sección por cada interacción relevante de IA vinculada con tareas 
 - **Pruebas reales:** `mvn -Dtest=SaleRepositoryJdbcTest,SaleRepositoryJdbcPostgresIntegrationTest,SaleTest test`, con Java 17.0.21 y Maven 3.10.0: BUILD SUCCESS, 27 pruebas contabilizadas, 26 aprobadas y 1 omitida; 0 fallos y 0 errores. La prueba omitida requiere `LAEXCLUSIVA_TEST_DB_URL`; no se conectó a PostgreSQL ni se cambió base alguna.
 - **Errores encontrados y resolución:** (1) compilación porque `Optional.map` no acepta una carga que lanza `SQLException`; se cambió a una rama explícita dentro del callback JDBC. (2) compilación del fake JDBC porque una lambda `forEach` no propagaba `SQLException`; se reemplazó por un bucle. (3) dos aserciones comparaban `BigDecimal` ignorando la escala `NUMERIC(19,2)`; se ajustaron al valor con escala de base de datos. Las ejecuciones dirigidas finales pasaron.
 - **Advertencias observadas:** Maven mostró advertencias de modelos efectivos de JavaFX que ya aparecían en las pruebas de modelo. No hubo warnings de compilación del código nuevo.
-- **Commit asociado:** microcommit del adaptador, las pruebas y la actualización documental; su hash se anotará en la bitácora al quedar creado.
+- **Commit asociado:** `509a611` (`feat(sales-jdbc): persist sales atomically and append payments`).
 - **Pendientes de revisión humana:** validar la clave de equivalencia de abonos por importe/fecha; revisar el documento de diseño de unidad de trabajo y contratos con los DAO de Jesús; aplicar V001 manualmente en `la_exclusiva_test` y correr la prueba PostgreSQL cuando exista un entorno dedicado.
+
+## Registro 8
+
+- **Fecha:** 2026-11-13.
+- **Herramienta:** Codex en la aplicación de escritorio.
+- **Fase / tarea:** verificación de integración del trabajo local en `feature/sales-jdbc`.
+- **Objetivo:** ejecutar la suite completa con Java 17 y registrar el estado real del adaptador antes de entregar la rama.
+- **Resumen de la ayuda recibida:** se ejecutó `mvn clean verify` después de los dos microcommits de código. La compilación cubrió 57 fuentes principales y 18 de prueba. Maven terminó con `BUILD SUCCESS`; se contabilizaron 154 pruebas, 153 aprobadas, 0 fallidas, 0 errores y 1 omitida por no estar configurada `LAEXCLUSIVA_TEST_DB_URL`.
+- **Archivos creados o modificados:** `database/sales-jdbc-integration.md` y esta bitácora para registrar el resultado final.
+- **Decisiones técnicas asistidas por Codex:** mantener la prueba PostgreSQL como optativa y no conectarse a una base de desarrollo; describir la suite simulada como unitaria, no como integración real.
+- **Errores y resolución:** no hubo fallos en la verificación completa. Las advertencias fueron 6 problemas al formar modelos efectivos de JavaFX por dependencia y el aviso de configuración JavaFX no modular durante `AuthenticationServiceTest`; no impidieron las pruebas.
+- **Commit asociado:** commit documental final que registra la verificación de esta sesión.
+- **Pendientes de validación humana:** revisar el adaptador y aprobar la semántica de idempotencia de pagos; verificar la prueba con PostgreSQL sobre `la_exclusiva_test` después de preparar esa base; acordar con los responsables de inventario/cartera la futura unidad transaccional antes de integrar `SaleService`.
