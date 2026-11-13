@@ -9,7 +9,7 @@ Crear dos bases independientes:
 - `la_exclusiva`: desarrollo local.
 - `la_exclusiva_test`: pruebas de integración, solo con datos ficticios.
 
-Ejecutar `database/migrations/V001__initial_schema.sql` una sola vez desde pgAdmin Query Tool, conectado a cada base vacía. La migración crea las diez tablas, restricciones e índices. No carga productos ni existencias iniciales.
+Ejecutar `database/migrations/V001__initial_schema.sql` una sola vez desde pgAdmin Query Tool, conectado a cada base vacía. Después de V001, ejecutar `database/migrations/V002__payment_idempotency.sql` para añadir la clave estable de los abonos. V002 debe aplicarse también antes de usar `SalePaymentAppender` o las pruebas reales actuales. Las migraciones no cargan productos ni existencias iniciales. No se deben aplicar automáticamente ni sobre una base real sin verificar explícitamente que el destino es `la_exclusiva_test`.
 
 ## Variables de entorno
 

@@ -3,8 +3,9 @@
 ## Estado y alcance
 
 Este documento acompaña el trabajo de `feature/sales-jdbc`. Las capacidades se marcan como
-implementadas solo después de contar con código y pruebas ejecutadas. La sesión actual prepara
-el adaptador del repositorio de ventas; todavía no activa la composición JDBC de `SaleService`.
+implementadas solo después de contar con código y pruebas ejecutadas. El adaptador JDBC y el puerto
+de abonos idempotentes están implementados y verificados con JDBC simulado; la composición JDBC de
+`SaleService` todavía no está activa.
 
 ## Incompatibilidades encontradas y decisión aplicada
 
@@ -12,7 +13,7 @@ el adaptador del repositorio de ventas; todavía no activa la composición JDBC 
 |---|---|---|
 | `Sale` genera siempre un UUID y no permitía cargar el ID SQL | `sale.id` es `VARCHAR(48)` y debe conservarse al leer | Se añadió `Sale.reconstitute(...)`, que valida datos y conserva ID, fecha, líneas y pagos sin generar otra identidad. |
 | `SaleLine` guardaba el precio aplicado en memoria, pero no exponía la capacidad capturada | `sale_line` conserva `unit_price` y `units_per_basket_snapshot` | Se añadió la fábrica validada `SaleLine.reconstitute(...)` y un accessor para el snapshot de capacidad. El mapeo no sustituirá ninguno por valores actuales del catálogo. |
-| `SalePayment` no tiene ID de dominio | `sale_payment.id` lo genera PostgreSQL | La actualización implementada anexa pagos bajo bloqueo de venta y compara ocurrencias por importe y fecha; no reconstruye ni borra el historial. |
+| `SalePayment` no tiene una clave de solicitud de dominio | La base genera `sale_payment.id` | V002 añade `idempotency_key`; los abonos explícitos se identifican por `(sale_id, idempotency_key)`, nunca por importe y fecha. |
 | El contrato común ofrece `deleteById` para compensaciones en memoria | Las FK comerciales son `ON DELETE RESTRICT` y la historia debe conservarse | El adaptador JDBC rechazará el borrado físico de forma explícita. El rollback se hace con la transacción que insertó la venta, no con un borrado posterior. |
 
 Los importes del esquema son `NUMERIC(19,2)`. El adaptador debe rechazar escalas que no quepan en dos decimales en vez de redondearlas. Las fechas se guardarán con precisión de microsegundos para corresponder a `TIMESTAMP(6) WITHOUT TIME ZONE`.
@@ -42,14 +43,23 @@ transacción. Un ID duplicado se rechaza; no se hace upsert. La consulta complet
 snapshots históricos desde las columnas de venta y no consulta precios actuales para recalcularlos.
 El listado ordena por fecha e ID y carga las relaciones en consultas agrupadas.
 
-La actualización implementada representa únicamente anexar abonos. El repositorio bloquea la fila
-de venta con `SELECT ... FOR UPDATE`, comprueba que los campos y líneas históricos no cambiaron y
-que el conjunto solicitado conserva todas las ocurrencias ya persistidas. Un pago repetido en una
-solicitud se reconoce como ya aplicado; una eliminación o modificación histórica se rechaza. La
-base no tiene una clave de idempotencia de pago expuesta al dominio: la comparación por
-`(importe, occurred_at)` con multiplicidad es un contrato acotado del adaptador, no una identidad
-universal de pago. La futura integración de servicio deberá conservar fechas de solicitud estables
-y definir el límite de reintentos.
+`SalePaymentAppender.appendPayment(saleId, amount, idempotencyKey)` es el único contrato JDBC
+seguro para anexar pagos. La operación participa en una transacción exterior o crea una propia,
+bloquea la cabecera con `SELECT ... FOR UPDATE`, busca primero la clave y compara el importe. Si
+coinciden devuelve la fila persistida y su fecha original; un importe distinto con la misma clave
+se rechaza. Para una clave nueva calcula el total histórico desde líneas y pagos, valida que el
+importe positivo no exceda el saldo y lo inserta con clave. El bloqueo serializa solicitudes sobre
+una venta y la restricción única de V002 es una defensa adicional de PostgreSQL. Las filas
+anteriores y los pagos iniciales conservan `idempotency_key = NULL`.
+
+`SaleRepositoryJdbc.update(Sale)` rechaza explícitamente todas las actualizaciones por instantánea.
+El modelo no transporta la clave de persistencia, así que ni una copia obsoleta ni la tupla
+`(importe, occurred_at)` permiten distinguir de manera fiable nuevos abonos y reintentos. Los
+abonos deben anexarse por el puerto idempotente. Esta restricción evita borrar o duplicar historia;
+no activa ni modifica `SaleService`.
+
+Aplicar `V002__payment_idempotency.sql` manualmente después de V001, solo tras identificar y
+verificar el destino. Esta tarea no ejecutó ninguna migración ni alteró una base de datos.
 
 ## Política de borrado
 
@@ -109,21 +119,26 @@ inventario. La integración final depende de esos contratos y requiere revisión
 ## Pruebas y limitaciones
 
 - Las pruebas unitarias de modelo no requieren PostgreSQL.
-- `SaleRepositoryJdbcTest` usa un controlador JDBC simulado para comprobar SQL parametrizado,
-  rollback, anexado idempotente y mapeo. No es una prueba PostgreSQL.
-- La ejecución dirigida del 2026-11-13 pasó 26 pruebas y omitió la única prueba PostgreSQL porque
-  `LAEXCLUSIVA_TEST_DB_URL` no estaba configurada. No se estableció conexión ni se modificó base
-  de datos alguna.
+- `SaleRepositoryJdbcTest` usa un controlador JDBC simulado para comprobar clave idempotente,
+  fechas de reintento, claves distintas con igual importe/fecha, importes inválidos, saldo,
+  preservación histórica, rechazo de snapshots, participación transaccional y rollback SQL. No es
+  una prueba PostgreSQL y no demuestra bloqueos reales ni restricciones del servidor.
+- La prueba PostgreSQL comprueba la restricción única y la concurrencia con dos conexiones cuando
+  existe `LAEXCLUSIVA_TEST_DB_URL`; requiere V001 y V002 ya instaladas en `la_exclusiva_test`.
+- Ejecución dirigida de esta intervención (Java 17.0.21, Maven 3.10.0): 18 pruebas contabilizadas,
+  17 aprobadas y 1 omitida; 0 fallidas y 0 errores. La omitida es la prueba PostgreSQL, ya que
+  `LAEXCLUSIVA_TEST_DB_URL` no está configurada. No se estableció conexión ni se modificó base
+  alguna.
 - Verificación completa del 2026-11-13: `mvn clean verify` con Java 17.0.21 finalizó en
-  `BUILD SUCCESS`: 154 pruebas contabilizadas, 153 aprobadas, 0 fallidas, 0 errores y 1 omitida
+  `BUILD SUCCESS`: 157 pruebas contabilizadas, 156 aprobadas, 0 fallidas, 0 errores y 1 omitida
   por falta de `LAEXCLUSIVA_TEST_DB_URL`.
 - Maven advirtió 6 problemas de modelo efectivo en cada dependencia JavaFX; las pruebas también
   mostraron el aviso de configuración no modular de JavaFX durante `AuthenticationServiceTest`.
   No hubo fallos de compilación y la verificación completa pasó.
 - La integración real solo podrá conectarse mediante `LAEXCLUSIVA_TEST_DB_URL`, validada por
   `DatabaseConfig.fromTestEnvironment()` para que apunte a `la_exclusiva_test`.
-- No se ejecutan migraciones desde estas pruebas. La base de pruebas debe tener el esquema V001
-  aplicado previamente.
+- No se ejecutan migraciones desde estas pruebas. La base aislada debe tener V001 y V002 aplicadas
+  previamente por una persona que haya verificado el destino `la_exclusiva_test`.
 - `SaleRepositoryJdbcPostgresIntegrationTest` ejecuta un round-trip real solo si se configura la
   URL dedicada; si falta, se omite y no debe describirse como prueba PostgreSQL ejecutada.
 - No se escriben credenciales ni se limpia ninguna tabla compartida.
@@ -134,6 +149,6 @@ del catálogo; para cálculos históricos se debe usar `SaleLine.getUnitPrice()`
 
 ## Próximos pasos
 
-1. Revisar con Carlos el contrato de identidad/idempotencia de pagos antes de activar JDBC en producción.
-2. Correr la prueba PostgreSQL en `la_exclusiva_test` tras preparar esa base y configurar únicamente las variables documentadas.
+1. Aplicar V002 únicamente en `la_exclusiva_test` y correr las pruebas reales de unicidad/concurrencia.
+2. Diseñar con Carlos y el equipo cómo `SaleService` obtendrá y conservará una clave estable por operación antes de conectarlo al puerto.
 3. Implementar la coordinación del servicio cuando los DAO de inventario y cartera compartan el proveedor transaccional.

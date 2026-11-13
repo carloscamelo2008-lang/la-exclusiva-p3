@@ -15,6 +15,8 @@ public interface SalePaymentAppender {
      * @return pago persistido; en una repetición conserva su fecha original
      * @throws IllegalArgumentException si la venta no existe, la clave ya se usó con otro importe,
      *                                  o el importe no cabe en el saldo pendiente
+     * @throws com.laexclusiva.persistence.jdbc.JdbcPersistenceException si falla SQL y se revierte
+     *                                                                  la transacción completa
      */
     SalePayment appendPayment(String saleId, BigDecimal amount, String idempotencyKey);
 }
