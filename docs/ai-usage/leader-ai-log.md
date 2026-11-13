@@ -136,3 +136,18 @@ Añadir una sección por cada interacción relevante de IA vinculada con tareas 
 - **Errores encontrados y resolución:** ninguno de compilación; no hubo corrección de producción. No se conectó ni se modificó base alguna durante esta intervención.
 - **Commit asociado:** `b54db35` (`test(sales-jdbc): cover PostgreSQL payment integrity cases`). La actualización documental que registra esta entrada se incluye en el commit documental de cierre.
 - **Limitaciones y validación humana pendiente:** ejecutar de nuevo `mvn clean verify` con variables configuradas localmente y verificando que la URL es `la_exclusiva_test`; revisar los reportes de la prueba PostgreSQL ampliada. Hasta entonces, la rama no debe considerarse lista para publicar el PR. La integración de `SaleService` sigue pendiente de acordar la generación/permanencia de claves y los límites transaccionales de inventario/cartera.
+
+## Registro 11
+
+- **Fecha:** 2026-11-13.
+- **Herramienta:** Codex en la aplicación de escritorio, Git y lectura de reportes locales; ejecución Maven realizada personalmente por Carlos en PowerShell.
+- **Fase / tarea:** validación final de `feature/sales-jdbc` y preparación de publicación del PR.
+- **Objetivo:** registrar evidencia definitiva de la suite con PostgreSQL real después de ampliar la prueba de integridad.
+- **Resumen fiel del encargo:** verificar rama, HEAD y Surefire sin exponer secretos; registrar la ejecución de Carlos; hacer un microcommit documental; publicar la rama y abrir PR hacia `develop` sin fusionarlo.
+- **Ejecución informada por Carlos:** 2026-11-13 a las 12:13, hora Colombia, `C:\apache-maven-3.10.0\bin\mvn.cmd clean verify`, Microsoft JDK 17.0.18 y URL exclusivamente `jdbc:postgresql://localhost:5432/la_exclusiva_test`. Carlos informó `BUILD SUCCESS`, JAR generado, 157 pruebas, 0 fallos, 0 errores y 0 omitidas.
+- **Evidencia local revisada por Codex:** 18 XML de Surefire suman 157 pruebas con 0 fallos, 0 errores y 0 omisiones; el XML/TXT de `SaleRepositoryJdbcPostgresIntegrationTest` registra 1 ejecutada, 0 fallos, 0 errores y 0 omitidas, con marca temporal de las 12:13. El JAR `target/la-exclusiva-p3-1.0-SNAPSHOT.jar` también tiene marca temporal posterior. El código del test valida que la URL use el nombre exacto `la_exclusiva_test`; no se leyeron ni imprimieron credenciales.
+- **Clasificación:** 1 prueba PostgreSQL real aprobada y 156 pruebas unitarias/JDBC simuladas aprobadas. La prueba real incluye persistencia de snapshots, pagos con la misma tupla y claves distintas, reintento con reloj posterior, conflicto de importe, rollback de inserción parcial, restricción única, concurrencia con dos conexiones y protección del saldo.
+- **Archivos documentales actualizados:** `database/sales-jdbc-integration.md` y esta bitácora. No se cambiaron código ni esquema en esta intervención documental.
+- **Errores y resolución:** ninguno. No se ejecutaron conexiones, migraciones ni escrituras de base por Codex en esta intervención; la ejecución PostgreSQL fue realizada por Carlos.
+- **Commit asociado:** commit documental de esta entrada; el resultado se incluye con los cambios técnicos existentes de `feature/sales-jdbc`.
+- **Limitaciones restantes:** `SaleService` y `Main` continúan usando repositorios en memoria. La integración JDBC general aún depende de acordar claves estables a nivel de caso de uso y de compartir unidad transaccional con inventario/cartera.

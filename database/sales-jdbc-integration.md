@@ -140,9 +140,13 @@ inventario. La integración final depende de esos contratos y requiere revisión
 - Después de ese reporte se ampliaron las aserciones PostgreSQL para añadir conflicto de importe,
   dos claves con la misma tupla importe/fecha, reloj posterior en el reintento, pago inicial y
   rollback de una inserción parcial. `mvn test-compile` con Java 17 terminó en `BUILD SUCCESS`, pero
-  estas nuevas aserciones aún necesitan ejecutarse contra PostgreSQL: las variables no estaban
-  disponibles en el proceso de esta revisión. Por ello, los reportes completos anteriores no se
-  presentan como validación de esas aserciones añadidas.
+  en esa revisión inicial estas nuevas aserciones todavía necesitaban ejecución real.
+- Validación definitiva del 2026-11-13 a las 12:13 (Colombia), ejecutada por Carlos en PowerShell
+  con Microsoft JDK 17.0.18 y `C:\apache-maven-3.10.0\bin\mvn.cmd clean verify`, usando únicamente
+  `jdbc:postgresql://localhost:5432/la_exclusiva_test`: `BUILD SUCCESS`, 157 pruebas, 157
+  aprobadas, 0 fallidas, 0 errores y 0 omitidas. Surefire confirma 1 prueba PostgreSQL real
+  aprobada y 156 pruebas unitarias/simuladas aprobadas. El JAR también fue generado. Esta ejecución
+  posterior incluye las aserciones ampliadas en `b54db35`, por lo que cierra la validación pendiente.
 - Maven advirtió 6 problemas de modelo efectivo en cada dependencia JavaFX; las pruebas también
   mostraron el aviso de configuración no modular de JavaFX durante `AuthenticationServiceTest`.
   No hubo fallos de compilación y la verificación completa pasó.
@@ -150,9 +154,8 @@ inventario. La integración final depende de esos contratos y requiere revisión
   `DatabaseConfig.fromTestEnvironment()` para que apunte a `la_exclusiva_test`.
 - No se ejecutan migraciones desde estas pruebas. La base aislada debe tener V001 y V002 aplicadas
   previamente por una persona que haya verificado el destino `la_exclusiva_test`.
-- `SaleRepositoryJdbcPostgresIntegrationTest` se omite si falta la URL dedicada. El reporte
-  posterior anterior la ejecutó realmente; la versión ampliada de la prueba todavía requiere una
-  nueva ejecución PostgreSQL.
+- `SaleRepositoryJdbcPostgresIntegrationTest` se omite si falta la URL dedicada. La última
+  ejecución confirmada la corrió contra `la_exclusiva_test` y pasó con las aserciones ampliadas.
 - No se escriben credenciales ni se limpia ninguna tabla compartida.
 
 La tabla `sale_line` conserva únicamente el precio histórico de la presentación vendida. El
