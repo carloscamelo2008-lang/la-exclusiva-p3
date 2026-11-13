@@ -127,11 +127,22 @@ inventario. La integración final depende de esos contratos y requiere revisión
   existe `LAEXCLUSIVA_TEST_DB_URL`; requiere V001 y V002 ya instaladas en `la_exclusiva_test`.
 - Ejecución dirigida de esta intervención (Java 17.0.21, Maven 3.10.0): 18 pruebas contabilizadas,
   17 aprobadas y 1 omitida; 0 fallidas y 0 errores. La omitida es la prueba PostgreSQL, ya que
-  `LAEXCLUSIVA_TEST_DB_URL` no está configurada. No se estableció conexión ni se modificó base
-  alguna.
+  `LAEXCLUSIVA_TEST_DB_URL` no estaba configurada en ese proceso.
 - Verificación completa del 2026-11-13: `mvn clean verify` con Java 17.0.21 finalizó en
   `BUILD SUCCESS`: 157 pruebas contabilizadas, 156 aprobadas, 0 fallidas, 0 errores y 1 omitida
   por falta de `LAEXCLUSIVA_TEST_DB_URL`.
+- Verificación posterior observada en `target/surefire-reports` (2026-11-13 11:57, hora local):
+  157 pruebas, 0 fallidas, 0 errores y 0 omitidas. El reporte PostgreSQL registra 1 prueba aprobada
+  y 0 omitidas; las otras 156 pruebas son simuladas o unitarias. La prueba usa
+  `DatabaseConfig.fromTestEnvironment()`, que rechaza cualquier URL cuyo nombre no sea exactamente
+  `la_exclusiva_test`, y comprobó la columna/clave única de V002. Esto acredita que V001 y V002
+  funcionaban en esa ejecución.
+- Después de ese reporte se ampliaron las aserciones PostgreSQL para añadir conflicto de importe,
+  dos claves con la misma tupla importe/fecha, reloj posterior en el reintento, pago inicial y
+  rollback de una inserción parcial. `mvn test-compile` con Java 17 terminó en `BUILD SUCCESS`, pero
+  estas nuevas aserciones aún necesitan ejecutarse contra PostgreSQL: las variables no estaban
+  disponibles en el proceso de esta revisión. Por ello, los reportes completos anteriores no se
+  presentan como validación de esas aserciones añadidas.
 - Maven advirtió 6 problemas de modelo efectivo en cada dependencia JavaFX; las pruebas también
   mostraron el aviso de configuración no modular de JavaFX durante `AuthenticationServiceTest`.
   No hubo fallos de compilación y la verificación completa pasó.
@@ -139,8 +150,9 @@ inventario. La integración final depende de esos contratos y requiere revisión
   `DatabaseConfig.fromTestEnvironment()` para que apunte a `la_exclusiva_test`.
 - No se ejecutan migraciones desde estas pruebas. La base aislada debe tener V001 y V002 aplicadas
   previamente por una persona que haya verificado el destino `la_exclusiva_test`.
-- `SaleRepositoryJdbcPostgresIntegrationTest` ejecuta un round-trip real solo si se configura la
-  URL dedicada; si falta, se omite y no debe describirse como prueba PostgreSQL ejecutada.
+- `SaleRepositoryJdbcPostgresIntegrationTest` se omite si falta la URL dedicada. El reporte
+  posterior anterior la ejecutó realmente; la versión ampliada de la prueba todavía requiere una
+  nueva ejecución PostgreSQL.
 - No se escriben credenciales ni se limpia ninguna tabla compartida.
 
 La tabla `sale_line` conserva únicamente el precio histórico de la presentación vendida. El
@@ -149,6 +161,6 @@ del catálogo; para cálculos históricos se debe usar `SaleLine.getUnitPrice()`
 
 ## Próximos pasos
 
-1. Aplicar V002 únicamente en `la_exclusiva_test` y correr las pruebas reales de unicidad/concurrencia.
+1. Repetir `mvn clean verify` con la configuración exclusiva de `la_exclusiva_test` para ejecutar la versión ampliada de la prueba PostgreSQL; el reporte previo confirma que V001 y V002 ya se usaban correctamente.
 2. Diseñar con Carlos y el equipo cómo `SaleService` obtendrá y conservará una clave estable por operación antes de conectarlo al puerto.
 3. Implementar la coordinación del servicio cuando los DAO de inventario y cartera compartan el proveedor transaccional.
