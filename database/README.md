@@ -1,23 +1,73 @@
-# PostgreSQL: persistencia definitiva en una etapa posterior
+# PostgreSQL y JDBC
 
-PostgreSQL es el motor previsto para la persistencia definitiva. En el primer avance, la prioridad es construir y probar los casos de uso de consola; se utilizarán colecciones en memoria detrás de contratos de repositorio. Los datos de ese avance se reinician al cerrar el programa.
+PostgreSQL es la persistencia prevista para La Exclusiva P3. La infraestructura JDBC utiliza Java 17, JDBC estándar y el controlador PostgreSQL.
 
-## Alcance de la siguiente etapa
+## Bases locales
 
-- Diseñar el modelo entidad-relación.
-- Crear schema.sql y datos ficticios de prueba.
-- Implementar repositorios/DAO mediante JDBC.
-- Configurar transacciones para guardar una venta, líneas, pagos y ajustes de inventario de manera consistente.
-- Implementar CRUD y manejo de errores de persistencia.
-- Probar restricciones e integridad de las operaciones.
+Crear dos bases independientes:
 
-## Configuración local prevista
+- `la_exclusiva`: desarrollo local.
+- `la_exclusiva_test`: pruebas de integración, solo con datos ficticios.
 
-No guardar credenciales en Git. La conexión utilizará variables de entorno:
-- LAEXCLUSIVA_DB_URL
-- LAEXCLUSIVA_DB_USER
-- LAEXCLUSIVA_DB_PASSWORD
+Ejecutar `database/migrations/V001__initial_schema.sql` una sola vez desde pgAdmin Query Tool, conectado a cada base vacía. La migración crea las diez tablas, restricciones e índices. No carga productos ni existencias iniciales.
 
-Formato de URL de ejemplo: jdbc:postgresql://localhost:5432/la_exclusiva.
+## Variables de entorno
 
-Usar datos ficticios en scripts y pruebas. No copiar al repositorio teléfonos, direcciones ni saldos reales de clientes.
+Configurar estas variables en el proceso que ejecuta Maven:
+
+| Variable | Uso |
+|---|---|
+| `LAEXCLUSIVA_DB_URL` | URL de la base local de desarrollo |
+| `LAEXCLUSIVA_TEST_DB_URL` | URL separada para pruebas de integración |
+| `LAEXCLUSIVA_DB_USER` | Usuario local PostgreSQL |
+| `LAEXCLUSIVA_DB_PASSWORD` | Contraseña local PostgreSQL |
+
+Desarrollo:
+
+```text
+jdbc:postgresql://localhost:5432/la_exclusiva
+```
+
+Pruebas:
+
+```text
+jdbc:postgresql://localhost:5432/la_exclusiva_test
+```
+
+Ejemplo PowerShell para desarrollo:
+
+```powershell
+$env:LAEXCLUSIVA_DB_URL = "jdbc:postgresql://localhost:5432/la_exclusiva"
+$env:LAEXCLUSIVA_DB_USER = "postgres"
+$env:LAEXCLUSIVA_DB_PASSWORD = "TU_PASSWORD_LOCAL"
+```
+
+Ejemplo PowerShell para pruebas:
+
+```powershell
+$env:LAEXCLUSIVA_TEST_DB_URL = "jdbc:postgresql://localhost:5432/la_exclusiva_test"
+$env:LAEXCLUSIVA_DB_USER = "postgres"
+$env:LAEXCLUSIVA_DB_PASSWORD = "TU_PASSWORD_LOCAL"
+```
+
+Se reutilizan usuario y contraseña, pero nunca la URL. Las pruebas unitarias no requieren variables ni PostgreSQL. Las pruebas de integración se omiten si falta `LAEXCLUSIVA_TEST_DB_URL`; si está definida, `DatabaseConfig.fromTestEnvironment()` comprueba que la base de destino sea exactamente `la_exclusiva_test`.
+
+No guardar contraseñas en Git, README, pruebas ni bitácoras. El proveedor no imprime la contraseña. Nunca ejecutar limpieza de datos de prueba sobre `la_exclusiva`.
+
+## Clases JDBC
+
+- `DatabaseConfig`: valida y carga la configuración de desarrollo o pruebas.
+- `JdbcConnectionProvider`: entrega una conexión por operación o reutiliza la conexión transaccional activa.
+- `JdbcTransactionManager`: coordina un único commit/rollback para la operación completa.
+- `SqlFunction<T>`: callback JDBC utilizado por `withConnection`.
+- `JdbcPersistenceException`: excepción no comprobada para errores SQL.
+
+Consultar [el contrato de integración JDBC](jdbc-integration-contract.md) antes de implementar DAO o límites transaccionales.
+
+## Ejecución
+
+```bash
+mvn clean verify
+```
+
+La aplicación principal seguirá utilizando repositorios en memoria hasta que se complete la implementación y composición de los DAO.
