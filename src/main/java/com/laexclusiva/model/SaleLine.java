@@ -14,6 +14,7 @@ public final class SaleLine {
     private final SalePresentation presentation;
     private final int quantity;
     private final BigDecimal unitPrice;
+    private final int unitsPerBasketSnapshot;
 
     /**
      * Crea una línea y captura el precio vigente para el producto y la presentación indicados.
@@ -45,13 +46,46 @@ public final class SaleLine {
         this.presentation = presentation;
         this.quantity = quantity;
         this.unitPrice = configuredPrice;
+        this.unitsPerBasketSnapshot = product.getUnitsPerBasket();
     }
 
-    private SaleLine(BeerProduct product, SalePresentation presentation, int quantity, BigDecimal unitPrice) {
+    private SaleLine(BeerProduct product, SalePresentation presentation, int quantity, BigDecimal unitPrice,
+                     int unitsPerBasketSnapshot) {
         this.product = product.copy();
         this.presentation = presentation;
         this.quantity = quantity;
         this.unitPrice = unitPrice;
+        this.unitsPerBasketSnapshot = unitsPerBasketSnapshot;
+    }
+
+    /**
+     * Reconstruye una línea persistida con el precio y la capacidad capturados al vender.
+     * No consulta los precios ni la capacidad actuales del producto para reemplazar esos valores.
+     *
+     * @param product producto asociado a la línea
+     * @param presentation código de presentación recuperado de la base de datos
+     * @param quantity cantidad vendida
+     * @param unitPrice precio histórico por presentación
+     * @param unitsPerBasketSnapshot capacidad de canasta aplicada al registrar la venta
+     * @return línea reconstruida con sus valores históricos
+     * @throws IllegalArgumentException si falta un dato, la cantidad/capacidad no es válida o el
+     *                                  precio no es positivo
+     */
+    public static SaleLine reconstitute(BeerProduct product, SalePresentation presentation, int quantity,
+                                        BigDecimal unitPrice, int unitsPerBasketSnapshot) {
+        if (product == null || presentation == null || unitPrice == null) {
+            throw new IllegalArgumentException("El producto, la presentación y el precio histórico son obligatorios.");
+        }
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("La cantidad de la línea debe ser mayor que cero.");
+        }
+        if (unitPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El precio aplicado debe ser mayor que cero.");
+        }
+        if (unitsPerBasketSnapshot <= 0 || unitsPerBasketSnapshot % 2 != 0) {
+            throw new IllegalArgumentException("La capacidad histórica de canasta debe ser positiva y par.");
+        }
+        return new SaleLine(product, presentation, quantity, unitPrice, unitsPerBasketSnapshot);
     }
 
     /**
@@ -60,7 +94,7 @@ public final class SaleLine {
      * @return nueva línea con los mismos datos y el precio histórico aplicado
      */
     public SaleLine copy() {
-        return new SaleLine(product, presentation, quantity, unitPrice);
+        return new SaleLine(product, presentation, quantity, unitPrice, unitsPerBasketSnapshot);
     }
 
     /**
@@ -78,6 +112,15 @@ public final class SaleLine {
 
     public int getQuantity() {
         return quantity;
+    }
+
+    /**
+     * Devuelve la capacidad de canasta capturada para esta venta.
+     *
+     * @return unidades por canasta según el catálogo al momento de vender
+     */
+    public int getUnitsPerBasketSnapshot() {
+        return unitsPerBasketSnapshot;
     }
 
     /**

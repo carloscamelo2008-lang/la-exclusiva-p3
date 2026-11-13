@@ -61,3 +61,18 @@
 ## Registros siguientes
 
 Añadir una sección por cada interacción relevante de IA vinculada con tareas posteriores. Describir únicamente lo que realmente se consultó, revisó y aplicó.
+
+## Registro 6
+
+- **Fecha:** 2026-11-12.
+- **Herramienta:** Codex en la aplicación de escritorio.
+- **Fase / tarea:** persistencia JDBC de ventas; rama `feature/sales-jdbc`, creada desde `develop` sincronizada con `origin/develop` en `56169745`.
+- **Objetivo:** iniciar el adaptador JDBC de ventas con trazabilidad por microcommits, reconstitución histórica segura y pruebas.
+- **Resumen fiel del encargo:** implementar `SaleRepositoryJdbc` con escrituras atómicas, recuperación completa, pagos/abonos sin duplicaciones, borrado no destructivo, pruebas unitarias y de integración opcionales, documentación del futuro límite transaccional de ventas/inventario/cartera y bitácora IA; no modificar JavaFX ni los DAO de inventario/productos de Jesús, ni hacer push/merge.
+- **Trabajo de Codex en este bloque:** inspeccionó `TEAM.md`, la bitácora existente, contratos JDBC, esquema V001, entidades, repositorios, servicios y pruebas. Identificó que el modelo no tenía una fábrica para conservar el ID de venta ni un accessor del snapshot de capacidad. Añadió `Sale.reconstitute(...)` y `SaleLine.reconstitute(...)` con validaciones, conservación de ID, fecha, precio y capacidad histórica, y tests unitarios para esos contratos.
+- **Archivos creados o modificados:** `src/main/java/com/laexclusiva/model/Sale.java`, `src/main/java/com/laexclusiva/model/SaleLine.java`, `src/test/java/com/laexclusiva/model/SaleTest.java` y `database/sales-jdbc-integration.md`.
+- **Decisiones técnicas asistidas por Codex:** mantener separado el constructor de ventas nuevas y la fábrica de reconstitución; no derivar precio histórico de catálogo; dejar explícito que la identidad de pago falta en el modelo y diseñar el update solo como anexado bajo bloqueo, sin borrar ni reescribir pagos. La propuesta de anexado sigue pendiente de validación humana.
+- **Pruebas reales:** `mvn -Dtest=SaleTest test` con Java 17.0.21 y Maven 3.10.0: BUILD SUCCESS, 12 pruebas, 0 fallos, 0 errores y 0 omitidas. No se ejecutó PostgreSQL en este bloque.
+- **Errores y resolución:** ninguno durante este bloque. Se observaron las advertencias preexistentes de los modelos Maven de JavaFX; no afectan la prueba de modelo.
+- **Commit asociado:** primer microcommit de reconstitución histórica; se registrará junto con su hash en el historial Git. No se atribuye el bloque a un commit todavía no creado.
+- **Pendiente de revisión humana:** Carlos debe revisar el contrato de anexado de pagos por `(importe, fecha)` y confirmar su adecuación antes de habilitar la integración de servicio. También quedan pendientes la implementación JDBC, su suite y la prueba PostgreSQL opcional.

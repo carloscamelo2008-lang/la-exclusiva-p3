@@ -62,6 +62,56 @@ class SaleTest {
     }
 
     @Test
+    void reconstitutedLinePreservesHistoricalPriceAndBasketCapacity() {
+        BeerProduct currentProduct = product("COSTENITA_175");
+        currentProduct.definePrice(SalePresentation.FULL_BASKET, BigDecimal.valueOf(120_000L));
+
+        SaleLine historical = SaleLine.reconstitute(currentProduct, SalePresentation.FULL_BASKET,
+                2, BigDecimal.valueOf(80_000L), 36);
+
+        assertEquals(BigDecimal.valueOf(80_000L), historical.getUnitPrice());
+        assertEquals(36, historical.getUnitsPerBasketSnapshot());
+        assertEquals(38, historical.getProduct().getUnitsPerBasket());
+        assertEquals(BigDecimal.valueOf(160_000L), historical.getSubtotal());
+        assertEquals(36, historical.copy().getUnitsPerBasketSnapshot());
+    }
+
+    @Test
+    void reconstitutesSaleWithoutReplacingItsIdentityOrPaymentDates() {
+        String persistedId = "SALE-HISTORICA-001";
+        LocalDateTime paymentTime = CREATED_AT.plusDays(3);
+        SaleLine line = SaleLine.reconstitute(product("COSTENITA_175"), SalePresentation.FULL_BASKET,
+                1, BigDecimal.valueOf(85_000L), 38);
+        SalePayment initial = new SalePayment(BigDecimal.valueOf(20_000L), CREATED_AT);
+        SalePayment installment = new SalePayment(BigDecimal.valueOf(5_000L), paymentTime);
+
+        Sale restored = Sale.reconstitute(persistedId, CREATED_AT, seller(), customer(),
+                List.of(line), List.of(initial, installment));
+
+        assertEquals(persistedId, restored.getId());
+        assertEquals(CREATED_AT, restored.getCreatedAt());
+        assertEquals(paymentTime, restored.getPayments().get(1).getTimestamp());
+        assertEquals(BigDecimal.valueOf(25_000L), restored.calculateTotalPaid());
+        assertEquals(BigDecimal.valueOf(60_000L), restored.calculateBalance());
+    }
+
+    @Test
+    void rejectsInconsistentPersistedSaleSnapshots() {
+        SaleLine line = new SaleLine(product("COSTENITA_175"), SalePresentation.FULL_BASKET, 1);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> SaleLine.reconstitute(product("COSTENITA_175"), SalePresentation.FULL_BASKET,
+                        1, BigDecimal.valueOf(85_000L), 37));
+        assertThrows(IllegalArgumentException.class,
+                () -> Sale.reconstitute(" ", CREATED_AT, seller(), customer(), List.of(line), List.of()));
+        assertThrows(IllegalArgumentException.class,
+                () -> Sale.reconstitute("SALE-1", CREATED_AT, seller(), customer(), List.of(line),
+                        List.of(new SalePayment(BigDecimal.valueOf(85_001L), CREATED_AT))));
+        assertThrows(IllegalArgumentException.class,
+                () -> Sale.reconstitute("SALE-2", CREATED_AT, seller(), null, List.of(line), List.of()));
+    }
+
+    @Test
     void rejectsInvalidSaleLineDataAndProductsWithoutConfiguredPrice() {
         BeerProduct productWithoutPrices = new BeerProduct(
                 "NO_PRICE", "Sin precio", 330, 30, ContainerType.NON_RETURNABLE_CAN, null);
