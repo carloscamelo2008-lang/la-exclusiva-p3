@@ -4,8 +4,9 @@
 
 Este documento acompaña el trabajo de `feature/sales-jdbc`. Las capacidades se marcan como
 implementadas solo después de contar con código y pruebas ejecutadas. El adaptador JDBC y el puerto
-de abonos idempotentes están implementados y verificados con JDBC simulado; la composición JDBC de
-`SaleService` todavía no está activa.
+de abonos idempotentes están implementados. En `feature/customer-debt-jdbc` también se implementa
+la consulta JDBC de cartera de ventas; no se conecta todavía a `CustomerService`, `SaleService` ni
+`Main`.
 
 ## Incompatibilidades encontradas y decisión aplicada
 
@@ -61,6 +62,32 @@ no activa ni modifica `SaleService`.
 Aplicar `V002__payment_idempotency.sql` manualmente después de V001, solo tras identificar y
 verificar el destino. Esta tarea no ejecutó ninguna migración ni alteró una base de datos.
 
+## Consulta JDBC de cartera de ventas
+
+El puerto `CustomerDebtQuery.findOutstandingSalesDebt(customerId)` y su adaptador
+`CustomerDebtQueryJdbc` calculan la deuda asociada exclusivamente a ventas. El SQL agrupa
+`sale_line` por venta para sumar `quantity * unit_price`, agrupa `sale_payment` por venta para
+sumar abonos y combina esos dos resultados de una fila por venta antes de sumar por cliente. Así,
+varias líneas y varios pagos de una misma venta no multiplican los importes entre sí. Clientes sin
+ventas y ventas totalmente pagadas aportan cero.
+
+La consulta no lee `customer.balance`: ese saldo agregado también puede contener deuda general y no
+debe confundirse con la deuda de ventas. Usa el `JdbcConnectionProvider` compartido; si hay una
+transacción JDBC activa, la consulta se ejecuta en su misma conexión. Es estrictamente de lectura y
+no modifica ventas, líneas ni pagos.
+
+### Sustitución futura del mapa `saleDebts`
+
+`CustomerService` conserva hoy `saleDebts` en memoria. Al integrarlo, `CustomerDebtQuery` será la
+fuente de verdad de la parte asignada a ventas y la deuda general se derivará como
+`customer.balance - outstandingSalesDebt`. No se debe sumar esa deuda de ventas otra vez al balance
+ni actualizarla mediante el adaptador de consulta. La futura unidad de trabajo tendrá que guardar
+la venta/pago y ajustar el saldo agregado del cliente dentro de una sola transacción compartida.
+Las reglas de `addDebtToCustomer` y `applyPaymentToCustomer` deben seguir limitándose a la parte
+general; `addSaleDebtToCustomer` y `applyPaymentToSaleDebt` deberán consultar la deuda derivada y
+coordinar sus escrituras con la venta. No se cambia aún el servicio ni se retira su estrategia de
+compensación en memoria.
+
 ## Política de borrado
 
 `deleteById` del adaptador JDBC lanza `UnsupportedOperationException`. La operación no elimina
@@ -103,11 +130,11 @@ El trabajo actual de inventario implementa compensaciones en memoria y el saldo 
    mantiene bloqueos hasta confirmar la venta y registrar cada movimiento. Los DAO no abren ni
    confirman conexiones por separado. Esto reduce interbloqueos y evita movimientos sin descuento
    o descuentos sin venta.
-8. **Consulta de deuda pendiente.** Falta un puerto para obtener desde PostgreSQL la deuda de
-   ventas asignada a un cliente. `CustomerService` hoy consulta `saleDebts`, un `HashMap` en
-   memoria. Se propone `CustomerDebtQuery.findOutstandingSalesDebt(customerId)` y un adaptador que
-   agregue líneas y pagos por venta antes de sumarlos; el balance agregado del cliente no debe
-   confundirse con deuda general.
+8. **Consulta de deuda pendiente.** `CustomerDebtQuery.findOutstandingSalesDebt(customerId)` y
+   `CustomerDebtQueryJdbc` derivan el pendiente desde líneas y pagos agregados por venta. El puerto
+   no incluye el balance general del cliente ni modifica historial. La futura sustitución del mapa
+   `saleDebts` debe mantener `customer.balance - deuda de ventas` como deuda general y coordinar
+   ajustes de balance con la venta bajo la misma unidad de trabajo.
 9. **Coordinación con los DAO de Jesús.** Cuando estén disponibles, confirmar firmas de consulta
    y bloqueo, su uso del proveedor compartido y contratos de rollback. Después integrar bajo el
    límite de servicio, añadir pruebas de concurrencia/integración en la base exclusiva de pruebas
@@ -123,6 +150,22 @@ inventario. La integración final depende de esos contratos y requiere revisión
   fechas de reintento, claves distintas con igual importe/fecha, importes inválidos, saldo,
   preservación histórica, rechazo de snapshots, participación transaccional y rollback SQL. No es
   una prueba PostgreSQL y no demuestra bloqueos reales ni restricciones del servidor.
+- `CustomerDebtQueryJdbcTest` usa JDBC simulado para comprobar cliente sin ventas, ventas totalmente
+  pagadas y parciales, varios pagos/líneas sin multiplicación, exclusión de saldo general,
+  validación de ID, traducción de errores SQL y reutilización de conexión transaccional.
+- `CustomerDebtQueryJdbcPostgresIntegrationTest` inserta fixtures aleatorios para tres ventas del
+  cliente consultado, una venta de otro cliente y un cliente sin ventas; verifica los saldos y que
+  líneas/pagos no cambien. La limpieza se limita a sus propios IDs. Se omite si falta la URL segura.
+- Ejecución dirigida del 2026-11-16 con Java 17.0.21 y Maven 3.10.0: 6 pruebas contabilizadas,
+  5 simuladas aprobadas, 0 fallidas/errores y 1 prueba PostgreSQL omitida porque no están
+  configuradas las variables de conexión en el proceso.
+- Verificación completa del 2026-11-16: `mvn clean verify` con Java 17.0.21 terminó en
+  `BUILD SUCCESS`: 163 pruebas contabilizadas, 161 aprobadas, 0 fallidas, 0 errores y 2 omitidas.
+  Las dos omitidas son las pruebas PostgreSQL opcionales de ventas y cartera, porque las variables
+  de conexión no estaban disponibles en este proceso. No hubo conexión ni cambios en bases de datos.
+- Maven reportó 6 advertencias de modelo efectivo para cada dependencia JavaFX y el aviso de
+  configuración no modular durante `AuthenticationServiceTest`; no afectaron la compilación ni las
+  pruebas.
 - La prueba PostgreSQL comprueba la restricción única y la concurrencia con dos conexiones cuando
   existe `LAEXCLUSIVA_TEST_DB_URL`; requiere V001 y V002 ya instaladas en `la_exclusiva_test`.
 - Ejecución dirigida de esta intervención (Java 17.0.21, Maven 3.10.0): 18 pruebas contabilizadas,
