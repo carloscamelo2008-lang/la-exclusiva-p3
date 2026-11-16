@@ -21,8 +21,9 @@ public final class CustomerDebtQueryJdbc implements CustomerDebtQuery {
                 FROM sale_payment
                 GROUP BY sale_id
             )
-            SELECT COALESCE(SUM(COALESCE(line_totals.sale_total, 0)
-                                - COALESCE(payment_totals.paid_total, 0)), 0) AS outstanding_sales_debt
+            SELECT COALESCE(SUM(GREATEST(COALESCE(line_totals.sale_total, 0)
+                                         - COALESCE(payment_totals.paid_total, 0), 0)), 0)
+                   AS outstanding_sales_debt
             FROM sale
             LEFT JOIN line_totals ON line_totals.sale_id = sale.id
             LEFT JOIN payment_totals ON payment_totals.sale_id = sale.id
@@ -45,8 +46,9 @@ public final class CustomerDebtQueryJdbc implements CustomerDebtQuery {
     }
 
     /**
-     * Suma primero líneas y pagos por venta para evitar multiplicar sus importes entre sí.
-     * La consulta solo lee tablas de ventas; el saldo del cliente y la deuda general quedan excluidos.
+     * Suma primero líneas y pagos por venta para evitar multiplicar sus importes entre sí, y limita
+     * cada saldo a cero para que un sobrepago histórico no reduzca la deuda de otra venta. La consulta
+     * solo lee tablas de ventas; el saldo del cliente y la deuda general quedan excluidos.
      *
      * @param customerId identificador no vacío del cliente
      * @return deuda pendiente asociada a sus ventas, o cero si no tiene ventas

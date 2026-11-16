@@ -58,6 +58,18 @@ class CustomerDebtQueryJdbcTest {
     }
 
     @Test
+    void overpaymentOnOneSaleDoesNotOffsetAnotherSalesOutstandingDebt() {
+        database.sales.add(new SaleData("C-OVERPAY", List.of("50.00"), List.of("80.00")));
+        database.sales.add(new SaleData("C-OVERPAY", List.of("200.00"), List.of("75.00")));
+
+        BigDecimal debt = query.findOutstandingSalesDebt("C-OVERPAY");
+
+        assertEquals(0, debt.compareTo(new BigDecimal("125.00")));
+        assertTrue(database.lastSql.contains("greatest("),
+                "El SQL debe truncar a cero el saldo de cada venta antes de sumarlo.");
+    }
+
+    @Test
     void returnsZeroForCustomerWithoutSales() {
         assertEquals(0, query.findOutstandingSalesDebt("C-WITHOUT-SALES").compareTo(BigDecimal.ZERO));
         assertEquals("C-WITHOUT-SALES", database.lastCustomerId);
@@ -168,7 +180,7 @@ class CustomerDebtQueryJdbcTest {
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
                 BigDecimal paid = sale.paymentAmounts().stream().map(BigDecimal::new)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
-                debt = debt.add(total.subtract(paid));
+                debt = debt.add(total.subtract(paid).max(BigDecimal.ZERO));
             }
             return List.of(debt);
         }
