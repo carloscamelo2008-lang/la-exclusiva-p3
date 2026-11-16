@@ -187,7 +187,22 @@ El esquema ejecutable está en:
 
 `database/migrations/V001__initial_schema.sql`
 
-Ejecutarlo una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea las diez tablas, restricciones e índices. No inserta productos ni existencias iniciales: esa responsabilidad corresponde al inicializador Java idempotente. La migración falla si se intenta ejecutar por segunda vez sobre la misma base.
+`database/migrations/V002__payment_idempotency.sql` se aplica después de V001. Añade
+`sale_payment.idempotency_key VARCHAR(64)` y la unicidad `(sale_id, idempotency_key)`; PostgreSQL
+permite varias filas con `NULL`, por lo que conserva pagos anteriores y pagos iniciales sin clave,
+pero impide repetir una clave no nula dentro de la misma venta. No ejecutar migraciones desde Maven
+ni contra una base de desarrollo. Antes de cualquier prueba que escriba, confirmar que la URL es
+exclusivamente `la_exclusiva_test`.
+
+Los abonos JDBC deben usar el puerto `SalePaymentAppender.appendPayment(saleId, amount,
+idempotencyKey)`. La operación se une a la transacción exterior o abre una propia, bloquea la venta,
+consulta primero la clave y luego valida el saldo calculado desde las filas persistidas. Repetir
+clave e importe devuelve el pago existente con su fecha original; reutilizar la clave con otro
+importe se rechaza. `SaleRepositoryJdbc.update(Sale)` rechaza instantáneas, porque `SalePayment` no
+lleva la clave persistida y una instantánea obsoleta no permite distinguir de forma segura un
+reintento de un pago nuevo. La restricción única de PostgreSQL respalda el bloqueo ante carreras.
+
+Ejecutar V001 una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea las diez tablas, restricciones e índices. No inserta productos ni existencias iniciales: esa responsabilidad corresponde al inicializador Java idempotente. La migración falla si se intenta ejecutar por segunda vez sobre la misma base.
 
 ## Pruebas y seguridad de los datos
 
