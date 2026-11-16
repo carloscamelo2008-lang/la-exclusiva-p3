@@ -179,6 +179,11 @@ inventario. La integración final depende de esos contratos y requiere revisión
 - `mvn clean verify` con Java 17.0.21 terminó en `BUILD SUCCESS`: 164 pruebas contabilizadas,
   162 aprobadas, 0 fallidas, 0 errores y 2 omitidas por falta de la configuración PostgreSQL.
   El JAR se generó correctamente. No se conectó a una base ni se ejecutaron migraciones.
+- Tras integrar el merge de PR #13 (`0a9f72f`) en la rama JDBC, `mvn clean verify` con Java
+  17.0.21 y Maven 3.10.0 terminó en `BUILD SUCCESS`: 181 pruebas, 179 aprobadas, 0 fallidas,
+  0 errores y 2 omitidas. Las dos omitidas son las pruebas PostgreSQL de ventas y cartera; las
+  variables `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` no estaban
+  configuradas en este proceso. El JAR se generó y no se conectó ni modificó ninguna base.
 - Se conservó la validación de `SalePaymentAppender`; su prueba simulada rechaza los abonos mayores
   al saldo. Las advertencias observadas fueron las 6 advertencias de modelo efectivo de JavaFX y el
   aviso de configuración JavaFX no modular durante `AuthenticationServiceTest`.
