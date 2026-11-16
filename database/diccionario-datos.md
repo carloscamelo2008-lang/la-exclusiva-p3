@@ -54,7 +54,7 @@ No se incluye columna de actor o venta: no existen en `StockMovement` actual.
 | `address` | `TEXT` | NOT NULL, no vacío |
 | `balance` | `NUMERIC(19,2)` | NOT NULL DEFAULT 0, `>= 0`; deuda agregada del cliente. Se mapea desde `Customer.getBalance()`; el atributo Java `saldo` no necesita cambiar. |
 
-La deuda general se obtiene como `balance - SUM(saldos pendientes de ventas asociadas)`. La asignación de deuda de ventas no se duplica en una columna/tabla.
+La deuda general se obtiene como `balance - SUM(saldos pendientes no negativos de ventas asociadas)`. Cada saldo de venta es `GREATEST(total histórico de líneas - pagos, 0)`, aplicado antes de sumar por cliente. Un sobrepago persistido es una inconsistencia que debe detectarse y corregirse, no un crédito automático contra otra venta. La asignación de deuda de ventas no se duplica en una columna/tabla.
 
 ### `seller`
 

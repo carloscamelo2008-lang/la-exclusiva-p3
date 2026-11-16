@@ -69,7 +69,14 @@ El puerto `CustomerDebtQuery.findOutstandingSalesDebt(customerId)` y su adaptado
 `sale_line` por venta para sumar `quantity * unit_price`, agrupa `sale_payment` por venta para
 sumar abonos y combina esos dos resultados de una fila por venta antes de sumar por cliente. Así,
 varias líneas y varios pagos de una misma venta no multiplican los importes entre sí. Clientes sin
-ventas y ventas totalmente pagadas aportan cero.
+ventas y ventas totalmente pagadas aportan cero. Cada venta aporta
+`GREATEST(total histórico de líneas - pagos, 0)`; el límite se aplica antes de sumar las ventas.
+
+Un sobrepago ya persistido es una inconsistencia de datos. El `GREATEST` evita que ese saldo
+negativo reduzca la deuda de otra venta, pero no convierte el excedente en crédito transferible ni
+repara el historial. El sobrepago debe detectarse mediante conciliación de integridad y corregirse
+en los datos de su venta. El flujo normal sigue rechazándolo: `SalePaymentAppender` bloquea la venta,
+recalcula el saldo y no inserta un abono superior al pendiente.
 
 La consulta no lee `customer.balance`: ese saldo agregado también puede contener deuda general y no
 debe confundirse con la deuda de ventas. Usa el `JdbcConnectionProvider` compartido; si hay una
@@ -152,10 +159,29 @@ inventario. La integración final depende de esos contratos y requiere revisión
   una prueba PostgreSQL y no demuestra bloqueos reales ni restricciones del servidor.
 - `CustomerDebtQueryJdbcTest` usa JDBC simulado para comprobar cliente sin ventas, ventas totalmente
   pagadas y parciales, varios pagos/líneas sin multiplicación, exclusión de saldo general,
-  validación de ID, traducción de errores SQL y reutilización de conexión transaccional.
-- `CustomerDebtQueryJdbcPostgresIntegrationTest` inserta fixtures aleatorios para tres ventas del
-  cliente consultado, una venta de otro cliente y un cliente sin ventas; verifica los saldos y que
-  líneas/pagos no cambien. La limpieza se limita a sus propios IDs. Se omite si falta la URL segura.
+  el sobrepago en una venta sin compensación sobre otra venta pendiente, validación de ID,
+  traducción de errores SQL y reutilización de conexión transaccional.
+- `CustomerDebtQueryJdbcPostgresIntegrationTest` inserta fixtures aleatorios para ventas del cliente
+  consultado, incluida una venta sobrepagada mediante SQL directo para representar datos históricos
+  inconsistentes, una venta de otro cliente y un cliente sin ventas. Comprueba que el sobrepago no
+  reduce el pendiente de las otras ventas y que líneas/pagos no cambian. La limpieza se limita a sus
+  propios IDs. Se omite si falta la URL segura.
+- `SaleRepositoryJdbcTest` y `SaleRepositoryJdbcPostgresIntegrationTest` mantienen la comprobación
+  preventiva de `SalePaymentAppender`: un abono normal que supera el saldo se rechaza.
+- Revisión del riesgo de sobrepago (2026-11-16): el SQL ahora suma `GREATEST(total - pagos, 0)`
+  por venta antes de agregar por cliente. La prueba simulada deja una venta de 50 pagada por 80 junto
+  a otra con total 200 y pagos 75; el resultado permanece en 125, no en 95. La prueba PostgreSQL
+  incorpora el mismo historial inconsistente con un fixture aleatorio insertado directamente.
+- Ejecución dirigida de esta revisión con Java 17.0.21 y Maven 3.10.0: 25 pruebas contabilizadas,
+  23 aprobadas, 0 fallidas, 0 errores y 2 omitidas. Las omitidas son las integraciones PostgreSQL
+  de ventas y cartera: `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` y
+  `LAEXCLUSIVA_DB_PASSWORD` no estaban configuradas en el proceso.
+- `mvn clean verify` con Java 17.0.21 terminó en `BUILD SUCCESS`: 164 pruebas contabilizadas,
+  162 aprobadas, 0 fallidas, 0 errores y 2 omitidas por falta de la configuración PostgreSQL.
+  El JAR se generó correctamente. No se conectó a una base ni se ejecutaron migraciones.
+- Se conservó la validación de `SalePaymentAppender`; su prueba simulada rechaza los abonos mayores
+  al saldo. Las advertencias observadas fueron las 6 advertencias de modelo efectivo de JavaFX y el
+  aviso de configuración JavaFX no modular durante `AuthenticationServiceTest`.
 - Ejecución dirigida del 2026-11-16 con Java 17.0.21 y Maven 3.10.0: 6 pruebas contabilizadas,
   5 simuladas aprobadas, 0 fallidas/errores y 1 prueba PostgreSQL omitida porque no están
   configuradas las variables de conexión en el proceso.
@@ -207,6 +233,28 @@ inventario. La integración final depende de esos contratos y requiere revisión
 - `SaleRepositoryJdbcPostgresIntegrationTest` se omite si falta la URL dedicada. La última
   ejecución confirmada la corrió contra `la_exclusiva_test` y pasó con las aserciones ampliadas.
 - No se escriben credenciales ni se limpia ninguna tabla compartida.
+
+### Ejecutar las integraciones PostgreSQL desde PowerShell
+
+Configurar previamente `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` y
+`LAEXCLUSIVA_DB_PASSWORD` en la sesión privada de PowerShell. La URL debe usar exactamente la base
+`la_exclusiva_test`; no mostrar ni copiar la contraseña a logs. Este comando verifica el destino y
+ejecuta únicamente las dos pruebas de integración, sin migrar el esquema:
+
+```powershell
+if ($env:LAEXCLUSIVA_TEST_DB_URL -notmatch '^jdbc:postgresql://[^/]+/la_exclusiva_test(?:\?.*)?$') {
+    throw 'LAEXCLUSIVA_TEST_DB_URL debe apuntar exclusivamente a la_exclusiva_test.'
+}
+if ([string]::IsNullOrWhiteSpace($env:LAEXCLUSIVA_DB_USER) -or
+    [string]::IsNullOrWhiteSpace($env:LAEXCLUSIVA_DB_PASSWORD)) {
+    throw 'Configura las credenciales de prueba en esta sesión sin imprimirlas.'
+}
+$javaVersion = java -version 2>&1 | Out-String
+if ($javaVersion -notmatch 'version "17\.') { throw 'Se requiere Java 17.' }
+& 'C:\apache-maven-3.10.0\bin\mvn.cmd' `
+    '-Dtest=CustomerDebtQueryJdbcPostgresIntegrationTest,SaleRepositoryJdbcPostgresIntegrationTest' test
+if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas PostgreSQL.' }
+```
 
 La tabla `sale_line` conserva únicamente el precio histórico de la presentación vendida. El
 producto asociado a una línea reconstituida no ofrece un snapshot histórico de los otros precios

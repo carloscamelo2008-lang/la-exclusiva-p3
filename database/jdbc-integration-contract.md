@@ -176,8 +176,12 @@ BigDecimal findOutstandingSalesDebt(String customerId);
 El puerto `CustomerDebtQuery` y el adaptador `CustomerDebtQueryJdbc` calculan la deuda pendiente
 asociada a ventas. Las líneas y los pagos se agregan por separado por `sale_id` antes de combinarse;
 así, varias líneas y varios pagos no producen un producto cartesiano ni inflan los importes. El
-resultado suma por cada venta `SUM(quantity * unit_price) - SUM(amount)` y devuelve cero si el
-cliente no tiene ventas. No lee `customer.balance`, porque ese campo también incluye deuda general.
+resultado suma por venta `GREATEST(SUM(quantity * unit_price) - SUM(amount), 0)` y devuelve cero si
+el cliente no tiene ventas. El límite se aplica a cada venta antes de sumar por cliente. Un pago
+histórico superior al total de su venta es una inconsistencia que debe detectarse y corregirse; no
+se transfiere como crédito para cubrir otras ventas. El flujo normal de `SalePaymentAppender` rechaza
+abonos superiores al saldo pendiente. No lee `customer.balance`, porque ese campo también incluye
+deuda general.
 El adaptador usa el `JdbcConnectionProvider` compartido y, por tanto, reutiliza la conexión de una
 transacción exterior. Solo consulta: no cambia saldo, ventas ni pagos.
 
