@@ -1,10 +1,12 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.Seller;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.CustomerRepository;
+import com.laexclusiva.repository.SellerRepository;
 import com.laexclusiva.ui.App;
 import com.laexclusiva.ui.controller.MainController;
 import javafx.application.Platform;
@@ -195,7 +197,102 @@ public class AuthenticationServiceTest {
         });
     }
 
+    @Test
+    void testAdministratorCanListSellersAndReturnToDashboard() throws Exception {
+        SellerService sellers = new SellerService(new SellerRepository());
+        Seller seller = sellers.registerSeller("Ana Pérez", "3001234567", "Calle 10");
+
+        withMainMenu(UserRole.ADMINISTRATOR, null, sellers, (menu, account) -> {
+            Node dashboard = menu.getCenter();
+            Node sidebar = menu.getLeft();
+            Button sellersButton = (Button) sidebar.lookup("#btnSellers");
+            assertTrue(sellersButton.isVisible());
+            sellersButton.fire();
+
+            TableView<?> table = (TableView<?>) menu.getCenter().lookup("#sellersTable");
+            assertNotNull(table);
+            assertFalse(table.isEditable());
+            assertEquals(1, table.getItems().size());
+            assertEquals(List.of(seller.getId(), "Ana Pérez", "3001234567", "Calle 10"),
+                    table.getColumns().stream().map(column -> column.getCellData(0)).toList());
+            assertSame(sidebar, menu.getLeft());
+
+            ((Button) sidebar.lookup("#btnDashboard")).fire();
+            assertSame(dashboard, menu.getCenter());
+            assertSame(sidebar, menu.getLeft());
+            sellersButton.fire();
+            assertNotNull(menu.getCenter().lookup("#sellersTable"));
+        });
+    }
+
+    @ParameterizedTest
+    @CsvSource({"WORKER, true", "ADMINISTRATOR, false"})
+    void testUnauthorizedSessionDoesNotQuerySellers(UserRole role, boolean active) throws Exception {
+        SellerService sellers = new SellerService(new SellerRepository() {
+            @Override
+            public List<Seller> findAll() {
+                return fail("Una sesión sin permiso no debe consultar vendedores.");
+            }
+        });
+
+        withMainMenu(role, null, sellers, (menu, account) -> {
+            account.setActive(active);
+            Node dashboard = menu.getCenter();
+            Button sellersButton = (Button) menu.getLeft().lookup("#btnSellers");
+            sellersButton.fire();
+            assertSame(dashboard, menu.getCenter());
+            assertEquals("No tiene permiso para consultar vendedores.", ((Label) menu.getBottom()).getText());
+        });
+    }
+
+    @Test
+    void testSellerNavigationShowsEmptyList() throws Exception {
+        SellerService sellers = new SellerService(new SellerRepository());
+        withMainMenu(UserRole.ADMINISTRATOR, null, sellers, (menu, account) -> {
+            ((Button) menu.getLeft().lookup("#btnSellers")).fire();
+            TableView<?> table = (TableView<?>) menu.getCenter().lookup("#sellersTable");
+            assertNotNull(table);
+            assertTrue(table.getItems().isEmpty());
+            assertEquals("No hay vendedores registrados", ((Label) table.getPlaceholder()).getText());
+        });
+    }
+
+    @Test
+    void testSellerQueryFailureKeepsCustomerNavigationUsable() throws Exception {
+        CustomerService customers = new CustomerService(new CustomerRepository());
+        SellerService sellers = new SellerService(new SellerRepository() {
+            @Override
+            public List<Seller> findAll() {
+                throw new IllegalStateException("Fallo simulado de consulta de vendedores.");
+            }
+        });
+        withMainMenu(UserRole.ADMINISTRATOR, customers, sellers, (menu, account) -> {
+            Node dashboard = menu.getCenter();
+            Node sidebar = menu.getLeft();
+            Button customersButton = (Button) sidebar.lookup("#btnCustomers");
+            customersButton.fire();
+            Node customersView = menu.getCenter();
+            assertNotNull(customersView.lookup("#customersTable"));
+
+            ((Button) sidebar.lookup("#btnSellers")).fire();
+            assertSame(customersView, menu.getCenter());
+            Label message = (Label) menu.getBottom();
+            assertEquals("No se pudo consultar la lista de vendedores.", message.getText());
+
+            ((Button) sidebar.lookup("#btnDashboard")).fire();
+            assertSame(dashboard, menu.getCenter());
+            assertTrue(message.getText().isEmpty());
+            customersButton.fire();
+            assertNotNull(menu.getCenter().lookup("#customersTable"));
+        });
+    }
+
     private void withMainMenu(UserRole role, CustomerService customers,
+                              BiConsumer<BorderPane, UserAccount> check) throws Exception {
+        withMainMenu(role, customers, null, check);
+    }
+
+    private void withMainMenu(UserRole role, CustomerService customers, SellerService sellers,
                               BiConsumer<BorderPane, UserAccount> check) throws Exception {
         FutureTask<Void> checkMenu = new FutureTask<>(() -> {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
@@ -204,6 +301,7 @@ public class AuthenticationServiceTest {
             MainController controller = loader.getController();
             UserAccount account = new UserAccount(1L, "test", "unused", role, null);
             controller.setCustomerService(customers);
+            controller.setSellerService(sellers);
             controller.initSession(new UserSession(account));
             check.accept(menu, account);
             return null;

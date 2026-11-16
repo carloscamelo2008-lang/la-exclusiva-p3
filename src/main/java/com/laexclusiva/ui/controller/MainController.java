@@ -4,6 +4,7 @@ import com.laexclusiva.model.UserSession;
 import com.laexclusiva.service.AuthorizationService; // Ajusta el paquete según corresponda
 import com.laexclusiva.model.Permission; // Ajusta el paquete según corresponda
 import com.laexclusiva.service.CustomerService;
+import com.laexclusiva.service.SellerService;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
@@ -29,10 +30,15 @@ public class MainController {
 
     private UserSession currentSession;
     private CustomerService customerService;
+    private SellerService sellerService;
     private final AuthorizationService authorizationService = new AuthorizationService(); // O inyectado por constructor/setter
 
     public void setCustomerService(CustomerService customerService) {
         this.customerService = customerService;
+    }
+
+    public void setSellerService(SellerService sellerService) {
+        this.sellerService = sellerService;
     }
 
     @FXML
@@ -54,6 +60,28 @@ public class MainController {
         } catch (IOException | RuntimeException failure) {
             LOGGER.log(Level.WARNING, "No se pudo abrir la consulta de clientes.", failure);
             navigationMessage.setText("No se pudo consultar la lista de clientes.");
+        }
+    }
+
+    @FXML
+    private void handleShowSellers() {
+        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_SELLERS)) {
+            handleShowDashboard();
+            navigationMessage.setText("No tiene permiso para consultar vendedores.");
+            return;
+        }
+
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sellers_view.fxml"));
+            Node sellerView = loader.load();
+            SellerController controller = loader.getController();
+            controller.showSellers(sellerService.getAllSellers());
+            rootPane.setCenter(sellerView);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir la consulta de vendedores.", failure);
+            navigationMessage.setText("No se pudo consultar la lista de vendedores.");
         }
     }
 

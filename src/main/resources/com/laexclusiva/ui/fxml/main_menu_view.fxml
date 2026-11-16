@@ -29,7 +29,7 @@
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnSellers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  🤝 Vendedores">
+            <Button fx:id="btnSellers" onAction="#handleShowSellers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  🤝 Vendedores">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
