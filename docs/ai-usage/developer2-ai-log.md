@@ -39,3 +39,51 @@
 * **Qué se acepta, modifica o descarta y por qué:** Se aceptó el diseño de las clases y servicios propuestos, adaptando los paquetes a la estructura del proyecto (`com.laexclusiva.model`, `repository` y `service`) y manteniendo la consistencia con las reglas de negocio del equipo.
 * **Verificación realizada:** Integración de componentes, organización en micro commits independientes por módulo y validación exitosa mediante `mvn clean verify` (`BUILD SUCCESS`).
 * **Commit o Pull Request relacionado:** Micro commits independientes en `feature/authentication-roles` y apertura de Pull Request hacia `develop`.
+
+---
+
+### Interacción 4
+* **Fecha:** 16/11/2026
+* **Herramienta:** Codex
+* **Fase, tarea y rama:** Fase 3 – Permisos del menú principal en JavaFX (`feature/javafx-login-navigation`)
+* **Objetivo de la consulta:** Usé la IA como apoyo para revisar y corregir la visibilidad del botón Vendedores según los permisos del usuario.
+* **Resumen de la respuesta recibida:** La IA encontró que el menú mostraba Vendedores incluso para el trabajador y propuso consultar el permiso `VIEW_SELLERS` de la sesión para ocultar el botón y quitarlo de la distribución del menú cuando no correspondiera.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté usar el permiso que ya existe y conservar el comportamiento de Gestión de Usuarios. También aprobé agregar pruebas para comprobar cómo se muestran los dos botones con sesiones de administrador y trabajador.
+* **Verificación realizada:** Codex ejecutó `mvn -Dtest=AuthenticationServiceTest test` y pasaron las 7 pruebas. Después ejecutó `mvn clean verify` con JDK 25.0.2 y compilación para Java 17. Pasaron las 138 pruebas, sin fallos, errores ni omisiones.
+* **Commit o Pull Request relacionado:** Microcommit `fix(javafx): gate seller menu by permission` pendiente de creación.
+
+---
+
+### Interacción 5
+* **Fecha:** 16/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Navegación JavaFX al listado de Clientes (`feature/javafx-login-navigation`).
+* **Objetivo de la consulta:** Quise apoyarme en la IA para conectar el menú con la consulta de clientes, conservar la sesión al cambiar de pantalla y respetar los permisos de cada usuario.
+* **Resumen de la respuesta recibida:** Codex propuso abrir Clientes en el panel central y conservar el menú lateral y la sesión al volver a Resumen / Inicio. Implementó una tabla con ID, nombre, teléfono y dirección, reutilizó `CustomerService` con el `CustomerRepository` existente y comprobó `VIEW_CUSTOMER` antes de consultar. También añadió mensajes para una lista vacía y para errores de consulta.
+* **Qué se acepta, modifica o descarta y por qué:** Revisé y acepté la solución de solo lectura para completar la navegación y la consulta con los servicios que ya tenemos. Dejé la persistencia y las funcionalidades de otros módulos fuera del cambio.
+* **Verificación realizada:** Codex ejecutó `mvn -Dtest=AuthenticationServiceTest test` y se aprobaron las 12 pruebas dirigidas. También ejecutó `mvn clean verify` y se aprobaron las 143 pruebas generales. Ambas ejecuciones usaron JDK 25.0.2, compilación para Java 17 y JavaFX 17.0.2. Queda pendiente verificar la ejecución con JDK 17.
+* **Commit o Pull Request relacionado:** Commit de desarrollo `63a0276035c3750abf4b34f4dd9cba95f30d4a27`.
+
+---
+
+### Interacción 6
+* **Fecha:** 16/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Navegación JavaFX al listado de Vendedores (`feature/javafx-login-navigation`).
+* **Objetivo de la consulta:** Me apoyé en la IA para conectar el menú con la consulta de vendedores, conservar la sesión al cambiar de pantalla y respetar los permisos de cada usuario.
+* **Resumen de la respuesta recibida:** Codex conectó Vendedores a una tabla de solo lectura con ID, nombre, teléfono y dirección. Reutilizó `SellerService` y el repositorio existente, y comprobó `VIEW_SELLERS` antes de cargar la vista o consultar. También añadió mensajes para la lista vacía y los errores de consulta.
+* **Qué se acepta, modifica o descarta y por qué:** Revisé y acepté el listado de solo lectura porque cubre la consulta y mantiene la navegación que ya teníamos. Dejé fuera del cambio la persistencia y los módulos de mis compañeros.
+* **Verificación realizada:** Codex ejecutó `mvn -Dtest=AuthenticationServiceTest test` y se aprobaron las 17 pruebas dirigidas. También ejecutó `mvn clean verify` y se aprobaron las 148 pruebas generales. Ambas ejecuciones usaron JDK 25.0.2, compilación para Java 17 y JavaFX 17.0.2. Queda pendiente verificar la ejecución con JDK 17.
+* **Commit o Pull Request relacionado:** Commit de desarrollo `d992a9464b8a1192d3a79c08b2b37f1cddd276b1`.
+
+---
+
+### Interacción 7
+* **Fecha:** 16/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Navegación JavaFX a Cartera pendiente (`feature/javafx-login-navigation`).
+* **Objetivo de la consulta:** Me apoyé en la IA para conectar el menú con una pantalla de consulta de cartera, reutilizar el servicio de clientes y aplicar los permisos sin modificar la lógica de negocio.
+* **Resumen de la respuesta recibida:** Codex implementó una tabla de solo lectura con ID, nombre y saldo pendiente en COP. Filtró los clientes con saldo positivo mediante `BigDecimal`, reutilizó `CustomerService`, verificó `VIEW_PORTFOLIO` antes de consultar y mantuvo la sesión y la navegación.
+* **Qué se acepta, modifica o descarta y por qué:** Revisé y acepté la consulta de cartera porque sigue el comportamiento de la consola y no invade los módulos de mis compañeros. Dejé pendiente el registro de abonos debido a las dependencias con ventas y persistencia JDBC.
+* **Verificación realizada:** Codex ejecutó `mvn -Dtest=AuthenticationServiceTest test` con 22 pruebas aprobadas y `mvn clean verify` con 153 pruebas aprobadas. `git diff --check` pasó. Se utilizó JDK 25.0.2, compilación para Java 17 y JavaFX 17.0.2. Queda pendiente ejecutar la aplicación con JDK 17.
+* **Commit o Pull Request relacionado:** `cf3704f43f77813160c31c45f8bb16193917d090`.
