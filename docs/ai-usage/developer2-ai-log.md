@@ -39,3 +39,15 @@
 * **Qué se acepta, modifica o descarta y por qué:** Se aceptó el diseño de las clases y servicios propuestos, adaptando los paquetes a la estructura del proyecto (`com.laexclusiva.model`, `repository` y `service`) y manteniendo la consistencia con las reglas de negocio del equipo.
 * **Verificación realizada:** Integración de componentes, organización en micro commits independientes por módulo y validación exitosa mediante `mvn clean verify` (`BUILD SUCCESS`).
 * **Commit o Pull Request relacionado:** Micro commits independientes en `feature/authentication-roles` y apertura de Pull Request hacia `develop`.
+
+---
+
+### Interacción 4
+* **Fecha:** 16/11/2026
+* **Herramienta:** Codex
+* **Fase, tarea y rama:** Fase 3 – Permisos del menú principal en JavaFX (`feature/javafx-login-navigation`)
+* **Objetivo de la consulta:** Usé la IA como apoyo para revisar y corregir la visibilidad del botón Vendedores según los permisos del usuario.
+* **Resumen de la respuesta recibida:** La IA encontró que el menú mostraba Vendedores incluso para el trabajador y propuso consultar el permiso `VIEW_SELLERS` de la sesión para ocultar el botón y quitarlo de la distribución del menú cuando no correspondiera.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté usar el permiso que ya existe y conservar el comportamiento de Gestión de Usuarios. También aprobé agregar pruebas para comprobar cómo se muestran los dos botones con sesiones de administrador y trabajador.
+* **Verificación realizada:** Codex ejecutó `mvn -Dtest=AuthenticationServiceTest test` y pasaron las 7 pruebas. Después ejecutó `mvn clean verify` con JDK 25.0.2 y compilación para Java 17. Pasaron las 138 pruebas, sin fallos, errores ni omisiones.
+* **Commit o Pull Request relacionado:** Microcommit `fix(javafx): gate seller menu by permission` pendiente de creación.
