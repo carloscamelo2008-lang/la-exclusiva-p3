@@ -163,6 +163,13 @@ inventario. La integración final depende de esos contratos y requiere revisión
   `BUILD SUCCESS`: 163 pruebas contabilizadas, 161 aprobadas, 0 fallidas, 0 errores y 2 omitidas.
   Las dos omitidas son las pruebas PostgreSQL opcionales de ventas y cartera, porque las variables
   de conexión no estaban disponibles en este proceso. No hubo conexión ni cambios en bases de datos.
+- Validación definitiva del 2026-11-16 a las 13:08 (Colombia), ejecutada por Carlos con Java 17.0.18
+  y Maven 3.10.0 contra exclusivamente `la_exclusiva_test`: `mvn clean verify` terminó en
+  `BUILD SUCCESS`, con 163 pruebas aprobadas, 0 fallidas, 0 errores y 0 omitidas. Los reportes
+  Surefire locales registran 1 prueba PostgreSQL aprobada en `CustomerDebtQueryJdbcPostgresIntegrationTest`
+  y 1 en `SaleRepositoryJdbcPostgresIntegrationTest`; las 161 restantes también pasaron. El JAR
+  `target/la-exclusiva-p3-1.0-SNAPSHOT.jar` fue generado. Codex verificó los reportes y sus fechas;
+  no leyó credenciales ni repitió la ejecución.
 - Maven reportó 6 advertencias de modelo efectivo para cada dependencia JavaFX y el aviso de
   configuración no modular durante `AuthenticationServiceTest`; no afectaron la compilación ni las
   pruebas.
@@ -207,6 +214,6 @@ del catálogo; para cálculos históricos se debe usar `SaleLine.getUnitPrice()`
 
 ## Próximos pasos
 
-1. Repetir `mvn clean verify` con la configuración exclusiva de `la_exclusiva_test` para ejecutar la versión ampliada de la prueba PostgreSQL; el reporte previo confirma que V001 y V002 ya se usaban correctamente.
-2. Diseñar con Carlos y el equipo cómo `SaleService` obtendrá y conservará una clave estable por operación antes de conectarlo al puerto.
-3. Implementar la coordinación del servicio cuando los DAO de inventario y cartera compartan el proveedor transaccional.
+1. Integrar `CustomerDebtQuery` con `CustomerService` sin mezclar la deuda de ventas con la deuda general.
+2. Diseñar con el equipo cómo `SaleService` obtendrá y conservará una clave estable por operación.
+3. Coordinar ventas, abonos, cartera e inventario bajo una unidad de trabajo que comparta proveedor y transacción.

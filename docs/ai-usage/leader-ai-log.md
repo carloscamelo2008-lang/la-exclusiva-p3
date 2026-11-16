@@ -166,3 +166,17 @@ Añadir una sección por cada interacción relevante de IA vinculada con tareas 
 - **Advertencias:** 6 problemas de modelo efectivo para cada dependencia JavaFX y el aviso de configuración no modular durante la prueba JavaFX; no afectaron la compilación ni las pruebas.
 - **Commits asociados:** `1f4cb5e` (`feat(customer-debt-jdbc): add sales debt query port`) y `5e9971e` (`test(customer-debt-jdbc): verify sales debt query`). La documentación y esta bitácora se incluyen en el commit documental de cierre.
 - **Limitaciones y pendientes:** la prueba PostgreSQL está preparada pero no fue ejecutada; requiere `LAEXCLUSIVA_TEST_DB_URL` apuntando exactamente a `la_exclusiva_test` y V001/V002 ya aplicadas. No se consultaron credenciales ni se ejecutaron migraciones. `CustomerService`, `SaleService` y `Main` siguen sin integración JDBC. La sustitución del mapa requiere una unidad transaccional compartida con los ajustes de `customer.balance` y las escrituras de ventas.
+
+## Registro 13
+
+- **Fecha:** 2026-11-16, 13:08 (Colombia).
+- **Herramienta:** Maven 3.10.0 y Microsoft JDK 17.0.18 para la ejecución realizada por Carlos; Codex en la aplicación de escritorio, PowerShell y Git para inspeccionar reportes y documentar el resultado.
+- **Fase / tarea:** validación definitiva de `feature/customer-debt-jdbc` antes de publicar el PR.
+- **Resumen fiel del encargo:** confirmar rama, estado limpio y evidencia Surefire; registrar la ejecución completa con las dos integraciones PostgreSQL aprobadas; hacer un commit documental, publicar la rama y abrir un PR hacia `develop` sin fusionarlo.
+- **Ejecución informada por Carlos:** `mvn clean verify` terminó en `BUILD SUCCESS`, con 163 pruebas, 0 fallidas, 0 errores y 0 omitidas; JAR generado. La base utilizada fue exclusivamente `la_exclusiva_test`. No se solicitaron ni registraron credenciales.
+- **Evidencia local revisada por Codex:** los 20 reportes XML suman 163 pruebas, 0 fallidas, 0 errores y 0 omitidas. `CustomerDebtQueryJdbcPostgresIntegrationTest` y `SaleRepositoryJdbcPostgresIntegrationTest` registran cada una 1 prueba aprobada y ninguna omitida. Los reportes indican Java 17.0.18 y zona horaria `America/Bogota`; sus marcas de modificación y la del JAR corresponden a las 13:08. Codex no repitió las pruebas ni se conectó a la base.
+- **Archivos actualizados:** `database/sales-jdbc-integration.md` y esta bitácora. `database/jdbc-integration-contract.md` no requería cambios porque no cambió el contrato del puerto.
+- **Decisiones y alcance:** se conserva el dato de que la ejecución fue realizada por Carlos y que Codex verificó los reportes. No se modificó código, esquema ni servicio, y no se ejecutaron migraciones.
+- **Errores y advertencias:** no hubo fallos en los reportes. La ejecución no registra pruebas omitidas. Esta intervención documental no repitió Maven, por lo que no generó advertencias de compilación nuevas.
+- **Commit asociado:** microcommit documental de cierre con esta entrada y la evidencia de Surefire.
+- **Pendientes humanos:** revisar el PR. `CustomerService`, `SaleService` y `Main` todavía no usan `CustomerDebtQuery`; la integración requiere coordinar ventas, pagos, saldo de cliente e inventario bajo una transacción compartida.
