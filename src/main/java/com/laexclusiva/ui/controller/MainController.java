@@ -11,6 +11,7 @@ public class MainController {
 
     @FXML private Label welcomeLabel;
     @FXML private Label roleLabel;
+    @FXML private Button btnSellers;
     @FXML private Button btnAdminUsers;
 
     private UserSession currentSession;
@@ -29,5 +30,9 @@ public class MainController {
         boolean hasPermission = authorizationService.hasPermission(session, Permission.MANAGE_USERS);
         btnAdminUsers.setVisible(hasPermission);
         btnAdminUsers.setManaged(hasPermission);
+
+        boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
+        btnSellers.setVisible(canViewSellers);
+        btnSellers.setManaged(canViewSellers);
     }
 }
