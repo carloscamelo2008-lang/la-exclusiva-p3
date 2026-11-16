@@ -34,7 +34,7 @@
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnCredit" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  💰 Cartera y Abonos">
+            <Button fx:id="btnCredit" onAction="#handleShowPortfolio" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  💰 Cartera y Abonos">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>

@@ -23,6 +23,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import java.net.URL;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -284,6 +285,95 @@ public class AuthenticationServiceTest {
             assertTrue(message.getText().isEmpty());
             customersButton.fire();
             assertNotNull(menu.getCenter().lookup("#customersTable"));
+        });
+    }
+
+    @ParameterizedTest
+    @EnumSource(UserRole.class)
+    void testPortfolioShowsOnlyPositiveBalancesAndPreservesSession(UserRole role) throws Exception {
+        CustomerService customers = new CustomerService(new CustomerRepository());
+        customers.registerCustomer("C-01", "Ana Pérez", "3001234567", "Calle 10");
+        customers.registerCustomer("C-02", "Luis Rojas", "3001234568", "Calle 11");
+        BigDecimal balance = new BigDecimal("12345.67");
+        customers.addDebtToCustomer("C-01", balance);
+
+        withMainMenu(role, customers, (menu, account) -> {
+            Node dashboard = menu.getCenter();
+            Node sidebar = menu.getLeft();
+            Button portfolioButton = (Button) sidebar.lookup("#btnCredit");
+            portfolioButton.fire();
+
+            TableView<?> table = (TableView<?>) menu.getCenter().lookup("#portfolioTable");
+            assertNotNull(table);
+            assertFalse(table.isEditable());
+            assertEquals(1, table.getItems().size());
+            assertEquals(List.of("C-01", "Ana Pérez", balance),
+                    table.getColumns().stream().map(column -> column.getCellData(0)).toList());
+            assertSame(sidebar, menu.getLeft());
+
+            ((Button) sidebar.lookup("#btnDashboard")).fire();
+            assertSame(dashboard, menu.getCenter());
+            assertSame(sidebar, menu.getLeft());
+            portfolioButton.fire();
+            assertNotNull(menu.getCenter().lookup("#portfolioTable"));
+        });
+    }
+
+    @Test
+    void testPortfolioShowsEmptyStateWhenNoBalancesArePositive() throws Exception {
+        CustomerService customers = new CustomerService(new CustomerRepository());
+        customers.registerCustomer("C-01", "Ana Pérez", "3001234567", "Calle 10");
+        withMainMenu(UserRole.WORKER, customers, (menu, account) -> {
+            ((Button) menu.getLeft().lookup("#btnCredit")).fire();
+            TableView<?> table = (TableView<?>) menu.getCenter().lookup("#portfolioTable");
+            assertNotNull(table);
+            assertTrue(table.getItems().isEmpty());
+            assertEquals("No hay clientes con saldo pendiente", ((Label) table.getPlaceholder()).getText());
+        });
+    }
+
+    @Test
+    void testInactiveSessionDoesNotQueryPortfolio() throws Exception {
+        CustomerService customers = new CustomerService(new CustomerRepository() {
+            @Override
+            public List<Customer> findAll() {
+                return fail("Una sesión inactiva no debe consultar la cartera.");
+            }
+        });
+        withMainMenu(UserRole.ADMINISTRATOR, customers, (menu, account) -> {
+            account.setActive(false);
+            Node dashboard = menu.getCenter();
+            ((Button) menu.getLeft().lookup("#btnCredit")).fire();
+            assertSame(dashboard, menu.getCenter());
+            assertEquals("No tiene permiso para consultar la cartera.", ((Label) menu.getBottom()).getText());
+        });
+    }
+
+    @Test
+    void testPortfolioQueryFailureKeepsCurrentPanelAndMenuUsable() throws Exception {
+        CustomerService customers = new CustomerService(new CustomerRepository() {
+            @Override
+            public List<Customer> findAll() {
+                throw new IllegalStateException("Fallo simulado de consulta de cartera.");
+            }
+        });
+        SellerService sellers = new SellerService(new SellerRepository());
+        withMainMenu(UserRole.ADMINISTRATOR, customers, sellers, (menu, account) -> {
+            Node dashboard = menu.getCenter();
+            Node sidebar = menu.getLeft();
+            ((Button) sidebar.lookup("#btnSellers")).fire();
+            Node sellersView = menu.getCenter();
+            assertNotNull(sellersView.lookup("#sellersTable"));
+
+            ((Button) sidebar.lookup("#btnCredit")).fire();
+            assertSame(sellersView, menu.getCenter());
+            assertSame(sidebar, menu.getLeft());
+            Label message = (Label) menu.getBottom();
+            assertEquals("No se pudo consultar la cartera.", message.getText());
+
+            ((Button) sidebar.lookup("#btnDashboard")).fire();
+            assertSame(dashboard, menu.getCenter());
+            assertTrue(message.getText().isEmpty());
         });
     }
 

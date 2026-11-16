@@ -13,6 +13,7 @@ import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -82,6 +83,30 @@ public class MainController {
         } catch (IOException | RuntimeException failure) {
             LOGGER.log(Level.WARNING, "No se pudo abrir la consulta de vendedores.", failure);
             navigationMessage.setText("No se pudo consultar la lista de vendedores.");
+        }
+    }
+
+    @FXML
+    private void handleShowPortfolio() {
+        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_PORTFOLIO)) {
+            handleShowDashboard();
+            navigationMessage.setText("No tiene permiso para consultar la cartera.");
+            return;
+        }
+
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/portfolio_view.fxml"));
+            Node portfolioView = loader.load();
+            PortfolioController controller = loader.getController();
+            controller.showDebtors(customerService.getAllCustomers().stream()
+                    .filter(customer -> customer.getBalance().compareTo(BigDecimal.ZERO) > 0)
+                    .toList());
+            rootPane.setCenter(portfolioView);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir la consulta de cartera.", failure);
+            navigationMessage.setText("No se pudo consultar la cartera.");
         }
     }
 
