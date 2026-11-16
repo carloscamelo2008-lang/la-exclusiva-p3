@@ -44,7 +44,7 @@ class CustomerDebtQueryJdbcPostgresIntegrationTest {
         String noSalesCustomerId = "C-NOSALES-" + token;
         String productId = "P-CQ-" + token;
         List<String> saleIds = List.of("SALE-CQ-A-" + token, "SALE-CQ-B-" + token,
-                "SALE-CQ-F-" + token, "SALE-CQ-O-" + token);
+                "SALE-CQ-F-" + token, "SALE-CQ-O-" + token, "SALE-CQ-OVERPAID-" + token);
         boolean sellerCreated = false;
         boolean customerCreated = false;
         boolean otherCustomerCreated = false;
@@ -106,8 +106,25 @@ class CustomerDebtQueryJdbcPostgresIntegrationTest {
                 createdSales.add(fixture.getId());
             }
 
+            // Representa historial inconsistente; el modelo y SalePaymentAppender rechazan este sobrepago.
+            String overpaidSaleId = saleIds.get(4);
+            insertFixture(provider, """
+                    INSERT INTO sale (id, created_at, seller_id, customer_id) VALUES (?, ?, ?, ?)
+                    """, overpaidSaleId, at.plusDays(4), sellerId, customerId);
+            createdSales.add(overpaidSaleId);
+            insertFixture(provider, """
+                    INSERT INTO sale_line
+                        (sale_id, product_id, presentation_code, quantity, units_per_basket_snapshot, unit_price)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, overpaidSaleId, productId, SalePresentation.UNIT.code(), 1, 24,
+                    new BigDecimal("50.00"));
+            insertFixture(provider, """
+                    INSERT INTO sale_payment (sale_id, amount, occurred_at) VALUES (?, ?, ?)
+                    """, overpaidSaleId, new BigDecimal("80.00"), at.plusDays(4));
+
             int linesBefore = countRows(provider, "sale_line", saleIds);
             int paymentsBefore = countRows(provider, "sale_payment", saleIds);
+            // Las dos ventas pendientes aportan 125 y 100; el sobrepago y la venta pagada aportan cero.
             assertEquals(0, query.findOutstandingSalesDebt(customerId).compareTo(new BigDecimal("225.00")));
             assertEquals(0, query.findOutstandingSalesDebt(otherCustomerId).compareTo(new BigDecimal("900.00")));
             assertEquals(0, query.findOutstandingSalesDebt(noSalesCustomerId).compareTo(BigDecimal.ZERO));
