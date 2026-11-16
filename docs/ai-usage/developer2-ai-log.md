@@ -63,3 +63,15 @@
 * **Qué se acepta, modifica o descarta y por qué:** Revisé y acepté la solución de solo lectura para completar la navegación y la consulta con los servicios que ya tenemos. Dejé la persistencia y las funcionalidades de otros módulos fuera del cambio.
 * **Verificación realizada:** Codex ejecutó `mvn -Dtest=AuthenticationServiceTest test` y se aprobaron las 12 pruebas dirigidas. También ejecutó `mvn clean verify` y se aprobaron las 143 pruebas generales. Ambas ejecuciones usaron JDK 25.0.2, compilación para Java 17 y JavaFX 17.0.2. Queda pendiente verificar la ejecución con JDK 17.
 * **Commit o Pull Request relacionado:** Commit de desarrollo `63a0276035c3750abf4b34f4dd9cba95f30d4a27`.
+
+---
+
+### Interacción 6
+* **Fecha:** 16/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Navegación JavaFX al listado de Vendedores (`feature/javafx-login-navigation`).
+* **Objetivo de la consulta:** Me apoyé en la IA para conectar el menú con la consulta de vendedores, conservar la sesión al cambiar de pantalla y respetar los permisos de cada usuario.
+* **Resumen de la respuesta recibida:** Codex conectó Vendedores a una tabla de solo lectura con ID, nombre, teléfono y dirección. Reutilizó `SellerService` y el repositorio existente, y comprobó `VIEW_SELLERS` antes de cargar la vista o consultar. También añadió mensajes para la lista vacía y los errores de consulta.
+* **Qué se acepta, modifica o descarta y por qué:** Revisé y acepté el listado de solo lectura porque cubre la consulta y mantiene la navegación que ya teníamos. Dejé fuera del cambio la persistencia y los módulos de mis compañeros.
+* **Verificación realizada:** Codex ejecutó `mvn -Dtest=AuthenticationServiceTest test` y se aprobaron las 17 pruebas dirigidas. También ejecutó `mvn clean verify` y se aprobaron las 148 pruebas generales. Ambas ejecuciones usaron JDK 25.0.2, compilación para Java 17 y JavaFX 17.0.2. Queda pendiente verificar la ejecución con JDK 17.
+* **Commit o Pull Request relacionado:** Commit de desarrollo `d992a9464b8a1192d3a79c08b2b37f1cddd276b1`.
