@@ -167,6 +167,30 @@ default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
 
 Los snapshots de líneas de venta deben conservar `unit_price` y `units_per_basket_snapshot` leídos de la fila histórica; nunca se reconstruyen con los precios ni la capacidad actuales del catálogo.
 
+### Consulta de cartera de ventas
+
+```java
+BigDecimal findOutstandingSalesDebt(String customerId);
+```
+
+El puerto `CustomerDebtQuery` y el adaptador `CustomerDebtQueryJdbc` calculan la deuda pendiente
+asociada a ventas. Las líneas y los pagos se agregan por separado por `sale_id` antes de combinarse;
+así, varias líneas y varios pagos no producen un producto cartesiano ni inflan los importes. El
+resultado suma por venta `GREATEST(SUM(quantity * unit_price) - SUM(amount), 0)` y devuelve cero si
+el cliente no tiene ventas. El límite se aplica a cada venta antes de sumar por cliente. Un pago
+histórico superior al total de su venta es una inconsistencia que debe detectarse y corregirse; no
+se transfiere como crédito para cubrir otras ventas. El flujo normal de `SalePaymentAppender` rechaza
+abonos superiores al saldo pendiente. No lee `customer.balance`, porque ese campo también incluye
+deuda general.
+El adaptador usa el `JdbcConnectionProvider` compartido y, por tanto, reutiliza la conexión de una
+transacción exterior. Solo consulta: no cambia saldo, ventas ni pagos.
+
+La futura integración debe usar esta consulta para separar `deuda general = customer.balance -
+deuda pendiente de ventas`. La sustitución del mapa en memoria `CustomerService.saleDebts` requiere
+coordinar inserción de ventas/abonos y ajustes de `customer.balance` en una unidad de trabajo
+compartida; el puerto de consulta no reemplaza esas escrituras. `CustomerService`, `SaleService` y
+`Main` todavía no están conectados a este adaptador.
+
 ## Nombres de columnas acordados
 
 Se evitan nombres genéricos para que los DAO lean el esquema sin ambigüedad:

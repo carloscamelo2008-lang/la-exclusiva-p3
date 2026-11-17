@@ -151,3 +151,59 @@ Añadir una sección por cada interacción relevante de IA vinculada con tareas 
 - **Errores y resolución:** ninguno. No se ejecutaron conexiones, migraciones ni escrituras de base por Codex en esta intervención; la ejecución PostgreSQL fue realizada por Carlos.
 - **Commit asociado:** commit documental de esta entrada; el resultado se incluye con los cambios técnicos existentes de `feature/sales-jdbc`.
 - **Limitaciones restantes:** `SaleService` y `Main` continúan usando repositorios en memoria. La integración JDBC general aún depende de acordar claves estables a nivel de caso de uso y de compartir unidad transaccional con inventario/cartera.
+
+## Registro 12
+
+- **Fecha:** 2026-11-16.
+- **Herramienta:** Codex en la aplicación de escritorio, PowerShell, Git y Maven 3.10.0 con JDK 17.0.21.
+- **Fase / tarea:** consulta JDBC de cartera de ventas; rama `feature/customer-debt-jdbc`, creada desde `develop` actualizado al merge `463da2f` del PR #11.
+- **Objetivo:** ofrecer un puerto de solo lectura que calcule deuda pendiente asociada a ventas, sin tocar servicios ni módulos de otros compañeros.
+- **Resumen fiel del encargo:** sincronizar `develop` por fast-forward, confirmar PR #11, crear la rama, inspeccionar `CustomerService`, `SaleService` y esquema, implementar puerto y adaptador JDBC, probar el cálculo y documentar cómo sustituir posteriormente el mapa `saleDebts`; no conectar servicios/Main, no cambiar contratos de inventario ni ejecutar migraciones.
+- **Archivos creados:** `src/main/java/com/laexclusiva/repository/CustomerDebtQuery.java`, `src/main/java/com/laexclusiva/repository/jdbc/CustomerDebtQueryJdbc.java`, `src/test/java/com/laexclusiva/persistence/jdbc/CustomerDebtQueryJdbcTest.java` y `src/test/java/com/laexclusiva/persistence/jdbc/CustomerDebtQueryJdbcPostgresIntegrationTest.java`.
+- **Archivos actualizados:** `database/sales-jdbc-integration.md`, `database/jdbc-integration-contract.md` y esta bitácora.
+- **Decisiones técnicas:** el adaptador agrega `sale_line` y `sale_payment` separadamente por venta antes de agregarlos por cliente, evitando multiplicación entre relaciones uno-a-muchos. Calcula con los precios históricos, no lee `customer.balance`, devuelve cero sin ventas y solo consulta. El proveedor compartido reutiliza la conexión de una transacción exterior. Se documentó la futura distinción `deuda general = customer.balance - deuda de ventas`; no se modificó `CustomerService`.
+- **Pruebas:** la ejecución dirigida con Java 17.0.21/Maven 3.10.0 registró 6 pruebas: 5 JDBC simuladas aprobadas y 1 integración PostgreSQL omitida por ausencia de variables en este proceso. `mvn clean verify` finalizó `BUILD SUCCESS`: 163 pruebas, 161 aprobadas, 0 fallidas, 0 errores y 2 omitidas; ambas son las pruebas PostgreSQL opcionales de ventas/cartera. No se conectó ni modificó ninguna base. `git diff --check` pasó antes de los commits.
+- **Advertencias:** 6 problemas de modelo efectivo para cada dependencia JavaFX y el aviso de configuración no modular durante la prueba JavaFX; no afectaron la compilación ni las pruebas.
+- **Commits asociados:** `1f4cb5e` (`feat(customer-debt-jdbc): add sales debt query port`) y `5e9971e` (`test(customer-debt-jdbc): verify sales debt query`). La documentación y esta bitácora se incluyen en el commit documental de cierre.
+- **Limitaciones y pendientes:** la prueba PostgreSQL está preparada pero no fue ejecutada; requiere `LAEXCLUSIVA_TEST_DB_URL` apuntando exactamente a `la_exclusiva_test` y V001/V002 ya aplicadas. No se consultaron credenciales ni se ejecutaron migraciones. `CustomerService`, `SaleService` y `Main` siguen sin integración JDBC. La sustitución del mapa requiere una unidad transaccional compartida con los ajustes de `customer.balance` y las escrituras de ventas.
+
+## Registro 13
+
+- **Fecha:** 2026-11-16, 13:08 (Colombia).
+- **Herramienta:** Maven 3.10.0 y Microsoft JDK 17.0.18 para la ejecución realizada por Carlos; Codex en la aplicación de escritorio, PowerShell y Git para inspeccionar reportes y documentar el resultado.
+- **Fase / tarea:** validación definitiva de `feature/customer-debt-jdbc` antes de publicar el PR.
+- **Resumen fiel del encargo:** confirmar rama, estado limpio y evidencia Surefire; registrar la ejecución completa con las dos integraciones PostgreSQL aprobadas; hacer un commit documental, publicar la rama y abrir un PR hacia `develop` sin fusionarlo.
+- **Ejecución informada por Carlos:** `mvn clean verify` terminó en `BUILD SUCCESS`, con 163 pruebas, 0 fallidas, 0 errores y 0 omitidas; JAR generado. La base utilizada fue exclusivamente `la_exclusiva_test`. No se solicitaron ni registraron credenciales.
+- **Evidencia local revisada por Codex:** los 20 reportes XML suman 163 pruebas, 0 fallidas, 0 errores y 0 omitidas. `CustomerDebtQueryJdbcPostgresIntegrationTest` y `SaleRepositoryJdbcPostgresIntegrationTest` registran cada una 1 prueba aprobada y ninguna omitida. Los reportes indican Java 17.0.18 y zona horaria `America/Bogota`; sus marcas de modificación y la del JAR corresponden a las 13:08. Codex no repitió las pruebas ni se conectó a la base.
+- **Archivos actualizados:** `database/sales-jdbc-integration.md` y esta bitácora. `database/jdbc-integration-contract.md` no requería cambios porque no cambió el contrato del puerto.
+- **Decisiones y alcance:** se conserva el dato de que la ejecución fue realizada por Carlos y que Codex verificó los reportes. No se modificó código, esquema ni servicio, y no se ejecutaron migraciones.
+- **Errores y advertencias:** no hubo fallos en los reportes. La ejecución no registra pruebas omitidas. Esta intervención documental no repitió Maven, por lo que no generó advertencias de compilación nuevas.
+- **Commit asociado:** microcommit documental de cierre con esta entrada y la evidencia de Surefire.
+- **Pendientes humanos:** revisar el PR. `CustomerService`, `SaleService` y `Main` todavía no usan `CustomerDebtQuery`; la integración requiere coordinar ventas, pagos, saldo de cliente e inventario bajo una transacción compartida.
+
+## Registro 14
+
+- **Fecha:** 2026-11-16, aproximadamente 14:40 (Colombia).
+- **Herramienta:** Codex en la aplicación de escritorio, PowerShell, Git, Maven 3.10.0 y JDK 17.0.21.
+- **Fase / tarea:** corrección del cálculo de cartera para que un sobrepago histórico no compense deuda de otra venta en `feature/customer-debt-jdbc`, PR #12.
+- **Resumen fiel del encargo:** aplicar `GREATEST(total_venta - pagos, 0)` por venta, añadir regresiones simulada y PostgreSQL, conservar la validación normal de abonos, actualizar documentación y bitácora, ejecutar pruebas con Java 17 y publicar la actualización del PR sin fusionarlo.
+- **Archivos modificados:** `CustomerDebtQueryJdbc.java`, `CustomerDebtQueryJdbcTest.java`, `CustomerDebtQueryJdbcPostgresIntegrationTest.java`, `database/sales-jdbc-integration.md`, `database/jdbc-integration-contract.md`, `database/modelo-relacional.md`, `database/diccionario-datos.md` y esta bitácora.
+- **Decisión técnica:** las CTE siguen agregando líneas y pagos separadamente por venta; `GREATEST(..., 0)` se aplica después de restarlos y antes de la suma por cliente. El fixture PostgreSQL crea por SQL directo una venta sobrepagada solo para representar una inconsistencia histórica; su limpieza se restringe a sus IDs aleatorios. Un sobrepago persistido debe detectarse y corregirse, no convertirse en crédito automático. `SalePaymentAppender` permanece sin cambios y conserva el bloqueo y rechazo preventivo.
+- **Pruebas ejecutadas por Codex:** con JDK 17.0.21 y Maven 3.10.0, la ejecución dirigida contabilizó 25 pruebas: 23 aprobadas, 0 fallidas, 0 errores y 2 omitidas. `mvn clean verify` terminó en `BUILD SUCCESS`: 164 pruebas, 162 aprobadas, 0 fallidas, 0 errores y 2 omitidas. Las omitidas son `CustomerDebtQueryJdbcPostgresIntegrationTest` y `SaleRepositoryJdbcPostgresIntegrationTest`, porque las tres variables PostgreSQL no estaban configuradas en el proceso. No se conectó a PostgreSQL ni se aplicaron migraciones.
+- **Errores y resolución:** una compilación inicial falló porque el fixture trató `SalePresentation.UNIT` como enum y llamó `.name()`; se inspeccionó su contrato y se corrigió a `.code()`. La compilación y las ejecuciones posteriores pasaron. Maven mostró las advertencias existentes de modelo efectivo JavaFX y de configuración JavaFX no modular.
+- **Commits asociados:** `246e397` (`fix(customer-debt-jdbc): clamp debt per sale`) y `45d183e` (`test(customer-debt-jdbc): cover persisted overpayment`); la documentación y esta entrada se registran en el microcommit documental de cierre.
+- **Limitaciones y pendientes humanos:** no hubo prueba PostgreSQL real en esta ejecución. Para ejecutarla se requiere configurar solo `LAEXCLUSIVA_TEST_DB_URL` con `la_exclusiva_test`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` en PowerShell; V001 y V002 deben estar aplicadas previamente. `CustomerService`, `SaleService` y `Main` siguen sin conectarse al puerto.
+
+## Registro 15
+
+- **Fecha:** 2026-11-16, aproximadamente 15:11 (Colombia).
+- **Herramienta:** Codex en la aplicación de escritorio, PowerShell, Git, Maven 3.10.0 y JDK 17.0.21.
+- **Fase / tarea:** sincronización de `feature/customer-debt-jdbc` con el PR #13 de JavaFX antes de la validación final del PR #12.
+- **Resumen fiel del encargo:** verificar el árbol local, hacer `git fetch origin`, confirmar el merge `0a9f72f` del PR #13, integrar `origin/develop` mediante merge normal, validar cartera y pantallas JavaFX, ejecutar las pruebas disponibles y actualizar/preservar el PR #12 sin fusionarlo.
+- **Integración:** el árbol estaba limpio y la rama estaba en `1cb78ef`. `origin/develop` se actualizó a `0a9f72f`; se integró con el merge commit `41e8488` (`Merge remote-tracking branch 'origin/develop' into feature/customer-debt-jdbc`). No hubo conflictos. El merge preservó los commits JDBC y añadió los controladores, vistas FXML y pruebas del PR #13; Codex no reescribió clases de esos cambios.
+- **Archivos documentales actualizados por Codex:** `database/sales-jdbc-integration.md` y esta bitácora para registrar el merge y la verificación posterior.
+- **Verificación funcional:** `CustomerDebtQueryJdbc` conserva el `GREATEST` por venta y sus regresiones simuladas/PostgreSQL continúan presentes. Se verificó la presencia de las nuevas vistas FXML. `git diff --check` pasó.
+- **Pruebas:** con JDK 17.0.21/Maven 3.10.0, `mvn clean verify` terminó en `BUILD SUCCESS`: 181 pruebas contabilizadas, 179 aprobadas, 0 fallidas, 0 errores y 2 omitidas. Las omitidas son `CustomerDebtQueryJdbcPostgresIntegrationTest` y `SaleRepositoryJdbcPostgresIntegrationTest`; faltaban las tres variables de conexión en el proceso. No se conectó a PostgreSQL ni se ejecutaron migraciones.
+- **Errores y advertencias:** no hubo conflictos ni fallos de pruebas. Maven informó advertencias preexistentes de modelo efectivo de JavaFX y configuración JavaFX no modular; los logs de excepciones de consulta corresponden a escenarios de fallo simulados en `AuthenticationServiceTest`.
+- **Commits asociados:** merge `41e8488` con `origin/develop` (`0a9f72f`), más el commit documental que registra esta entrada. La rama queda pendiente de publicar y de revisar los checks nuevos de GitHub Actions.
+- **Pendientes:** ejecutar las dos pruebas PostgreSQL reales únicamente contra `la_exclusiva_test` con V001/V002 ya aplicadas. No fusionar el PR #12.

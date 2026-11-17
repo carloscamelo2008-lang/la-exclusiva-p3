@@ -4,8 +4,9 @@
 
 Este documento acompaña el trabajo de `feature/sales-jdbc`. Las capacidades se marcan como
 implementadas solo después de contar con código y pruebas ejecutadas. El adaptador JDBC y el puerto
-de abonos idempotentes están implementados y verificados con JDBC simulado; la composición JDBC de
-`SaleService` todavía no está activa.
+de abonos idempotentes están implementados. En `feature/customer-debt-jdbc` también se implementa
+la consulta JDBC de cartera de ventas; no se conecta todavía a `CustomerService`, `SaleService` ni
+`Main`.
 
 ## Incompatibilidades encontradas y decisión aplicada
 
@@ -61,6 +62,39 @@ no activa ni modifica `SaleService`.
 Aplicar `V002__payment_idempotency.sql` manualmente después de V001, solo tras identificar y
 verificar el destino. Esta tarea no ejecutó ninguna migración ni alteró una base de datos.
 
+## Consulta JDBC de cartera de ventas
+
+El puerto `CustomerDebtQuery.findOutstandingSalesDebt(customerId)` y su adaptador
+`CustomerDebtQueryJdbc` calculan la deuda asociada exclusivamente a ventas. El SQL agrupa
+`sale_line` por venta para sumar `quantity * unit_price`, agrupa `sale_payment` por venta para
+sumar abonos y combina esos dos resultados de una fila por venta antes de sumar por cliente. Así,
+varias líneas y varios pagos de una misma venta no multiplican los importes entre sí. Clientes sin
+ventas y ventas totalmente pagadas aportan cero. Cada venta aporta
+`GREATEST(total histórico de líneas - pagos, 0)`; el límite se aplica antes de sumar las ventas.
+
+Un sobrepago ya persistido es una inconsistencia de datos. El `GREATEST` evita que ese saldo
+negativo reduzca la deuda de otra venta, pero no convierte el excedente en crédito transferible ni
+repara el historial. El sobrepago debe detectarse mediante conciliación de integridad y corregirse
+en los datos de su venta. El flujo normal sigue rechazándolo: `SalePaymentAppender` bloquea la venta,
+recalcula el saldo y no inserta un abono superior al pendiente.
+
+La consulta no lee `customer.balance`: ese saldo agregado también puede contener deuda general y no
+debe confundirse con la deuda de ventas. Usa el `JdbcConnectionProvider` compartido; si hay una
+transacción JDBC activa, la consulta se ejecuta en su misma conexión. Es estrictamente de lectura y
+no modifica ventas, líneas ni pagos.
+
+### Sustitución futura del mapa `saleDebts`
+
+`CustomerService` conserva hoy `saleDebts` en memoria. Al integrarlo, `CustomerDebtQuery` será la
+fuente de verdad de la parte asignada a ventas y la deuda general se derivará como
+`customer.balance - outstandingSalesDebt`. No se debe sumar esa deuda de ventas otra vez al balance
+ni actualizarla mediante el adaptador de consulta. La futura unidad de trabajo tendrá que guardar
+la venta/pago y ajustar el saldo agregado del cliente dentro de una sola transacción compartida.
+Las reglas de `addDebtToCustomer` y `applyPaymentToCustomer` deben seguir limitándose a la parte
+general; `addSaleDebtToCustomer` y `applyPaymentToSaleDebt` deberán consultar la deuda derivada y
+coordinar sus escrituras con la venta. No se cambia aún el servicio ni se retira su estrategia de
+compensación en memoria.
+
 ## Política de borrado
 
 `deleteById` del adaptador JDBC lanza `UnsupportedOperationException`. La operación no elimina
@@ -103,11 +137,11 @@ El trabajo actual de inventario implementa compensaciones en memoria y el saldo 
    mantiene bloqueos hasta confirmar la venta y registrar cada movimiento. Los DAO no abren ni
    confirman conexiones por separado. Esto reduce interbloqueos y evita movimientos sin descuento
    o descuentos sin venta.
-8. **Consulta de deuda pendiente.** Falta un puerto para obtener desde PostgreSQL la deuda de
-   ventas asignada a un cliente. `CustomerService` hoy consulta `saleDebts`, un `HashMap` en
-   memoria. Se propone `CustomerDebtQuery.findOutstandingSalesDebt(customerId)` y un adaptador que
-   agregue líneas y pagos por venta antes de sumarlos; el balance agregado del cliente no debe
-   confundirse con deuda general.
+8. **Consulta de deuda pendiente.** `CustomerDebtQuery.findOutstandingSalesDebt(customerId)` y
+   `CustomerDebtQueryJdbc` derivan el pendiente desde líneas y pagos agregados por venta. El puerto
+   no incluye el balance general del cliente ni modifica historial. La futura sustitución del mapa
+   `saleDebts` debe mantener `customer.balance - deuda de ventas` como deuda general y coordinar
+   ajustes de balance con la venta bajo la misma unidad de trabajo.
 9. **Coordinación con los DAO de Jesús.** Cuando estén disponibles, confirmar firmas de consulta
    y bloqueo, su uso del proveedor compartido y contratos de rollback. Después integrar bajo el
    límite de servicio, añadir pruebas de concurrencia/integración en la base exclusiva de pruebas
@@ -123,6 +157,53 @@ inventario. La integración final depende de esos contratos y requiere revisión
   fechas de reintento, claves distintas con igual importe/fecha, importes inválidos, saldo,
   preservación histórica, rechazo de snapshots, participación transaccional y rollback SQL. No es
   una prueba PostgreSQL y no demuestra bloqueos reales ni restricciones del servidor.
+- `CustomerDebtQueryJdbcTest` usa JDBC simulado para comprobar cliente sin ventas, ventas totalmente
+  pagadas y parciales, varios pagos/líneas sin multiplicación, exclusión de saldo general,
+  el sobrepago en una venta sin compensación sobre otra venta pendiente, validación de ID,
+  traducción de errores SQL y reutilización de conexión transaccional.
+- `CustomerDebtQueryJdbcPostgresIntegrationTest` inserta fixtures aleatorios para ventas del cliente
+  consultado, incluida una venta sobrepagada mediante SQL directo para representar datos históricos
+  inconsistentes, una venta de otro cliente y un cliente sin ventas. Comprueba que el sobrepago no
+  reduce el pendiente de las otras ventas y que líneas/pagos no cambian. La limpieza se limita a sus
+  propios IDs. Se omite si falta la URL segura.
+- `SaleRepositoryJdbcTest` y `SaleRepositoryJdbcPostgresIntegrationTest` mantienen la comprobación
+  preventiva de `SalePaymentAppender`: un abono normal que supera el saldo se rechaza.
+- Revisión del riesgo de sobrepago (2026-11-16): el SQL ahora suma `GREATEST(total - pagos, 0)`
+  por venta antes de agregar por cliente. La prueba simulada deja una venta de 50 pagada por 80 junto
+  a otra con total 200 y pagos 75; el resultado permanece en 125, no en 95. La prueba PostgreSQL
+  incorpora el mismo historial inconsistente con un fixture aleatorio insertado directamente.
+- Ejecución dirigida de esta revisión con Java 17.0.21 y Maven 3.10.0: 25 pruebas contabilizadas,
+  23 aprobadas, 0 fallidas, 0 errores y 2 omitidas. Las omitidas son las integraciones PostgreSQL
+  de ventas y cartera: `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` y
+  `LAEXCLUSIVA_DB_PASSWORD` no estaban configuradas en el proceso.
+- `mvn clean verify` con Java 17.0.21 terminó en `BUILD SUCCESS`: 164 pruebas contabilizadas,
+  162 aprobadas, 0 fallidas, 0 errores y 2 omitidas por falta de la configuración PostgreSQL.
+  El JAR se generó correctamente. No se conectó a una base ni se ejecutaron migraciones.
+- Tras integrar el merge de PR #13 (`0a9f72f`) en la rama JDBC, `mvn clean verify` con Java
+  17.0.21 y Maven 3.10.0 terminó en `BUILD SUCCESS`: 181 pruebas, 179 aprobadas, 0 fallidas,
+  0 errores y 2 omitidas. Las dos omitidas son las pruebas PostgreSQL de ventas y cartera; las
+  variables `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` no estaban
+  configuradas en este proceso. El JAR se generó y no se conectó ni modificó ninguna base.
+- Se conservó la validación de `SalePaymentAppender`; su prueba simulada rechaza los abonos mayores
+  al saldo. Las advertencias observadas fueron las 6 advertencias de modelo efectivo de JavaFX y el
+  aviso de configuración JavaFX no modular durante `AuthenticationServiceTest`.
+- Ejecución dirigida del 2026-11-16 con Java 17.0.21 y Maven 3.10.0: 6 pruebas contabilizadas,
+  5 simuladas aprobadas, 0 fallidas/errores y 1 prueba PostgreSQL omitida porque no están
+  configuradas las variables de conexión en el proceso.
+- Verificación completa del 2026-11-16: `mvn clean verify` con Java 17.0.21 terminó en
+  `BUILD SUCCESS`: 163 pruebas contabilizadas, 161 aprobadas, 0 fallidas, 0 errores y 2 omitidas.
+  Las dos omitidas son las pruebas PostgreSQL opcionales de ventas y cartera, porque las variables
+  de conexión no estaban disponibles en este proceso. No hubo conexión ni cambios en bases de datos.
+- Validación definitiva del 2026-11-16 a las 13:08 (Colombia), ejecutada por Carlos con Java 17.0.18
+  y Maven 3.10.0 contra exclusivamente `la_exclusiva_test`: `mvn clean verify` terminó en
+  `BUILD SUCCESS`, con 163 pruebas aprobadas, 0 fallidas, 0 errores y 0 omitidas. Los reportes
+  Surefire locales registran 1 prueba PostgreSQL aprobada en `CustomerDebtQueryJdbcPostgresIntegrationTest`
+  y 1 en `SaleRepositoryJdbcPostgresIntegrationTest`; las 161 restantes también pasaron. El JAR
+  `target/la-exclusiva-p3-1.0-SNAPSHOT.jar` fue generado. Codex verificó los reportes y sus fechas;
+  no leyó credenciales ni repitió la ejecución.
+- Maven reportó 6 advertencias de modelo efectivo para cada dependencia JavaFX y el aviso de
+  configuración no modular durante `AuthenticationServiceTest`; no afectaron la compilación ni las
+  pruebas.
 - La prueba PostgreSQL comprueba la restricción única y la concurrencia con dos conexiones cuando
   existe `LAEXCLUSIVA_TEST_DB_URL`; requiere V001 y V002 ya instaladas en `la_exclusiva_test`.
 - Ejecución dirigida de esta intervención (Java 17.0.21, Maven 3.10.0): 18 pruebas contabilizadas,
@@ -158,12 +239,34 @@ inventario. La integración final depende de esos contratos y requiere revisión
   ejecución confirmada la corrió contra `la_exclusiva_test` y pasó con las aserciones ampliadas.
 - No se escriben credenciales ni se limpia ninguna tabla compartida.
 
+### Ejecutar las integraciones PostgreSQL desde PowerShell
+
+Configurar previamente `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` y
+`LAEXCLUSIVA_DB_PASSWORD` en la sesión privada de PowerShell. La URL debe usar exactamente la base
+`la_exclusiva_test`; no mostrar ni copiar la contraseña a logs. Este comando verifica el destino y
+ejecuta únicamente las dos pruebas de integración, sin migrar el esquema:
+
+```powershell
+if ($env:LAEXCLUSIVA_TEST_DB_URL -notmatch '^jdbc:postgresql://[^/]+/la_exclusiva_test(?:\?.*)?$') {
+    throw 'LAEXCLUSIVA_TEST_DB_URL debe apuntar exclusivamente a la_exclusiva_test.'
+}
+if ([string]::IsNullOrWhiteSpace($env:LAEXCLUSIVA_DB_USER) -or
+    [string]::IsNullOrWhiteSpace($env:LAEXCLUSIVA_DB_PASSWORD)) {
+    throw 'Configura las credenciales de prueba en esta sesión sin imprimirlas.'
+}
+$javaVersion = java -version 2>&1 | Out-String
+if ($javaVersion -notmatch 'version "17\.') { throw 'Se requiere Java 17.' }
+& 'C:\apache-maven-3.10.0\bin\mvn.cmd' `
+    '-Dtest=CustomerDebtQueryJdbcPostgresIntegrationTest,SaleRepositoryJdbcPostgresIntegrationTest' test
+if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas PostgreSQL.' }
+```
+
 La tabla `sale_line` conserva únicamente el precio histórico de la presentación vendida. El
 producto asociado a una línea reconstituida no ofrece un snapshot histórico de los otros precios
 del catálogo; para cálculos históricos se debe usar `SaleLine.getUnitPrice()`.
 
 ## Próximos pasos
 
-1. Repetir `mvn clean verify` con la configuración exclusiva de `la_exclusiva_test` para ejecutar la versión ampliada de la prueba PostgreSQL; el reporte previo confirma que V001 y V002 ya se usaban correctamente.
-2. Diseñar con Carlos y el equipo cómo `SaleService` obtendrá y conservará una clave estable por operación antes de conectarlo al puerto.
-3. Implementar la coordinación del servicio cuando los DAO de inventario y cartera compartan el proveedor transaccional.
+1. Integrar `CustomerDebtQuery` con `CustomerService` sin mezclar la deuda de ventas con la deuda general.
+2. Diseñar con el equipo cómo `SaleService` obtendrá y conservará una clave estable por operación.
+3. Coordinar ventas, abonos, cartera e inventario bajo una unidad de trabajo que comparta proveedor y transacción.
