@@ -238,3 +238,14 @@ Añadir una sección por cada interacción relevante de IA vinculada con tareas 
 - **Errores y advertencias:** no se encontraron fallos en Surefire. `gh` no está instalado en este entorno; la publicación y el PR se gestionarán mediante la sesión de GitHub disponible si está autenticada. No se ejecutaron migraciones ni operaciones de base de datos.
 - **Commits asociados:** `29d0f04` (adaptadores y puerto), `a3fa81a` (pruebas) y `a3d1e26` (documentación previa); la evidencia definitiva se registra en el microcommit documental de este cierre.
 - **Pendientes humanos:** revisar la limitación de snapshots antes de conectar servicios y conservar el uso exclusivo de `CustomerBalanceAdjuster` para operaciones financieras concurrentes. El PR no debe fusionarse hasta revisión del equipo.
+
+## Registro 18
+
+- **Fecha:** 2026-11-16.
+- **Herramienta:** Codex en la aplicación de escritorio, Git y Google Chrome con sesión autenticada de GitHub.
+- **Fase / tarea:** publicación de `feature/customers-sellers-jdbc` y apertura del PR #14 hacia `develop`.
+- **Resumen fiel del encargo:** publicar la rama ya validada, abrir el PR con el título especificado, describir repositorios, puerto atómico, evidencia PostgreSQL y limitación de snapshots, solicitar revisión a Daniel o Jesús Daniel y no fusionar.
+- **Acciones verificadas:** `git push -u origin feature/customers-sellers-jdbc` publicó la rama. Se creó [PR #14](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/14), título `feat(customers-sellers-jdbc): persistir clientes y vendedores con saldos atómicos`, base `develop` y compare `feature/customers-sellers-jdbc`. El PR enumera los cuatro commits que existían al abrirlo e incluye la descripción técnica solicitada.
+- **Revisión y CI:** se solicitó revisión a `djosuearrieta`, que apareció como solicitud pendiente. Al verificar el PR, GitHub mostraba dos checks exitosos y ninguna discrepancia de merge. Ese estado corresponde a la vista observada antes de publicar este registro adicional; el nuevo commit documental puede iniciar una ejecución de checks.
+- **Archivos modificados en esta intervención:** solo esta bitácora. No se modificaron código, pruebas, servicios, migraciones ni bases de datos. El microcommit documental previo `4befb22` registra la validación definitiva; este registro se añade en un commit documental posterior.
+- **Errores o advertencias:** `gh` no está instalado; se utilizó la sesión autenticada de GitHub en Chrome. No se hizo merge. El PR requiere revisión humana antes de integrarse, y `CustomerRepositoryJdbc.update` conserva la limitación documentada de reemplazo de `balance` desde snapshots.
