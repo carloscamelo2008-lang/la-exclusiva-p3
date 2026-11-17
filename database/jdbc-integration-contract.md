@@ -230,6 +230,13 @@ de la misma unidad. Las lecturas de cartera siguen derivándose del historial de
 se cambia todavía `CustomerService`, `SaleService`, `Main` ni la composición JavaFX; la ruta en
 memoria continúa activa.
 
+La validación definitiva informada por Carlos el 2026-11-16 a las 22:45 (Colombia) ejecutó
+`mvn clean verify` con Java 17 y PostgreSQL en `la_exclusiva_test`: 190 pruebas aprobadas, sin
+fallos, errores ni omisiones. Los reportes Surefire locales registran aprobadas las pruebas reales
+`CustomerSellerJdbcPostgresIntegrationTest`, `CustomerDebtQueryJdbcPostgresIntegrationTest` y
+`SaleRepositoryJdbcPostgresIntegrationTest` (una prueba cada una). Codex verificó las 22 suites XML
+y sus marcas de tiempo, sin repetir Maven ni conectarse a la base. No se registraron credenciales.
+
 ## Nombres de columnas acordados
 
 Se evitan nombres genéricos para que los DAO lean el esquema sin ambigüedad:

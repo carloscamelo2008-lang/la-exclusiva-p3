@@ -266,6 +266,15 @@ inventario. La integración final depende de esos contratos y requiere revisión
 - La compilación mostró las advertencias preexistentes de modelo efectivo para JavaFX; la prueba
   JavaFX informó que las clases se cargaron desde un módulo no nombrado y produjo mensajes de error
   simulado de consulta dentro de `AuthenticationServiceTest`. No afectaron el resultado de la suite.
+- Validación definitiva informada por Carlos el 2026-11-16 a las 22:45 (Colombia): ejecutó
+  `mvn clean verify` con Java 17 contra exclusivamente `la_exclusiva_test`. `BUILD SUCCESS`, 190
+  pruebas aprobadas, 0 fallidas, 0 errores y 0 omitidas. Codex inspeccionó los reportes Surefire:
+  22 suites suman 190, y cada una de `CustomerSellerJdbcPostgresIntegrationTest`,
+  `CustomerDebtQueryJdbcPostgresIntegrationTest` y `SaleRepositoryJdbcPostgresIntegrationTest`
+  registra 1 aprobada y 0 omitidas, con marcas de las 22:45. Las otras 187 pruebas también
+  pasaron. Esta evidencia reemplaza los resultados anteriores de esta rama en los que las
+  integraciones opcionales se omitieron. Codex no repitió la ejecución ni abrió una conexión; no se
+  registraron credenciales ni se ejecutaron migraciones.
 
 ### Ejecutar las integraciones PostgreSQL desde PowerShell
 
