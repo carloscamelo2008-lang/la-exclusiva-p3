@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox spacing="12.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.laexclusiva.ui.controller.PortfolioController">
+    <padding>
+        <Insets top="20.0" right="20.0" bottom="20.0" left="20.0" />
+    </padding>
+    <Label text="Cartera pendiente" style="-fx-font-size: 22px;" />
+    <TableView fx:id="portfolioTable" editable="false" VBox.vgrow="ALWAYS">
+        <columnResizePolicy>
+            <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+        </columnResizePolicy>
+        <placeholder>
+            <Label text="No hay clientes con saldo pendiente" />
+        </placeholder>
+        <columns>
+            <TableColumn fx:id="idColumn" text="ID del cliente" />
+            <TableColumn fx:id="nameColumn" text="Nombre" />
+            <TableColumn fx:id="balanceColumn" text="Saldo pendiente (COP)" />
+        </columns>
+    </TableView>
+</VBox>

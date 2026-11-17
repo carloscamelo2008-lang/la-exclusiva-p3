@@ -1,6 +1,8 @@
 package com.laexclusiva.ui.controller;
 
 import com.laexclusiva.service.AuthenticationService;
+import com.laexclusiva.service.CustomerService;
+import com.laexclusiva.service.SellerService;
 import com.laexclusiva.model.UserSession;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -20,9 +22,19 @@ public class LoginController {
     @FXML private Label errorLabel;
 
     private AuthenticationService authenticationService;
+    private CustomerService customerService;
+    private SellerService sellerService;
 
     public void setAuthenticationService(AuthenticationService authenticationService) {
         this.authenticationService = authenticationService;
+    }
+
+    public void setCustomerService(CustomerService customerService) {
+        this.customerService = customerService;
+    }
+
+    public void setSellerService(SellerService sellerService) {
+        this.sellerService = sellerService;
     }
 
     @FXML
@@ -47,6 +59,8 @@ public class LoginController {
                 
                 // Obtener el controlador del menú y pasarle la sesión activa
                 MainController mainController = loader.getController();
+                mainController.setCustomerService(customerService);
+                mainController.setSellerService(sellerService);
                 mainController.initSession(session);
                 
                 // Cambiar la escena en la ventana actual

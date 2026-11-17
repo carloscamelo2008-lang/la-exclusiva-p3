@@ -88,6 +88,53 @@ public final class Sale {
         this.payments.addAll(payments);
     }
 
+    /**
+     * Reconstruye una venta persistida sin generar otra identidad ni alterar sus fechas e historial.
+     * La fábrica valida las mismas invariantes financieras que el constructor de ventas nuevas.
+     *
+     * @param id identificador histórico de la venta
+     * @param createdAt fecha original de registro
+     * @param seller vendedor asociado
+     * @param customer cliente asociado, o {@code null} si no aplica
+     * @param lines líneas con sus precios y capacidades históricas
+     * @param payments pagos y abonos históricos en su orden de ocurrencia
+     * @return venta reconstituida conservando el identificador recibido
+     * @throws IllegalArgumentException si la identidad, las entidades, las líneas o los pagos
+     *                                  incumplen las invariantes del modelo
+     */
+    public static Sale reconstitute(String id, LocalDateTime createdAt, Seller seller, Customer customer,
+                                    List<SaleLine> lines, List<SalePayment> payments) {
+        if (id == null || id.isBlank() || id.length() > 48) {
+            throw new IllegalArgumentException("El identificador persistido de la venta no es válido.");
+        }
+        if (createdAt == null || seller == null || seller.getId() == null || seller.getId().isBlank()) {
+            throw new IllegalArgumentException("La fecha y el vendedor son obligatorios para reconstruir la venta.");
+        }
+        if (customer != null && (customer.getId() == null || customer.getId().isBlank())) {
+            throw new IllegalArgumentException("El cliente asociado debe tener un identificador válido.");
+        }
+        if (lines == null || lines.isEmpty() || lines.stream().anyMatch(line -> line == null)) {
+            throw new IllegalArgumentException("La venta persistida debe contener líneas válidas.");
+        }
+        if (payments == null || payments.stream().anyMatch(payment -> payment == null)) {
+            throw new IllegalArgumentException("La lista de pagos persistidos no puede ser nula ni contener nulos.");
+        }
+
+        List<SaleLine> lineSnapshot = lines.stream().map(SaleLine::copy).toList();
+        List<SalePayment> paymentSnapshot = List.copyOf(payments);
+        BigDecimal total = calculateTotal(lineSnapshot);
+        BigDecimal paid = paymentSnapshot.stream()
+                .map(SalePayment::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (paid.compareTo(total) > 0) {
+            throw new IllegalArgumentException("Los pagos históricos no pueden superar el total de la venta.");
+        }
+        if (paid.compareTo(total) < 0 && customer == null) {
+            throw new IllegalArgumentException("La venta persistida requiere cliente si conserva saldo pendiente.");
+        }
+        return new Sale(id, createdAt, seller, customer, lineSnapshot, paymentSnapshot);
+    }
+
     private static Seller copySeller(Seller seller) {
         return new Seller(seller.getId(), seller.getName(), seller.getPhone(), seller.getAddress());
     }
