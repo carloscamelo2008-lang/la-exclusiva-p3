@@ -44,8 +44,19 @@ class JdbcTransactionManagerTest {
         String result = tx.inTransaction(() -> {
             assertTrue(tx.isTransactionActive());
             assertFalse(recording.autoCommit);
+            Connection outerConnection = provider.withConnection(connection -> connection);
             return tx.inTransaction(() -> provider.withConnection(connection -> {
-                assertSame(recording.connection, connection);
+                assertSame(outerConnection, connection);
+                assertNotSame(recording.connection, connection);
+                assertFalse(connection.getAutoCommit());
+                assertThrows(UnsupportedOperationException.class, connection::close);
+                assertThrows(UnsupportedOperationException.class, connection::commit);
+                assertThrows(UnsupportedOperationException.class, connection::rollback);
+                assertThrows(UnsupportedOperationException.class, () -> connection.setAutoCommit(true));
+                assertEquals(0, recording.closes);
+                assertEquals(0, recording.commits);
+                assertEquals(0, recording.rollbacks);
+                assertFalse(recording.autoCommit);
                 return "correcto";
             }));
         });
