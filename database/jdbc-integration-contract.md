@@ -163,6 +163,8 @@ default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
 
 - `SalePresentation.fromCode(String)`: convierte únicamente `UNIT`, `HALF_BASKET` y `FULL_BASKET`. Un valor nulo o desconocido se rechaza.
 - `StockMovementRepository.remove(...)`: la implementación JDBC lanza `UnsupportedOperationException` con un mensaje claro. El historial no se borra para compensar una operación; el rollback revierte las inserciones.
+- `stock_movement.id` es una clave técnica generada por PostgreSQL. Las lecturas JDBC exponen ese ID y el producto del catálogo asociado en `StockMovement`. El constructor de cinco argumentos sigue disponible para movimientos nuevos y el repositorio en memoria conserva `remove(...)` para la compensación local.
+- Las lecturas JDBC ordenan por `occurred_at` ascendente y usan el ID generado para desempatar marcas de tiempo iguales.
 - `InventoryService.discountSale(...)` procesa los IDs de producto en orden ascendente antes de bloquear las filas, reduciendo el riesgo de deadlocks.
 
 Los snapshots de líneas de venta deben conservar `unit_price` y `units_per_basket_snapshot` leídos de la fila histórica; nunca se reconstruyen con los precios ni la capacidad actuales del catálogo.

@@ -11,5 +11,11 @@ public interface InventoryRepository {
 
     Optional<InventoryItem> findByProductId(String productId);
 
+    /** Los adaptadores con bloqueo deben exigir una transacción activa. */
+    default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
+        return findByProductId(productId);
+    }
+
+
     List<InventoryItem> findAll();
 }
