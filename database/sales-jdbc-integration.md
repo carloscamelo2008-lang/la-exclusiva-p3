@@ -5,8 +5,9 @@
 Este documento acompaña el trabajo de `feature/sales-jdbc`. Las capacidades se marcan como
 implementadas solo después de contar con código y pruebas ejecutadas. El adaptador JDBC y el puerto
 de abonos idempotentes están implementados. En `feature/customer-debt-jdbc` también se implementa
-la consulta JDBC de cartera de ventas; no se conecta todavía a `CustomerService`, `SaleService` ni
-`Main`.
+la consulta JDBC de cartera de ventas y, en `feature/customers-sellers-jdbc`, los repositorios JDBC
+de clientes/vendedores y el puerto atómico de ajuste de saldo. No se conectan todavía a
+`CustomerService`, `SaleService` ni `Main`.
 
 ## Incompatibilidades encontradas y decisión aplicada
 
@@ -111,16 +112,21 @@ El trabajo actual de inventario implementa compensaciones en memoria y el saldo 
 1. **Operaciones que comparten transacción.** `registerSale(...)` coordina cabecera, líneas, pago
    inicial, descuento de existencias, movimientos y aumento de saldo del cliente cuando hay
    crédito. `registerPayment(...)` coordina el abono de la venta y la reducción equivalente del
-   saldo del cliente. Una excepción en cualquiera de esos pasos debe revertir toda la unidad.
-2. **Bloqueos SQL.** El cliente se bloquea al modificar su balance. `InventoryRepositoryJdbc` debe
+   saldo del cliente. Debe usar `CustomerBalanceAdjusterJdbc.increaseBalance(...)` o
+   `decreaseBalance(...)`, no guardar un `Customer` reconstruido desde un snapshot. Una excepción en
+   cualquiera de esos pasos debe revertir toda la unidad.
+2. **Bloqueos SQL.** `CustomerBalanceAdjusterJdbc` modifica la fila con `UPDATE`, que toma el bloqueo
+   de fila de PostgreSQL; para reducir saldo, la misma sentencia exige `balance >= amount`. Esta
+   condición se evalúa dentro de la escritura y protege ante abonos concurrentes. `InventoryRepositoryJdbc` debe
    ofrecer la consulta de existencias `FOR UPDATE`; se bloquean todas las referencias en orden
    ascendente por `product_id`. Un abono bloquea la venta para serializar pagos y vuelve a calcular
    saldo con las líneas/pagos ya persistidos. Los límites exteriores deben adquirir bloqueos en
    un orden común: cliente, venta si existe, inventario ordenado.
 3. **Dependencias de `SaleService`.** La futura composición inyecta el repositorio de ventas,
-   servicios/repositorios JDBC de catálogo e inventario, movimientos, clientes y vendedores, más
-   un límite de unidad de trabajo (`JdbcTransactionManager` o abstracción de transacción). Todas
-   las implementaciones deben compartir el mismo `JdbcConnectionProvider` y coordinador.
+   servicios/repositorios JDBC de catálogo e inventario, movimientos, `CustomerRepositoryJdbc`,
+   `SellerRepositoryJdbc`, `CustomerBalanceAdjusterJdbc` y un límite de unidad de trabajo
+   (`JdbcTransactionManager` o abstracción de transacción). Todas las implementaciones deben
+   compartir el mismo `JdbcConnectionProvider` y coordinador.
 4. **Compensaciones que se retiran al activar JDBC.** Dentro de una unidad JDBC ya no se deben
    llamar `SaleRepository.deleteById`, `InventoryService.rollbackDiscount` ni restaurar snapshots
    de deuda: el `rollback` de la transacción restablece las filas. La ruta en memoria conserva su
@@ -142,7 +148,14 @@ El trabajo actual de inventario implementa compensaciones en memoria y el saldo 
    no incluye el balance general del cliente ni modifica historial. La futura sustitución del mapa
    `saleDebts` debe mantener `customer.balance - deuda de ventas` como deuda general y coordinar
    ajustes de balance con la venta bajo la misma unidad de trabajo.
-9. **Coordinación con los DAO de Jesús.** Cuando estén disponibles, confirmar firmas de consulta
+9. **Contrato de snapshot y saldo.** `CustomerRepositoryJdbc.update` mantiene el comportamiento
+   del repositorio en memoria y reemplaza también el `balance` recibido. Un snapshot antiguo puede
+   pisar un ajuste concurrente;
+   por eso las escrituras financieras deben pasar por `CustomerBalanceAdjuster` dentro de la unidad
+   compartida. El adaptador incrementa mediante suma SQL y reduce con una condición atómica que
+   impide saldos negativos. Los dos adaptadores de cliente/vendedor y este puerto ya están
+   implementados, pero su integración en servicios queda pendiente.
+10. **Coordinación con los DAO de Jesús.** Cuando estén disponibles, confirmar firmas de consulta
    y bloqueo, su uso del proveedor compartido y contratos de rollback. Después integrar bajo el
    límite de servicio, añadir pruebas de concurrencia/integración en la base exclusiva de pruebas
    y revisar el cambio con el equipo antes de conectar `Main` a PostgreSQL.
@@ -238,13 +251,28 @@ inventario. La integración final depende de esos contratos y requiere revisión
 - `SaleRepositoryJdbcPostgresIntegrationTest` se omite si falta la URL dedicada. La última
   ejecución confirmada la corrió contra `la_exclusiva_test` y pasó con las aserciones ampliadas.
 - No se escriben credenciales ni se limpia ninguna tabla compartida.
+- En `feature/customers-sellers-jdbc`, `CustomerSellerJdbcTest` simula altas, búsquedas, listados,
+  actualización, IDs duplicados, errores SQL, ajustes de saldo, rechazo de saldo negativo,
+  rollback y dos abonos concurrentes. Estas verificaciones simuladas no prueban bloqueos reales de
+  PostgreSQL. `CustomerSellerJdbcPostgresIntegrationTest` usa IDs aleatorios propios y borra solo
+  los registros que insertó; comprueba CRUD, duplicados, rollback y dos conexiones concurrentes.
+- Validación de `feature/customers-sellers-jdbc` (2026-11-16, JDK Temurin 17.0.21 y Maven 3.10.0):
+  la ejecución dirigida contabilizó 9 pruebas, con 8 simuladas aprobadas, 0 fallidas/errores y
+  1 integración PostgreSQL omitida. `mvn clean verify` terminó en `BUILD SUCCESS`: 190 pruebas,
+  187 aprobadas, 0 fallidas, 0 errores y 3 omitidas. Las tres omitidas son las integraciones
+  PostgreSQL de ventas, cartera y clientes/vendedores; las variables de conexión no estaban
+  configuradas en el proceso. No se conectó a PostgreSQL ni se ejecutaron migraciones. El JAR se
+  generó correctamente.
+- La compilación mostró las advertencias preexistentes de modelo efectivo para JavaFX; la prueba
+  JavaFX informó que las clases se cargaron desde un módulo no nombrado y produjo mensajes de error
+  simulado de consulta dentro de `AuthenticationServiceTest`. No afectaron el resultado de la suite.
 
 ### Ejecutar las integraciones PostgreSQL desde PowerShell
 
 Configurar previamente `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` y
 `LAEXCLUSIVA_DB_PASSWORD` en la sesión privada de PowerShell. La URL debe usar exactamente la base
 `la_exclusiva_test`; no mostrar ni copiar la contraseña a logs. Este comando verifica el destino y
-ejecuta únicamente las dos pruebas de integración, sin migrar el esquema:
+ejecuta únicamente las tres pruebas de integración, sin migrar el esquema:
 
 ```powershell
 if ($env:LAEXCLUSIVA_TEST_DB_URL -notmatch '^jdbc:postgresql://[^/]+/la_exclusiva_test(?:\?.*)?$') {
@@ -257,7 +285,7 @@ if ([string]::IsNullOrWhiteSpace($env:LAEXCLUSIVA_DB_USER) -or
 $javaVersion = java -version 2>&1 | Out-String
 if ($javaVersion -notmatch 'version "17\.') { throw 'Se requiere Java 17.' }
 & 'C:\apache-maven-3.10.0\bin\mvn.cmd' `
-    '-Dtest=CustomerDebtQueryJdbcPostgresIntegrationTest,SaleRepositoryJdbcPostgresIntegrationTest' test
+    '-Dtest=CustomerDebtQueryJdbcPostgresIntegrationTest,CustomerSellerJdbcPostgresIntegrationTest,SaleRepositoryJdbcPostgresIntegrationTest' test
 if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas PostgreSQL.' }
 ```
 

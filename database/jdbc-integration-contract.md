@@ -191,6 +191,45 @@ coordinar inserción de ventas/abonos y ajustes de `customer.balance` en una uni
 compartida; el puerto de consulta no reemplaza esas escrituras. `CustomerService`, `SaleService` y
 `Main` todavía no están conectados a este adaptador.
 
+### Repositorios JDBC de clientes y vendedores
+
+`CustomerRepositoryJdbc` implementa `CustomerRepositoryInterface` y `SellerRepositoryJdbc`
+implementa `SellerRepositoryInterface`. Ambos leen y escriben las columnas de V001 con sentencias
+preparadas y conservan los IDs proporcionados por los modelos históricos. Los límites son los del
+esquema: cliente `VARCHAR(64)`, vendedor `VARCHAR(32)` y saldo de cliente `NUMERIC(19,2)` no
+negativo. Los importes se validan con `BigDecimal`; no se redondean valores con más de dos decimales.
+
+`save` es siempre una inserción: los IDs duplicados se rechazan y nunca se convierten en upsert.
+La búsqueda/listado devuelve entidades reconstituidas, y el repositorio de vendedores no añade una
+operación de actualización que su interfaz no define. `CustomerRepositoryJdbc.update` conserva el
+comportamiento del repositorio en memoria y reemplaza el snapshot, incluido `balance`; por eso puede
+sobrescribir un ajuste concurrente si se invoca con un snapshot antiguo. No se debe usar para
+aplicar pagos ni ajustes concurrentes de saldo.
+
+Para operaciones financieras se añade el puerto `CustomerBalanceAdjuster` y su adaptador
+`CustomerBalanceAdjusterJdbc`:
+
+```java
+BigDecimal increaseBalance(String customerId, BigDecimal amount);
+BigDecimal decreaseBalance(String customerId, BigDecimal amount);
+```
+
+El adaptador suma en SQL y aplica los abonos mediante una única sentencia condicional:
+`UPDATE customer SET balance = balance - ? WHERE id = ? AND balance >= ? RETURNING balance`.
+PostgreSQL serializa las actualizaciones de la fila y vuelve a comprobar la condición tras esperar
+por otra escritura; así, dos abonos concurrentes no pueden producir un saldo negativo. El puerto
+usa el mismo `JdbcConnectionProvider`: si existe una transacción exterior, los ajustes comparten su
+conexión y se confirman o revierten junto con las demás escrituras. Fuera de ella, cada ajuste es una
+sentencia atómica independiente.
+
+La futura integración debe envolver el registro de venta/abono y el ajuste correspondiente en
+`JdbcTransactionManager.inTransaction(...)`, inyectando repositorios y adaptadores construidos con
+el mismo proveedor. El pago de una venta debe persistirse y reducir el saldo agregado dentro de esa
+misma unidad; el registro de una venta a crédito debe insertar la venta y aumentar ese saldo dentro
+de la misma unidad. Las lecturas de cartera siguen derivándose del historial de líneas y pagos. No
+se cambia todavía `CustomerService`, `SaleService`, `Main` ni la composición JavaFX; la ruta en
+memoria continúa activa.
+
 ## Nombres de columnas acordados
 
 Se evitan nombres genéricos para que los DAO lean el esquema sin ambigüedad:
