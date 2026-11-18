@@ -11,6 +11,7 @@ public class UserSession {
 
     private final UserAccount userAccount;
     private final LocalDateTime loginTime;
+    private boolean valid = true;
 
     public UserSession(UserAccount userAccount) {
         if (userAccount == null) {
@@ -26,5 +27,15 @@ public class UserSession {
 
     public LocalDateTime getLoginTime() {
         return loginTime;
+    }
+
+    /** Indica si la sesión sigue vigente y su cuenta está activa. */
+    public boolean isActive() {
+        return valid && userAccount.isActive();
+    }
+
+    /** Invalida esta sesión sin desactivar la cuenta ni afectar otras sesiones. */
+    public void invalidate() {
+        valid = false;
     }
 }

@@ -16,6 +16,11 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.layout.BorderPane;
+import javafx.css.PseudoClass;
+import javafx.scene.Scene;
+import javafx.scene.control.TextField;
+import javafx.scene.control.PasswordField;
+import javafx.stage.Stage;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -40,6 +45,7 @@ public class AuthenticationServiceTest {
         } catch (IllegalStateException e) {
             // Toolkit de JavaFX ya activo
         }
+        Platform.setImplicitExit(false);
     }
 
     @Test
@@ -109,7 +115,8 @@ public class AuthenticationServiceTest {
                     () -> assertEquals(expectedVisibility, sellers.isVisible(), "Visibilidad de Vendedores"),
                     () -> assertEquals(expectedVisibility, sellers.isManaged(), "Espacio de Vendedores"),
                     () -> assertEquals(expectedVisibility, adminUsers.isVisible(), "Visibilidad de Gestión de Usuarios"),
-                    () -> assertEquals(expectedVisibility, adminUsers.isManaged(), "Espacio de Gestión de Usuarios")
+                    () -> assertEquals(expectedVisibility, adminUsers.isManaged(), "Espacio de Gestión de Usuarios"),
+                    () -> assertTrue(adminUsers.isDisabled(), "Gestión de Usuarios sigue pendiente")
             );
             return null;
         });
@@ -143,9 +150,10 @@ public class AuthenticationServiceTest {
 
             customersButton.fire();
             assertNotNull(menu.getCenter().lookup("#customersTable"));
+            Node customerView = menu.getCenter();
             account.setActive(false);
             customersButton.fire();
-            assertSame(dashboard, menu.getCenter());
+            assertSame(customerView, menu.getCenter());
         });
     }
 
@@ -375,6 +383,201 @@ public class AuthenticationServiceTest {
             assertSame(dashboard, menu.getCenter());
             assertTrue(message.getText().isEmpty());
         });
+    }
+
+    @Test
+    void testNavigationHighlightChangesOnlyAfterSuccessfulNavigation() throws Exception {
+        CustomerService customers = new CustomerService(new CustomerRepository());
+        SellerService sellers = new SellerService(new SellerRepository());
+        withMainMenu(UserRole.ADMINISTRATOR, customers, sellers, (menu, account) -> {
+            assertActiveNavigation(menu, "btnDashboard");
+            ((Button) menu.lookup("#btnCustomers")).fire();
+            assertActiveNavigation(menu, "btnCustomers");
+            ((Button) menu.lookup("#btnSellers")).fire();
+            assertActiveNavigation(menu, "btnSellers");
+            ((Button) menu.lookup("#btnCredit")).fire();
+            assertActiveNavigation(menu, "btnCredit");
+            ((Button) menu.lookup("#btnDashboard")).fire();
+            assertActiveNavigation(menu, "btnDashboard");
+        });
+    }
+
+    @Test
+    void testQueryFailuresAndDeniedActionsPreserveSelectionAndPanel() throws Exception {
+        CustomerService failingCustomers = new CustomerService(new CustomerRepository() {
+            @Override
+            public List<Customer> findAll() {
+                throw new IllegalStateException("Consulta no disponible.");
+            }
+        });
+        withMainMenu(UserRole.ADMINISTRATOR, failingCustomers,
+                new SellerService(new SellerRepository()), (menu, account) -> {
+            ((Button) menu.lookup("#btnSellers")).fire();
+            Node sellersView = menu.getCenter();
+            ((Button) menu.lookup("#btnCustomers")).fire();
+            assertSame(sellersView, menu.getCenter());
+            assertActiveNavigation(menu, "btnSellers");
+            ((Button) menu.lookup("#btnCredit")).fire();
+            assertSame(sellersView, menu.getCenter());
+            assertActiveNavigation(menu, "btnSellers");
+            account.setActive(false);
+            ((Button) menu.lookup("#btnDashboard")).fire();
+            assertSame(sellersView, menu.getCenter());
+            assertActiveNavigation(menu, "btnSellers");
+        });
+    }
+
+    @Test
+    void testSellerFailurePreservesCustomerSelection() throws Exception {
+        SellerService failingSellers = new SellerService(new SellerRepository() {
+            @Override
+            public List<Seller> findAll() {
+                throw new IllegalStateException("Consulta no disponible.");
+            }
+        });
+        withMainMenu(UserRole.ADMINISTRATOR, new CustomerService(new CustomerRepository()),
+                failingSellers, (menu, account) -> {
+            ((Button) menu.lookup("#btnCustomers")).fire();
+            Node customerView = menu.getCenter();
+            ((Button) menu.lookup("#btnSellers")).fire();
+            assertSame(customerView, menu.getCenter());
+            assertActiveNavigation(menu, "btnCustomers");
+        });
+    }
+
+    @Test
+    void testLogoutInvalidatesSessionAndBlocksOldController() throws Exception {
+        onFxThread(() -> {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
+            BorderPane menu = loader.load();
+            MainController controller = loader.getController();
+            UserAccount account = new UserAccount(1L, "admin", "unused", UserRole.ADMINISTRATOR, null);
+            UserSession session = new UserSession(account);
+            CustomerService customers = new CustomerService(new CustomerRepository() {
+                @Override
+                public List<Customer> findAll() {
+                    return fail("El controlador anterior no debe consultar después de cerrar sesión.");
+                }
+            });
+            controller.setCustomerService(customers);
+            controller.initSession(session);
+            boolean[] returnedToLogin = {false};
+            controller.setOnLogout(() -> returnedToLogin[0] = true);
+            ((Button) menu.lookup("#btnLogout")).fire();
+            assertTrue(returnedToLogin[0]);
+            assertFalse(session.isActive());
+            assertTrue(account.isActive());
+            AuthorizationService authorization = new AuthorizationService();
+            assertFalse(authorization.isAdministrator(session));
+            assertFalse(authorization.hasRole(session, UserRole.ADMINISTRATOR));
+            assertFalse(authorization.hasPermission(session, com.laexclusiva.model.Permission.VIEW_CUSTOMER));
+            ((Button) menu.lookup("#btnCustomers")).fire();
+            assertEquals("No tiene permiso para consultar clientes.", ((Label) menu.getBottom()).getText());
+            assertThrows(IllegalArgumentException.class, () -> controller.initSession(session));
+            return null;
+        });
+    }
+
+    @Test
+    void testLogoutFailurePreservesActiveSession() throws Exception {
+        onFxThread(() -> {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
+            BorderPane menu = loader.load();
+            MainController controller = loader.getController();
+            UserSession session = new UserSession(new UserAccount(
+                    1L, "admin", "unused", UserRole.ADMINISTRATOR, null));
+            controller.initSession(session);
+            controller.setOnLogout(() -> { throw new IllegalStateException("Carga no disponible."); });
+            ((Button) menu.lookup("#btnLogout")).fire();
+            assertTrue(session.isActive());
+            assertActiveNavigation(menu, "btnDashboard");
+            assertEquals("No se pudo volver al inicio de sesión. Intente de nuevo.",
+                    ((Label) menu.getBottom()).getText());
+            return null;
+        });
+    }
+
+    @Test
+    void testAppCanLoginLogoutAndChangeUserInTheSameWindow() throws Exception {
+        onFxThread(() -> {
+            App app = new App();
+            app.initializeDemoAccounts("Admin-Test-2026", "Worker-Test-2026");
+            Stage stage = new Stage();
+            try {
+                app.start(stage);
+                Scene loginScene = stage.getScene();
+                ((Button) loginScene.lookup("#loginButton")).fire();
+                assertEquals("Por favor, ingrese usuario y contraseña.",
+                        ((Label) loginScene.lookup("#errorLabel")).getText());
+                enterLogin(stage, "admin", "incorrecta");
+                assertSame(loginScene, stage.getScene());
+                assertEquals("Credenciales inválidas o cuenta inactiva.",
+                        ((Label) loginScene.lookup("#errorLabel")).getText());
+                enterLogin(stage, "admin", "Admin-Test-2026");
+                BorderPane adminMenu = (BorderPane) stage.getScene().getRoot();
+                assertTrue(adminMenu.lookup("#btnSellers").isVisible());
+                assertTrue(adminMenu.lookup("#btnAdminUsers").isDisabled());
+                ((Button) adminMenu.lookup("#btnCustomers")).fire();
+                stage.setMaximized(true);
+                ((Button) adminMenu.lookup("#btnLogout")).fire();
+                assertTrue(stage.isShowing());
+                assertFalse(stage.isMaximized());
+                assertNotSame(loginScene, stage.getScene());
+                assertTrue(((TextField) stage.getScene().lookup("#usernameField")).getText().isEmpty());
+                assertTrue(((PasswordField) stage.getScene().lookup("#passwordField")).getText().isEmpty());
+                enterLogin(stage, "worker", "Worker-Test-2026");
+                BorderPane workerMenu = (BorderPane) stage.getScene().getRoot();
+                assertNotSame(adminMenu, workerMenu);
+                assertFalse(workerMenu.lookup("#btnSellers").isVisible());
+                assertFalse(workerMenu.lookup("#btnSellers").isManaged());
+                assertFalse(workerMenu.lookup("#btnAdminUsers").isVisible());
+                assertEquals("¡Bienvenido, worker!", ((Label) workerMenu.lookup("#welcomeLabel")).getText());
+                ((Button) workerMenu.lookup("#btnCustomers")).fire();
+                assertActiveNavigation(workerMenu, "btnCustomers");
+                ((Button) workerMenu.lookup("#btnCredit")).fire();
+                assertActiveNavigation(workerMenu, "btnCredit");
+                ((Button) workerMenu.lookup("#btnDashboard")).fire();
+                assertActiveNavigation(workerMenu, "btnDashboard");
+                assertEquals("¡Bienvenido, worker!", ((Label) workerMenu.lookup("#welcomeLabel")).getText());
+            } finally {
+                stage.close();
+            }
+            return null;
+        });
+    }
+
+    @Test
+    void testReauthenticationCreatesANewSessionAfterInvalidation() {
+        App app = new App();
+        app.initializeDemoAccounts("Admin-Test-2026", "Worker-Test-2026");
+        AuthenticationService auth = new AuthenticationService(app.getUserRepository());
+        UserSession first = auth.createSession("admin", "Admin-Test-2026").orElseThrow();
+        first.invalidate();
+        UserSession second = auth.createSession("admin", "Admin-Test-2026").orElseThrow();
+        assertNotSame(first, second);
+        assertFalse(first.isActive());
+        assertTrue(second.isActive());
+    }
+
+    private static void enterLogin(Stage stage, String username, String password) {
+        ((TextField) stage.getScene().lookup("#usernameField")).setText(username);
+        ((PasswordField) stage.getScene().lookup("#passwordField")).setText(password);
+        ((Button) stage.getScene().lookup("#loginButton")).fire();
+    }
+
+    private static void assertActiveNavigation(BorderPane menu, String selectedId) {
+        PseudoClass active = PseudoClass.getPseudoClass("active");
+        for (String id : List.of("btnDashboard", "btnCustomers", "btnSellers", "btnCredit")) {
+            assertEquals(id.equals(selectedId), menu.lookup("#" + id).getPseudoClassStates().contains(active), id);
+        }
+    }
+
+    private static void onFxThread(java.util.concurrent.Callable<Void> check) throws Exception {
+        FutureTask<Void> task = new FutureTask<>(check);
+        Platform.runLater(task);
+        task.get(15, TimeUnit.SECONDS);
     }
 
     private void withMainMenu(UserRole role, CustomerService customers,
