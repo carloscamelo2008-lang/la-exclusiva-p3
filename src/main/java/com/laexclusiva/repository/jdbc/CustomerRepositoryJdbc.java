@@ -91,6 +91,35 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
     }
 
     /**
+     * Lee y bloquea la fila del cliente para serializar una venta a crédito con sus abonos.
+     * El bloqueo usa la misma conexión transaccional que las consultas de cartera y los ajustes
+     * de saldo, por lo que se conserva hasta el commit o rollback del flujo.
+     *
+     * @param id identificador del cliente
+     * @return snapshot bloqueado o {@code null} si no existe
+     * @throws IllegalArgumentException si el ID es nulo o está en blanco
+     * @throws IllegalStateException si no hay una transacción JDBC compartida activa
+     * @throws JdbcPersistenceException si falla la consulta
+     */
+    @Override
+    public Customer findByIdForUpdate(String id) {
+        requireId(id);
+        return connectionProvider.withConnection(connection -> {
+            if (connection.getAutoCommit()) {
+                throw new IllegalStateException(
+                        "El bloqueo financiero del cliente requiere una transacción JDBC compartida.");
+            }
+            String sql = "SELECT " + CUSTOMER_COLUMNS + " FROM customer WHERE id = ? FOR UPDATE";
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, id);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    return resultSet.next() ? mapCustomer(resultSet) : null;
+                }
+            }
+        });
+    }
+
+    /**
      * Devuelve snapshots de todos los clientes ordenados por ID.
      *
      * @return lista independiente; vacía si no hay filas

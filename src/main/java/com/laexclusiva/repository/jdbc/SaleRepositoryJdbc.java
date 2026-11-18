@@ -31,8 +31,9 @@ import java.util.Optional;
  * Implementación JDBC del historial de ventas.
  *
  * <p>Las inserciones de cabecera, líneas y pago inicial se confirman en una sola transacción.
- * Los abonos nuevos requieren una clave idempotente y bloqueo de fila; las actualizaciones por
- * instantánea se rechazan. Las consultas cargan relaciones por lotes y conservan los snapshots SQL.</p>
+ * Los abonos nuevos requieren una clave idempotente y bloquean primero la fila del cliente asociado
+ * y luego la venta; las actualizaciones por instantánea se rechazan. Las consultas cargan relaciones
+ * por lotes y conservan los snapshots SQL.</p>
  */
 public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSalePaymentAppender {
 
@@ -131,6 +132,10 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
             throw new IllegalArgumentException("La clave de idempotencia debe tener entre 1 y 64 caracteres.");
         }
         return transactionManager.inTransaction(() -> connectionProvider.withConnection(connection -> {
+            String customerId = findCustomerId(connection, saleId);
+            if (customerId != null) {
+                lockCustomerForPayment(connection, customerId);
+            }
             findHeader(connection, saleId, true).orElseThrow(() ->
                     new IllegalArgumentException("No existe una venta con el ID: " + saleId));
             SalePayment existing = findPaymentByKey(connection, saleId, idempotencyKey);
@@ -181,6 +186,20 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
             }
             return Optional.of(loadSale(connection, header.orElseThrow()));
         });
+    }
+
+    /**
+     * Recupera solo la clave foránea del cliente, sin leer saldos, líneas ni pagos antes del bloqueo.
+     *
+     * @param saleId identificador de la venta
+     * @return identificador de cliente o {@code null} cuando la venta no tiene cliente
+     * @throws IllegalArgumentException si el ID es inválido o la venta no existe
+     * @throws JdbcPersistenceException si PostgreSQL no puede ejecutar la consulta
+     */
+    @Override
+    public String findCustomerIdBySaleId(String saleId) {
+        requireId(saleId, "El identificador de venta es obligatorio.");
+        return connectionProvider.withConnection(connection -> findCustomerId(connection, saleId));
     }
 
     /**
@@ -311,6 +330,34 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
             statement.setString(1, id);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(mapHeader(resultSet)) : Optional.empty();
+            }
+        }
+    }
+
+    /** Lee solo la clave foránea para poder respetar el orden cliente antes que venta. */
+    private static String findCustomerId(Connection connection, String saleId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT customer_id FROM sale WHERE id = ?")) {
+            statement.setString(1, saleId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    throw new IllegalArgumentException("No existe una venta con el ID: " + saleId);
+                }
+                return resultSet.getString("customer_id");
+            }
+        }
+    }
+
+    /** Exige la transacción actual y bloquea el cliente antes de bloquear la venta. */
+    private static void lockCustomerForPayment(Connection connection, String customerId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT id FROM customer WHERE id = ? FOR UPDATE")) {
+            statement.setString(1, customerId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    throw new JdbcPersistenceException(
+                            "La venta referencia un cliente que ya no existe: " + customerId);
+                }
             }
         }
     }

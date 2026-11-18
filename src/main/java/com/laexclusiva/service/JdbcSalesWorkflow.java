@@ -67,8 +67,9 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
 
     /**
      * Registra venta, salidas de inventario, movimientos, pago inicial y saldo del cliente
-     * atómicamente. Las filas de inventario se ajustan por ID ascendente para mantener un orden
-     * consistente de bloqueos.
+     * atómicamente. Primero bloquea la fila del cliente y después ajusta las filas de inventario
+     * por ID ascendente; las demás operaciones financieras del cliente adquieren el mismo primer
+     * bloqueo para evitar leer saldos de versiones distintas.
      */
     @Override
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
@@ -84,12 +85,13 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
 
     private Sale registerSaleInTransaction(List<StockRequest> requests, String sellerId,
                                            String customerId, BigDecimal initialPayment) {
-        Seller seller = sellers.findById(sellerId)
-                .orElseThrow(() -> new IllegalArgumentException("No existe el vendedor " + sellerId + "."));
-        Customer customer = customerId == null ? null : customers.findById(customerId);
+        Customer customer = customerId == null ? null : customers.findByIdForUpdate(customerId);
         if (customerId != null && customer == null) {
             throw new IllegalArgumentException("No existe el cliente " + customerId + ".");
         }
+
+        Seller seller = sellers.findById(sellerId)
+                .orElseThrow(() -> new IllegalArgumentException("No existe el vendedor " + sellerId + "."));
 
         Map<String, com.laexclusiva.model.BeerProduct> productById = new LinkedHashMap<>();
         List<SaleLine> saleLines = new ArrayList<>(requests.size());
@@ -126,8 +128,9 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
 
     /**
      * Inserta un abono identificado y reduce el saldo agregado solo si PostgreSQL confirma que
-     * la clave es nueva. La inserción y el ajuste comparten transacción y bloquean primero la venta,
-     * luego la fila del cliente.
+     * la clave es nueva. La transacción bloquea primero la fila del cliente y después la venta,
+     * el mismo orden que aplica una venta a crédito; así las lecturas de saldo y cartera pertenecen
+     * a una única secuencia financiera hasta el commit.
      */
     @Override
     public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey) {
@@ -139,25 +142,24 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
             throw new IllegalArgumentException("La clave de idempotencia debe tener entre 1 y 64 caracteres.");
         }
         return transactions.inTransaction(() -> {
-            Sale before = findById(saleId);
-            Customer customer = before.getCustomer();
-            if (customer == null) {
+            String customerId = sales.findCustomerIdBySaleId(saleId);
+            if (customerId == null) {
                 throw new IllegalArgumentException("La venta no tiene un cliente asociado.");
             }
-            Customer persistedCustomer = customers.findById(customer.getId());
+            Customer persistedCustomer = customers.findByIdForUpdate(customerId);
             if (persistedCustomer == null) {
                 throw new IllegalStateException("No existe el cliente asociado a la venta.");
             }
             IdempotentSalePaymentAppender.AppendResult result =
                     payments.appendPaymentOnce(saleId, amount, idempotencyKey);
             if (result.inserted()) {
-                BigDecimal salesDebtAfterPayment = debtQuery.findOutstandingSalesDebt(customer.getId());
+                BigDecimal salesDebtAfterPayment = debtQuery.findOutstandingSalesDebt(customerId);
                 if (salesDebtAfterPayment.add(result.payment().getAmount())
                         .compareTo(persistedCustomer.getBalance()) > 0) {
                     throw new IllegalStateException(
                             "La cartera de ventas supera el saldo agregado del cliente; revise la inconsistencia.");
                 }
-                customerBalances.decreaseBalance(customer.getId(), result.payment().getAmount());
+                customerBalances.decreaseBalance(customerId, result.payment().getAmount());
             }
             return findById(saleId);
         });

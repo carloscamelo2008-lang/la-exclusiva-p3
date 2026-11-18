@@ -13,6 +13,8 @@ public interface IdempotentSalePaymentAppender extends SalePaymentAppender {
      * @param amount importe del abono
      * @param idempotencyKey clave estable del intento
      * @return pago y marca que permite evitar volver a reducir el saldo agregado en un reintento
+     * @implNote El adaptador JDBC bloquea primero el cliente asociado y después la venta dentro de
+     *           la transacción compartida, manteniendo el mismo orden que las ventas a crédito.
      */
     AppendResult appendPaymentOnce(String saleId, BigDecimal amount, String idempotencyKey);
 
