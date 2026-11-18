@@ -11,8 +11,9 @@ Este documento fija la interfaz de integración entre la infraestructura JDBC de
 - **Estado actualizado el 2026-11-17:** el PR #15 (`feature/jdbc-infrastructure`) se fusionó en
   `develop` (`ea85865`); el PR #16 (`feature/products-inventory`) sigue abierto. La rama
   `feature/full-jdbc-integration` parte del head `426a65e` de #16 e integra la base anterior de
-  `develop` (`8d00215`) y las protecciones del PR #15. Se actualizará con el `develop` actual antes
-  de publicar el borrador. Esta rama temporal no reemplaza ni publica cambios en la rama de Jesús.
+  `develop` (`8d00215`), las protecciones del PR #15 y el `develop` actual (`ea85865`, incluido el
+  PR #17) mediante el merge `ecadf8b`. El borrador seguirá basado en #16 hasta que este se fusione.
+  Esta rama temporal no reemplaza ni publica cambios en la rama de Jesús.
 
 ## Configuración de bases locales
 
@@ -354,7 +355,7 @@ Límites que requieren revisión antes de habilitarlo al equipo:
   ejecutar contra PostgreSQL real para probar bloqueos y comportamiento del servidor.
 
 Con Temurin JDK 17.0.21 y Maven 3.10.0, la última ejecución `mvn clean verify` terminó en
-`BUILD SUCCESS`: 215 pruebas contabilizadas, 203 aprobadas, 0 fallidas, 0 errores y 12 omitidas.
+`BUILD SUCCESS`: 222 pruebas contabilizadas, 210 aprobadas, 0 fallidas, 0 errores y 12 omitidas.
 Las 12 omitidas son las integraciones PostgreSQL porque `LAEXCLUSIVA_TEST_DB_URL`,
 `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` no estaban configuradas. No se abrió conexión,
 no se ejecutaron migraciones ni escrituras de base. Las pruebas JavaFX cargaron las vistas FXML bajo

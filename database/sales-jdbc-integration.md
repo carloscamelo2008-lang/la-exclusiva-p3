@@ -365,8 +365,9 @@ Clientes y vendedores pasan por los repositorios seleccionados en la composició
 
 ### Verificación local observada
 
-Con Temurin JDK 17.0.21 y Maven 3.10.0, el 2026-11-17 `mvn clean verify` terminó en
-`BUILD SUCCESS`: 215 pruebas contabilizadas, 203 aprobadas, 0 fallidas, 0 errores y 12 omitidas.
+Con Temurin JDK 17.0.21 y Maven 3.10.0, después de integrar `origin/develop` (`ea85865`) mediante
+el merge `ecadf8b`, el 2026-11-17 `mvn clean verify` terminó en `BUILD SUCCESS`: 222 pruebas
+contabilizadas, 210 aprobadas, 0 fallidas, 0 errores y 12 omitidas.
 Las 12 omitidas son las pruebas PostgreSQL opcionales; el proceso no tenía
 `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` ni
 `LAEXCLUSIVA_DB_PASSWORD`. No se abrió conexión, se aplicaron migraciones ni se tocaron bases de
@@ -379,7 +380,9 @@ durante sus pruebas. Se omitieron las suites PostgreSQL de cartera, clientes/ven
 La navegación JavaFX también aplica `REGISTER_SALE` junto con `VIEW_SALES`, limita las ventas de
 trabajadores al vendedor asignado, deja el selector vacío cuando no hay asignación y separa
 `MANAGE_PRODUCTS` de `MANAGE_INVENTORY_ENTRIES`. La prueba de interfaz de trabajador asignado pasó
-dentro de las 203 pruebas aprobadas.
+dentro de las 210 pruebas aprobadas. También pasaron las regresiones de cierre de sesión y navegación
+incorporadas por el PR #17; se combinaron con la composición de persistencia y las pantallas de ventas
+e inventario.
 
 La prueba PostgreSQL nueva `JdbcSalesWorkflowPostgresIntegrationTest` utiliza únicamente la
 configuración validada por `DatabaseConfig.fromTestEnvironment()`, que exige la base
