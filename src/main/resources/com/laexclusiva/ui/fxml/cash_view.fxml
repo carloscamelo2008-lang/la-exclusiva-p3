@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.DatePicker?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox spacing="10.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.laexclusiva.ui.controller.CashController">
+    <padding><Insets top="18.0" right="18.0" bottom="18.0" left="18.0" /></padding>
+    <Label text="Caja y cierre operativo" style="-fx-font-size: 22px; -fx-font-weight: bold;" />
+    <Label text="Las ventas facturadas se muestran separadas del efectivo realmente recibido." wrapText="true" />
+    <HBox spacing="8.0" alignment="CENTER_LEFT">
+        <DatePicker fx:id="fromDatePicker" promptText="Desde" />
+        <DatePicker fx:id="throughDatePicker" promptText="Hasta" />
+        <ComboBox fx:id="categoryFilterCombo" promptText="Todas las categorías" prefWidth="210.0" />
+        <Button fx:id="refreshButton" text="Consultar" onAction="#handleRefresh" />
+    </HBox>
+    <HBox spacing="14.0">
+        <Label fx:id="invoicedSalesLabel" text="Ventas facturadas: $ 0,00" />
+        <Label fx:id="saleReceiptsLabel" text="Efectivo recibido por ventas: $ 0,00" />
+        <Label fx:id="generalDebtReceiptsLabel" text="Pagos de deuda general: $ 0,00" />
+    </HBox>
+    <HBox spacing="14.0">
+        <Label fx:id="otherIncomeLabel" text="Otros ingresos: $ 0,00" />
+        <Label fx:id="expensesLabel" text="Egresos: $ 0,00" />
+        <Label fx:id="cashInLabel" text="Ingresos reales de caja: $ 0,00" />
+        <Label fx:id="netCashLabel" text="Saldo neto de caja: $ 0,00" />
+    </HBox>
+    <Label text="Registrar movimiento manual" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
+    <HBox spacing="8.0">
+        <DatePicker fx:id="movementDatePicker" promptText="Fecha" />
+        <ComboBox fx:id="directionCombo" prefWidth="115.0" />
+        <ComboBox fx:id="entryCategoryCombo" prefWidth="190.0" />
+        <TextField fx:id="amountField" promptText="Importe (COP)" prefWidth="135.0" />
+        <TextField fx:id="descriptionField" promptText="Descripción auditable" HBox.hgrow="ALWAYS" />
+        <Button fx:id="registerMovementButton" text="Registrar" onAction="#handleRegisterMovement" />
+    </HBox>
+    <Label fx:id="operationKeyLabel" wrapText="true" />
+    <Label fx:id="messageLabel" wrapText="true" />
+    <TableView fx:id="movementsTable" VBox.vgrow="ALWAYS" prefHeight="260.0">
+        <columns>
+            <TableColumn fx:id="dateColumn" text="Fecha y hora" prefWidth="165.0" />
+            <TableColumn fx:id="directionColumn" text="Tipo" prefWidth="90.0" />
+            <TableColumn fx:id="categoryColumn" text="Categoría" prefWidth="190.0" />
+            <TableColumn fx:id="amountColumn" text="Importe" prefWidth="120.0" />
+            <TableColumn fx:id="descriptionColumn" text="Descripción" prefWidth="300.0" />
+        </columns>
+    </TableView>
+</VBox>
