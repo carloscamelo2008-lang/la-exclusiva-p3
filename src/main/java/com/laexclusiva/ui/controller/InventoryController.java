@@ -79,8 +79,9 @@ public class InventoryController {
         });
     }
 
-    /** Configura dependencias de consulta y controla la entrada de stock según el rol. */
-    public void configure(ProductService products, InventoryService inventory, boolean canManageEntries) {
+    /** Configura dependencias, permiso de catálogo y permiso de entrada de inventario. */
+    public void configure(ProductService products, InventoryService inventory,
+                          boolean canManageProducts, boolean canManageEntries) {
         if (products == null || inventory == null) {
             throw new IllegalArgumentException("Los servicios de producto e inventario son obligatorios.");
         }
@@ -89,8 +90,8 @@ public class InventoryController {
         productCombo.getItems().setAll(products.listAll());
         stockEntryPane.setVisible(canManageEntries);
         stockEntryPane.setManaged(canManageEntries);
-        productRegistrationPane.setVisible(canManageEntries);
-        productRegistrationPane.setManaged(canManageEntries);
+        productRegistrationPane.setVisible(canManageProducts);
+        productRegistrationPane.setManaged(canManageProducts);
         refresh();
     }
 

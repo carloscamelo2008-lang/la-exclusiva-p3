@@ -136,7 +136,8 @@ public class MainController {
 
     @FXML
     private void handleShowSales() {
-        if (!authorizationService.hasPermission(currentSession, Permission.REGISTER_SALE)) {
+        if (!authorizationService.hasPermission(currentSession, Permission.REGISTER_SALE)
+                || !authorizationService.hasPermission(currentSession, Permission.VIEW_SALES)) {
             handleShowDashboard();
             navigationMessage.setText("No tiene permiso para registrar ventas.");
             return;
@@ -147,7 +148,8 @@ public class MainController {
             Node view = loader.load();
             SalesController controller = loader.getController();
             controller.configure(productService, inventoryService, customerService,
-                    sellerService, salesWorkflow, currentSession);
+                    sellerService, salesWorkflow, currentSession,
+                    authorizationService.hasPermission(currentSession, Permission.VIEW_SELLERS));
             rootPane.setCenter(view);
             navigationMessage.setText("");
         } catch (IOException | RuntimeException failure) {
@@ -169,6 +171,7 @@ public class MainController {
             Node view = loader.load();
             InventoryController controller = loader.getController();
             controller.configure(productService, inventoryService,
+                    authorizationService.hasPermission(currentSession, Permission.MANAGE_PRODUCTS),
                     authorizationService.hasPermission(currentSession, Permission.MANAGE_INVENTORY_ENTRIES));
             rootPane.setCenter(view);
             navigationMessage.setText("");
@@ -205,7 +208,8 @@ public class MainController {
         boolean canViewInventory = authorizationService.hasPermission(session, Permission.VIEW_INVENTORY);
         btnInventory.setVisible(canViewInventory);
         btnInventory.setManaged(canViewInventory);
-        boolean canRegisterSales = authorizationService.hasPermission(session, Permission.REGISTER_SALE);
+        boolean canRegisterSales = authorizationService.hasPermission(session, Permission.REGISTER_SALE)
+                && authorizationService.hasPermission(session, Permission.VIEW_SALES);
         btnSales.setVisible(canRegisterSales);
         btnSales.setManaged(canRegisterSales);
     }

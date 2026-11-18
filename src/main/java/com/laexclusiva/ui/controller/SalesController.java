@@ -8,6 +8,7 @@ import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
 import com.laexclusiva.model.StockRequest;
 import com.laexclusiva.model.UserSession;
+import com.laexclusiva.model.UserRole;
 import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
@@ -54,7 +55,8 @@ public class SalesController {
     private CustomerService customers;
     private SellerService sellers;
     private SalesWorkflow sales;
-    private UserSession session;
+    private boolean canViewAllSales;
+    private String assignedSellerId;
 
     @FXML
     private void initialize() {
@@ -88,26 +90,39 @@ public class SalesController {
      * @param sellers servicio de vendedores
      * @param sales flujo de venta y abono según la composición activa
      * @param session sesión autenticada que define permisos y vendedor asignado
+     * @param canViewSellers indica si el usuario puede seleccionar y consultar vendedores
      * @throws IllegalArgumentException si falta una dependencia obligatoria
      */
     public void configure(ProductService products, InventoryService inventory, CustomerService customers,
-                          SellerService sellers, SalesWorkflow sales, UserSession session) {
+                          SellerService sellers, SalesWorkflow sales, UserSession session,
+                          boolean canViewSellers) {
         this.products = require(products);
         this.inventory = require(inventory);
         this.customers = require(customers);
         this.sellers = require(sellers);
         this.sales = require(sales);
-        this.session = require(session);
+        UserSession activeSession = require(session);
+        this.canViewAllSales = activeSession.getUserAccount().getRole() == UserRole.ADMINISTRATOR;
+        this.assignedSellerId = activeSession.getUserAccount().getSellerId();
         productCombo.getItems().setAll(products.listAll());
         productCombo.setConverter(converter(product -> product + " · "
                 + inventory.getStock(product.getId()).totalUnits() + " u"));
-        sellerCombo.getItems().setAll(sellers.getAllSellers());
         customerCombo.getItems().setAll(customers.getAllCustomers());
-        String assignedSellerId = session.getUserAccount().getSellerId();
-        if (assignedSellerId != null) {
+        List<Seller> availableSellers = sellers.getAllSellers();
+        if (canViewSellers) {
+            sellerCombo.getItems().setAll(availableSellers);
+        } else if (assignedSellerId != null) {
+            sellerCombo.getItems().setAll(availableSellers.stream()
+                    .filter(seller -> assignedSellerId.equals(seller.getId())).toList());
+            sellerCombo.setDisable(true);
+        } else {
+            sellerCombo.getItems().clear();
+            sellerCombo.setDisable(true);
+            messageLabel.setText("La cuenta no tiene un vendedor asignado; solicite la asignación al administrador.");
+        }
+        if (canViewSellers && assignedSellerId != null) {
             sellerCombo.getItems().stream().filter(seller -> assignedSellerId.equals(seller.getId()))
                     .findFirst().ifPresent(sellerCombo::setValue);
-            sellerCombo.setDisable(true);
         }
         refreshHistory();
         refreshTotal();
@@ -165,7 +180,12 @@ public class SalesController {
 
     private void refreshHistory() {
         if (sales != null) {
-            historyTable.getItems().setAll(sales.listAll());
+            List<Sale> history = sales.listAll();
+            if (!canViewAllSales) {
+                history = assignedSellerId == null ? List.of() : history.stream()
+                        .filter(sale -> assignedSellerId.equals(sale.getSeller().getId())).toList();
+            }
+            historyTable.getItems().setAll(history);
         }
     }
 

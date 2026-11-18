@@ -11,6 +11,7 @@ import com.laexclusiva.ui.App;
 import com.laexclusiva.ui.ApplicationServices;
 import com.laexclusiva.ui.controller.InventoryController;
 import com.laexclusiva.ui.controller.MainController;
+import com.laexclusiva.ui.controller.SalesController;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
@@ -18,6 +19,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ComboBox;
 import javafx.scene.layout.BorderPane;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -111,7 +113,7 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
             loader.load();
             InventoryController controller = loader.getController();
-            controller.configure(services.products(), services.inventory(), true);
+            controller.configure(services.products(), services.inventory(), true, true);
             setText(loader, "productIdField", "UI-CATALOG-TEST");
             setText(loader, "productNameField", "Producto de interfaz");
             setText(loader, "volumeField", "330");
@@ -126,6 +128,44 @@ public class AuthenticationServiceTest {
         });
         Platform.runLater(registration);
         registration.get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void salesScreenRestrictsWorkerToAssignedSeller() throws Exception {
+        FutureTask<Void> checkPermissions = new FutureTask<>(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE,
+                    java.util.Map.of());
+            Seller assignedSeller = services.sellers().registerSeller("Vendedor asignado", "3000000103", "Dirección");
+            services.sellers().registerSeller("Otro vendedor", "3000000104", "Dirección");
+
+            FXMLLoader unassignedLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            unassignedLoader.load();
+            SalesController unassignedController = unassignedLoader.getController();
+            UserSession unassignedWorker = new UserSession(
+                    new UserAccount(2L, "worker", "unused", UserRole.WORKER, null));
+            unassignedController.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), services.sales(), unassignedWorker, false);
+            ComboBox<?> unassignedSellers = (ComboBox<?>) unassignedLoader.getNamespace().get("sellerCombo");
+            assertTrue(unassignedSellers.isDisabled());
+            assertTrue(unassignedSellers.getItems().isEmpty());
+
+            FXMLLoader assignedLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            assignedLoader.load();
+            SalesController assignedController = assignedLoader.getController();
+            UserSession worker = new UserSession(
+                    new UserAccount(3L, "assigned-worker", "unused", UserRole.WORKER, assignedSeller.getId()));
+            assignedController.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), services.sales(), worker, false);
+            ComboBox<?> sellerOptions = (ComboBox<?>) assignedLoader.getNamespace().get("sellerCombo");
+            assertTrue(sellerOptions.isDisabled());
+            assertEquals(1, sellerOptions.getItems().size());
+            assertEquals(assignedSeller.getId(), ((Seller) sellerOptions.getItems().get(0)).getId());
+            return null;
+        });
+        Platform.runLater(checkPermissions);
+        checkPermissions.get(10, TimeUnit.SECONDS);
     }
 
     private static void setText(FXMLLoader loader, String fieldId, String value) {
