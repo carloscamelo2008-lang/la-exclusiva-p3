@@ -10,7 +10,9 @@ ALTER TABLE sale
     ADD CONSTRAINT uq_sale_idempotency_key UNIQUE (idempotency_key),
     ADD CONSTRAINT ck_sale_request_identity CHECK (
         (idempotency_key IS NULL AND request_fingerprint IS NULL)
-        OR (idempotency_key IS NOT NULL AND request_fingerprint ~ '^[0-9a-f]{64}$')
+        OR (idempotency_key IS NOT NULL
+            AND request_fingerprint IS NOT NULL
+            AND request_fingerprint ~ '^[0-9a-f]{64}$')
     );
 
 COMMIT;
