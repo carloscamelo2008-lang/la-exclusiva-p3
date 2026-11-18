@@ -1,20 +1,22 @@
 package com.laexclusiva.ui.controller;
 
+import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.service.AuthorizationService;
-import com.laexclusiva.model.Permission;
 import com.laexclusiva.service.CustomerService;
+import com.laexclusiva.service.InventoryService;
+import com.laexclusiva.service.ProductService;
 import com.laexclusiva.service.SellerService;
+import com.laexclusiva.service.SalesWorkflow;
+import com.laexclusiva.ui.ApplicationServices;
+import javafx.css.PseudoClass;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
-import javafx.css.PseudoClass;
-
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -29,6 +31,8 @@ public class MainController {
     @FXML private Label welcomeLabel;
     @FXML private Label roleLabel;
     @FXML private Button btnSellers;
+    @FXML private Button btnInventory;
+    @FXML private Button btnSales;
     @FXML private Button btnAdminUsers;
     @FXML private Button btnDashboard;
     @FXML private Button btnCustomers;
@@ -37,6 +41,9 @@ public class MainController {
     private UserSession currentSession;
     private CustomerService customerService;
     private SellerService sellerService;
+    private ProductService productService;
+    private InventoryService inventoryService;
+    private SalesWorkflow salesWorkflow;
     private Runnable onLogout;
     private final AuthorizationService authorizationService = new AuthorizationService();
 
@@ -46,6 +53,17 @@ public class MainController {
 
     public void setSellerService(SellerService sellerService) {
         this.sellerService = sellerService;
+    }
+
+    public void setApplicationServices(ApplicationServices services) {
+        if (services == null) {
+            throw new IllegalArgumentException("La composición de servicios es obligatoria.");
+        }
+        this.customerService = services.customers();
+        this.sellerService = services.sellers();
+        this.productService = services.products();
+        this.inventoryService = services.inventory();
+        this.salesWorkflow = services.sales();
     }
 
     public void setOnLogout(Runnable onLogout) {
@@ -68,7 +86,8 @@ public class MainController {
     }
 
     private void selectNavigation(Button selected) {
-        for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit}) {
+        for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit,
+                btnInventory, btnSales}) {
             button.pseudoClassStateChanged(ACTIVE, button == selected);
         }
     }
@@ -85,6 +104,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/customers_view.fxml"));
             Node customerView = loader.load();
             CustomerController controller = loader.getController();
+            controller.configure(customerService, currentSession);
             controller.showCustomers(customerService.getAllCustomers());
             rootPane.setCenter(customerView);
             selectNavigation(btnCustomers);
@@ -107,6 +127,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/sellers_view.fxml"));
             Node sellerView = loader.load();
             SellerController controller = loader.getController();
+            controller.configure(sellerService, currentSession);
             controller.showSellers(sellerService.getAllSellers());
             rootPane.setCenter(sellerView);
             selectNavigation(btnSellers);
@@ -129,15 +150,60 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/portfolio_view.fxml"));
             Node portfolioView = loader.load();
             PortfolioController controller = loader.getController();
-            controller.showDebtors(customerService.getAllCustomers().stream()
-                    .filter(customer -> customer.getBalance().compareTo(BigDecimal.ZERO) > 0)
-                    .toList());
+            controller.configure(customerService, salesWorkflow, currentSession);
+            controller.showPortfolio(customerService.getAllCustomers());
             rootPane.setCenter(portfolioView);
             selectNavigation(btnCredit);
             navigationMessage.setText("");
         } catch (IOException | RuntimeException failure) {
             LOGGER.log(Level.WARNING, "No se pudo abrir la consulta de cartera.", failure);
             navigationMessage.setText("No se pudo consultar la cartera.");
+        }
+    }
+
+    @FXML
+    private void handleShowSales() {
+        if (!authorizationService.hasPermission(currentSession, Permission.REGISTER_SALE)
+                || !authorizationService.hasPermission(currentSession, Permission.VIEW_SALES)) {
+            handleShowDashboard();
+            navigationMessage.setText("No tiene permiso para registrar ventas.");
+            return;
+        }
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            Node view = loader.load();
+            SalesController controller = loader.getController();
+            controller.configure(productService, inventoryService, customerService,
+                    sellerService, salesWorkflow, currentSession);
+            rootPane.setCenter(view);
+            selectNavigation(btnSales);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir el registro de ventas.", failure);
+            navigationMessage.setText("No se pudo abrir el registro de ventas.");
+        }
+    }
+
+    @FXML
+    private void handleShowInventory() {
+        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_INVENTORY)) {
+            handleShowDashboard();
+            navigationMessage.setText("No tiene permiso para consultar el inventario.");
+            return;
+        }
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
+            Node view = loader.load();
+            InventoryController controller = loader.getController();
+            controller.configure(productService, inventoryService, currentSession);
+            rootPane.setCenter(view);
+            selectNavigation(btnInventory);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir el inventario.", failure);
+            navigationMessage.setText("No se pudo consultar el inventario.");
         }
     }
 
@@ -171,6 +237,13 @@ public class MainController {
         boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
         btnSellers.setVisible(canViewSellers);
         btnSellers.setManaged(canViewSellers);
+        boolean canViewInventory = authorizationService.hasPermission(session, Permission.VIEW_INVENTORY);
+        btnInventory.setVisible(canViewInventory);
+        btnInventory.setManaged(canViewInventory);
+        boolean canRegisterSales = authorizationService.hasPermission(session, Permission.REGISTER_SALE)
+                && authorizationService.hasPermission(session, Permission.VIEW_SALES);
+        btnSales.setVisible(canRegisterSales);
+        btnSales.setManaged(canRegisterSales);
         btnAdminUsers.setDisable(true);
         selectNavigation(btnDashboard);
     }

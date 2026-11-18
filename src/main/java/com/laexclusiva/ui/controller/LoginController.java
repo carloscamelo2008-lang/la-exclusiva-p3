@@ -3,6 +3,7 @@ package com.laexclusiva.ui.controller;
 import com.laexclusiva.service.AuthenticationService;
 import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.SellerService;
+import com.laexclusiva.ui.ApplicationServices;
 import com.laexclusiva.model.UserSession;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -24,6 +25,7 @@ public class LoginController {
     private AuthenticationService authenticationService;
     private CustomerService customerService;
     private SellerService sellerService;
+    private ApplicationServices applicationServices;
     private Runnable onLogout;
 
     public void setAuthenticationService(AuthenticationService authenticationService) {
@@ -36,6 +38,10 @@ public class LoginController {
 
     public void setSellerService(SellerService sellerService) {
         this.sellerService = sellerService;
+    }
+
+    public void setApplicationServices(ApplicationServices applicationServices) {
+        this.applicationServices = applicationServices;
     }
 
     public void setOnLogout(Runnable onLogout) {
@@ -64,8 +70,12 @@ public class LoginController {
                 
                 // Obtener el controlador del menú y pasarle la sesión activa
                 MainController mainController = loader.getController();
-                mainController.setCustomerService(customerService);
-                mainController.setSellerService(sellerService);
+                if (applicationServices != null) {
+                    mainController.setApplicationServices(applicationServices);
+                } else {
+                    mainController.setCustomerService(customerService);
+                    mainController.setSellerService(sellerService);
+                }
                 mainController.setOnLogout(onLogout);
                 mainController.initSession(session);
                 

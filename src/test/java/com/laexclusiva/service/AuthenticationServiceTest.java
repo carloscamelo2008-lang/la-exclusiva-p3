@@ -1,6 +1,7 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
@@ -8,13 +9,18 @@ import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.CustomerRepository;
 import com.laexclusiva.repository.SellerRepository;
 import com.laexclusiva.ui.App;
+import com.laexclusiva.ui.ApplicationServices;
+import com.laexclusiva.ui.controller.InventoryController;
 import com.laexclusiva.ui.controller.MainController;
+import com.laexclusiva.ui.controller.SalesController;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import javafx.scene.control.ComboBox;
 import javafx.scene.layout.BorderPane;
 import javafx.css.PseudoClass;
 import javafx.scene.Scene;
@@ -96,6 +102,133 @@ public class AuthenticationServiceTest {
             FXMLLoader menuLoader = new FXMLLoader(menuUrl);
             menuLoader.load();
         });
+
+        assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
+                "/com/laexclusiva/ui/fxml/inventory_view.fxml")).load());
+        assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
+                "/com/laexclusiva/ui/fxml/sales_view.fxml")).load());
+        assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
+                "/com/laexclusiva/ui/fxml/portfolio_view.fxml")).load());
+    }
+
+    @Test
+    void salePresentationAndPortfolioTextAreHumanReadable() throws Exception {
+        FutureTask<Void> checkLabels = new FutureTask<>(() -> {
+            FXMLLoader salesLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            salesLoader.load();
+            @SuppressWarnings("unchecked")
+            ComboBox<SalePresentation> presentations = (ComboBox<SalePresentation>)
+                    salesLoader.getNamespace().get("presentationCombo");
+            assertEquals("Unidad", presentations.getConverter().toString(SalePresentation.UNIT));
+            assertEquals("Media canasta", presentations.getConverter().toString(SalePresentation.HALF_BASKET));
+            assertEquals("Canasta completa", presentations.getConverter().toString(SalePresentation.FULL_BASKET));
+
+            FXMLLoader portfolioLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/portfolio_view.fxml"));
+            portfolioLoader.load();
+            Label subtitle = (Label) portfolioLoader.getNamespace().get("portfolioSubtitle");
+            assertEquals("Consulta de saldos por cliente y registro de abonos a ventas.", subtitle.getText());
+            return null;
+        });
+        Platform.runLater(checkLabels);
+        checkLabels.get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void inventoryScreenRegistersCatalogProductThroughConfiguredService() throws Exception {
+        FutureTask<Void> registration = new FutureTask<>(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE,
+                    java.util.Map.of());
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
+            loader.load();
+            InventoryController controller = loader.getController();
+            controller.configure(services.products(), services.inventory(),
+                    new UserSession(new UserAccount(1L, "admin", "unused", UserRole.ADMINISTRATOR, null)));
+            setText(loader, "productIdField", "UI-CATALOG-TEST");
+            setText(loader, "productNameField", "Producto de interfaz");
+            setText(loader, "volumeField", "330");
+            setText(loader, "unitsPerBasketField", "24");
+            setText(loader, "unitPriceField", "100");
+            setText(loader, "halfBasketPriceField", "1100");
+            setText(loader, "fullBasketPriceField", "2100");
+            ((Button) loader.getNamespace().get("registerProductButton")).fire();
+            assertTrue(services.products().listAll().stream()
+                    .anyMatch(product -> product.getId().equals("UI-CATALOG-TEST")));
+            return null;
+        });
+        Platform.runLater(registration);
+        registration.get(10, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void salesScreenRestrictsWorkerToAssignedSeller() throws Exception {
+        FutureTask<Void> checkPermissions = new FutureTask<>(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE,
+                    java.util.Map.of());
+            Seller assignedSeller = services.sellers().registerSeller("Vendedor asignado", "3000000103", "Dirección");
+            services.sellers().registerSeller("Otro vendedor", "3000000104", "Dirección");
+
+            FXMLLoader unassignedLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            unassignedLoader.load();
+            SalesController unassignedController = unassignedLoader.getController();
+            UserSession unassignedWorker = new UserSession(
+                    new UserAccount(2L, "worker", "unused", UserRole.WORKER, null));
+            unassignedController.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), services.sales(), unassignedWorker);
+            ComboBox<?> unassignedSellers = (ComboBox<?>) unassignedLoader.getNamespace().get("sellerCombo");
+            assertTrue(unassignedSellers.isDisabled());
+            assertTrue(unassignedSellers.getItems().isEmpty());
+
+            FXMLLoader assignedLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            assignedLoader.load();
+            SalesController assignedController = assignedLoader.getController();
+            UserSession worker = new UserSession(
+                    new UserAccount(3L, "assigned-worker", "unused", UserRole.WORKER, assignedSeller.getId()));
+            assignedController.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), services.sales(), worker);
+            ComboBox<?> sellerOptions = (ComboBox<?>) assignedLoader.getNamespace().get("sellerCombo");
+            assertTrue(sellerOptions.isDisabled());
+            assertEquals(1, sellerOptions.getItems().size());
+            assertEquals(assignedSeller.getId(), ((Seller) sellerOptions.getItems().get(0)).getId());
+            assertEquals(assignedSeller.getId(), ((Seller) sellerOptions.getValue()).getId(),
+                    "El vendedor asignado debe quedar seleccionado automáticamente.");
+
+            FXMLLoader unknownLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            unknownLoader.load();
+            SalesController unknownController = unknownLoader.getController();
+            UserSession unknownWorker = new UserSession(
+                    new UserAccount(4L, "unknown-worker", "unused", UserRole.WORKER, "SELLER-NOT-REGISTERED"));
+            unknownController.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), services.sales(), unknownWorker);
+            ComboBox<?> unknownSellers = (ComboBox<?>) unknownLoader.getNamespace().get("sellerCombo");
+            assertTrue(unknownSellers.isDisabled());
+            assertTrue(unknownSellers.getItems().isEmpty());
+            assertTrue(((Label) unknownLoader.getNamespace().get("messageLabel")).getText()
+                    .contains("no existe"));
+
+            FXMLLoader adminLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            adminLoader.load();
+            SalesController adminController = adminLoader.getController();
+            adminController.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), services.sales(),
+                    new UserSession(new UserAccount(5L, "admin", "unused", UserRole.ADMINISTRATOR, null)));
+            ComboBox<?> adminSellers = (ComboBox<?>) adminLoader.getNamespace().get("sellerCombo");
+            assertFalse(adminSellers.isDisabled());
+            assertEquals(2, adminSellers.getItems().size(), "El administrador conserva la selección de todos los vendedores.");
+            return null;
+        });
+        Platform.runLater(checkPermissions);
+        checkPermissions.get(10, TimeUnit.SECONDS);
+    }
+
+    private static void setText(FXMLLoader loader, String fieldId, String value) {
+        ((TextField) loader.getNamespace().get(fieldId)).setText(value);
     }
 
     @ParameterizedTest

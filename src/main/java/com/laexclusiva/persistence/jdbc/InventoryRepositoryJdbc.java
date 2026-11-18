@@ -12,10 +12,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Persiste existencias por producto. Toda escritura requiere una transacción activa.
- * Para actualizar o descontar un saldo existente, el llamador debe bloquearlo con
- * {@link #findByProductIdForUpdate(String)} y guardar el ítem modificado en la
- * misma llamada a {@link JdbcTransactionManager#inTransaction(Runnable)}.
+ * Consulta existencias e inserta filas iniciales dentro de una transacción activa.
+ * Los cambios posteriores se aplican mediante ajustes atómicos por delta para impedir
+ * que un snapshot antiguo sobrescriba existencias más recientes.
  */
 public final class InventoryRepositoryJdbc implements InventoryRepository {
     private static final String INVENTORY_SELECT = """
@@ -49,13 +48,17 @@ public final class InventoryRepositoryJdbc implements InventoryRepository {
         String sql = """
                 INSERT INTO inventory_item (product_id, total_units)
                 VALUES (?, ?)
-                ON CONFLICT (product_id) DO UPDATE SET total_units = EXCLUDED.total_units
+                ON CONFLICT (product_id) DO NOTHING
                 """;
         connectionProvider.withConnection(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, item.getProduct().getId());
                 statement.setInt(2, item.totalUnits());
-                statement.executeUpdate();
+                if (statement.executeUpdate() == 0) {
+                    throw new IllegalArgumentException("Ya existe inventario para el producto "
+                            + item.getProduct().getId()
+                            + "; los cambios deben aplicarse con InventoryStockAdjuster.");
+                }
             }
             return null;
         });

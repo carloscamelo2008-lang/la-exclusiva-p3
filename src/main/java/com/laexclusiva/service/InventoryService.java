@@ -8,7 +8,9 @@ import com.laexclusiva.model.StockMovement;
 import com.laexclusiva.model.StockRequest;
 import com.laexclusiva.model.StockSnapshot;
 import com.laexclusiva.repository.InventoryRepository;
+import com.laexclusiva.repository.InventoryStockAdjuster;
 import com.laexclusiva.repository.StockMovementRepository;
+import com.laexclusiva.persistence.jdbc.TransactionBoundary;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,13 +38,29 @@ public class InventoryService {
     private final ProductService productService;
     private final InventoryRepository inventoryRepository;
     private final StockMovementRepository movementRepository;
+    private final InventoryStockAdjuster stockAdjuster;
+    private final TransactionBoundary transactionBoundary;
 
     public InventoryService(ProductService productService,
                             InventoryRepository inventoryRepository,
                             StockMovementRepository movementRepository) {
+        this(productService, inventoryRepository, movementRepository, null, null);
+    }
+
+    /** Crea el servicio con ajustes atómicos y transacción compartida para persistencia JDBC. */
+    public InventoryService(ProductService productService,
+                            InventoryRepository inventoryRepository,
+                            StockMovementRepository movementRepository,
+                            InventoryStockAdjuster stockAdjuster,
+                            TransactionBoundary transactionBoundary) {
+        if ((stockAdjuster == null) != (transactionBoundary == null)) {
+            throw new IllegalArgumentException("El ajustador y el límite transaccional JDBC se configuran juntos.");
+        }
         this.productService = productService;
         this.inventoryRepository = inventoryRepository;
         this.movementRepository = movementRepository;
+        this.stockAdjuster = stockAdjuster;
+        this.transactionBoundary = transactionBoundary;
     }
 
     // ------------------------------------------------------------------ ENTRADAS
@@ -65,6 +83,15 @@ public class InventoryService {
         int units = product.equivalentUnits(fullBaskets, looseUnits);
         if (units <= 0) {
             throw new IllegalArgumentException("Debe ingresar al menos una unidad.");
+        }
+
+        if (stockAdjuster != null) {
+            transactionBoundary.inTransaction(() -> {
+                stockAdjuster.increaseStock(productId, units);
+                movementRepository.save(new StockMovement(productId, MovementType.ENTRY, units,
+                        reason, LocalDateTime.now()));
+            });
+            return;
         }
 
         // Bloque 3: obtener las existencias del producto (o crearlas si es la primera vez).
@@ -98,6 +125,10 @@ public class InventoryService {
      * @throws InsufficientStockException si alguna referencia no tiene existencias suficientes
      */
     public DiscountReceipt discountSale(List<StockRequest> lines, String reason) {
+        if (stockAdjuster != null) {
+            throw new UnsupportedOperationException(
+                    "Las ventas JDBC deben usar JdbcSalesWorkflow para coordinar stock, movimientos y cartera.");
+        }
         // Bloque 1: validar la entrada completa antes de modificar nada.
         if (lines == null || lines.isEmpty()) {
             throw new IllegalArgumentException("La venta no tiene productos.");
@@ -148,6 +179,9 @@ public class InventoryService {
      * compensación se propagan para que el llamador no afirme atomicidad que no pudo comprobar.
      */
     public void rollbackDiscount(DiscountReceipt receipt) {
+        if (stockAdjuster != null) {
+            throw new UnsupportedOperationException("El inventario JDBC se revierte con la transacción compartida.");
+        }
         if (receipt == null) {
             throw new IllegalArgumentException("El recibo de descuento es obligatorio.");
         }

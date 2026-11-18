@@ -14,6 +14,9 @@ import com.laexclusiva.model.StockSnapshot;
 import com.laexclusiva.repository.InMemoryInventoryRepository;
 import com.laexclusiva.repository.InMemoryProductRepository;
 import com.laexclusiva.repository.InMemoryStockMovementRepository;
+import com.laexclusiva.repository.InventoryStockAdjuster;
+import com.laexclusiva.persistence.jdbc.TransactionBoundary;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -209,5 +212,39 @@ class InventoryServiceTest {
         sale.add(null);
         assertThrows(IllegalArgumentException.class, () -> inventory.discountSale(sale, "Venta"));
         assertEquals(16, inventory.availableUnits("POKER_750"));
+    }
+
+    @Test
+    void jdbcStockEntryUsesAtomicAdjusterAndSharedTransactionWithoutSnapshots() {
+        ProductService products = new ProductService(new InMemoryProductRepository());
+        products.registerAll(InitialCatalog.create());
+        InMemoryStockMovementRepository movements = new InMemoryStockMovementRepository();
+        AtomicInteger stock = new AtomicInteger();
+        AtomicInteger transactions = new AtomicInteger();
+        InventoryStockAdjuster adjuster = new InventoryStockAdjuster() {
+            @Override public int increaseStock(String productId, int units) {
+                return stock.addAndGet(units);
+            }
+            @Override public int decreaseStock(String productId, int units) {
+                return stock.addAndGet(-units);
+            }
+        };
+        TransactionBoundary transactionBoundary = new TransactionBoundary() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> operation) {
+                transactions.incrementAndGet();
+                return operation.get();
+            }
+        };
+        InventoryService jdbcInventory = new InventoryService(products,
+                new InMemoryInventoryRepository(), movements, adjuster, transactionBoundary);
+
+        jdbcInventory.addStock("POKER_750", 1, 2, "Entrada simulada");
+
+        assertEquals(18, stock.get());
+        assertEquals(1, transactions.get());
+        assertEquals(MovementType.ENTRY, movements.findAll().get(0).type());
+        assertEquals(18, movements.findAll().get(0).units());
+        assertThrows(UnsupportedOperationException.class, () -> jdbcInventory.discountSale(
+                List.of(new StockRequest("POKER_750", SalePresentation.UNIT, 1)), "Venta"));
     }
 }

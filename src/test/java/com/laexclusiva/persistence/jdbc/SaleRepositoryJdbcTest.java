@@ -1,6 +1,7 @@
 package com.laexclusiva.persistence.jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -203,11 +204,19 @@ class SaleRepositoryJdbcTest {
         LocalDateTime originalTime = LocalDateTime.of(2026, 11, 12, 9, 0);
         SaleRepositoryJdbc firstAttempt = repositoryWithClock(originalTime);
         SaleRepositoryJdbc laterRetry = repositoryWithClock(originalTime.plusDays(1));
-        SalePayment first = firstAttempt.appendPayment("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
-        SalePayment retry = laterRetry.appendPayment("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
+        var firstResult = firstAttempt.appendPaymentOnce("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
+        var retryResult = laterRetry.appendPaymentOnce("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
+        SalePayment first = firstResult.payment();
+        SalePayment retry = retryResult.payment();
 
         assertEquals(2, database.payments.size());
-        assertTrue(database.executedSql.stream().anyMatch(sql -> sql.contains("for update of s")));
+        assertTrue(firstResult.inserted());
+        assertFalse(retryResult.inserted());
+        int customerLock = database.executedSql.indexOf("select id from customer where id = ? for update");
+        int saleLock = database.executedSql.indexOf(database.executedSql.stream()
+                .filter(sql -> sql.contains("for update of s")).findFirst().orElseThrow());
+        assertTrue(customerLock >= 0 && customerLock < saleLock,
+                "El abono debe bloquear primero el cliente y luego la venta.");
         assertEquals(first.getTimestamp(), retry.getTimestamp());
         assertEquals(originalTime, retry.getTimestamp());
         assertEquals(BigDecimal.valueOf(5_000).setScale(2), retry.getAmount());
@@ -504,6 +513,14 @@ class SaleRepositoryJdbcTest {
         }
 
         private List<Map<String, Object>> query(String sql, Map<Integer, Object> parameters) throws SQLException {
+            if (sql.startsWith("select customer_id from sale where id = ?")) {
+                Map<String, Object> sale = sales.get(parameters.get(1));
+                return sale == null ? List.of() : List.of(row("customer_id", sale.get("customer_id")));
+            }
+            if (sql.startsWith("select id from customer where id = ? for update")) {
+                String customerId = (String) parameters.get(1);
+                return customers.containsKey(customerId) ? List.of(row("id", customerId)) : List.of();
+            }
             if (sql.startsWith("select amount, occurred_at from sale_payment where sale_id = ?")) {
                 return payments.stream().filter(payment -> payment.get("sale_id").equals(parameters.get(1))
                                 && java.util.Objects.equals(payment.get("idempotency_key"), parameters.get(2)))

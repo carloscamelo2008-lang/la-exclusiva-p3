@@ -44,6 +44,20 @@ public interface SaleRepository {
     Optional<Sale> findById(String id);
 
     /**
+     * Obtiene el cliente asociado sin exigir que el llamador cargue un snapshot financiero completo.
+     * La implementación JDBC consulta solo la clave foránea antes de bloquear la fila del cliente.
+     *
+     * @param saleId identificador de la venta
+     * @return identificador del cliente, o {@code null} si la venta no tiene cliente
+     * @throws IllegalArgumentException si la venta no existe o el ID es inválido
+     */
+    default String findCustomerIdBySaleId(String saleId) {
+        Sale sale = findById(saleId)
+                .orElseThrow(() -> new IllegalArgumentException("No existe una venta con el ID: " + saleId));
+        return sale.getCustomer() == null ? null : sale.getCustomer().getId();
+    }
+
+    /**
      * Devuelve todas las ventas registradas.
      *
      * @return lista con las ventas registradas

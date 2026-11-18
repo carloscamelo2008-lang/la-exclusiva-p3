@@ -74,6 +74,7 @@ class StockMovementRepositoryJdbcPostgresIntegrationTest {
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         ProductRepositoryJdbc products = new ProductRepositoryJdbc(provider, transactions);
         InventoryRepositoryJdbc inventory = new InventoryRepositoryJdbc(provider, transactions);
+        InventoryStockAdjusterJdbc adjustments = new InventoryStockAdjusterJdbc(provider);
         StockMovementRepositoryJdbc movements = new StockMovementRepositoryJdbc(provider);
         BeerProduct product = product();
         String id = product.getId();
@@ -87,9 +88,8 @@ class StockMovementRepositoryJdbcPostgresIntegrationTest {
             movements.save(new StockMovement(id, MovementType.ENTRY, 5, "Inicial", OCCURRED_AT));
 
             assertSame(abort, assertThrows(IllegalStateException.class, () -> transactions.inTransaction(() -> {
-                InventoryItem locked = inventory.findByProductIdForUpdate(id).orElseThrow();
-                locked.remove(2);
-                inventory.save(locked);
+                inventory.findByProductIdForUpdate(id).orElseThrow();
+                adjustments.decreaseStock(id, 2);
                 movements.save(new StockMovement(id, MovementType.EXIT, 2, "Venta", OCCURRED_AT.plusSeconds(1)));
                 assertEquals(3, inventory.findByProductId(id).orElseThrow().totalUnits());
                 assertEquals(2, movements.findByProductId(id).size());

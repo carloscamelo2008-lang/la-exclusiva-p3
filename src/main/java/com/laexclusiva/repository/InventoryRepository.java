@@ -8,10 +8,9 @@ import java.util.Optional;
 public interface InventoryRepository {
 
     /**
-     * Persiste el total de existencias. En JDBC requiere una transacción activa.
-     * Para actualizar o descontar existencias, se debe leer primero el ítem con
-     * {@link #findByProductIdForUpdate(String)}, modificar el resultado y guardar
-     * dentro de la misma llamada a `JdbcTransactionManager.inTransaction(...)`.
+     * Persiste la fila inicial de inventario. En JDBC requiere una transacción activa
+     * y rechaza sobrescribir filas existentes; para cambios posteriores use
+     * {@link InventoryStockAdjuster}, que aplica deltas sin reutilizar snapshots.
      */
     void save(InventoryItem item);
 

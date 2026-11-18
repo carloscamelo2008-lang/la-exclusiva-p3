@@ -2,14 +2,10 @@ package com.laexclusiva.ui;
 
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
-import com.laexclusiva.repository.CustomerRepository;
 import com.laexclusiva.repository.InMemoryUserRepository;
-import com.laexclusiva.repository.SellerRepository;
 import com.laexclusiva.repository.UserRepository;
 import com.laexclusiva.security.PasswordHasher;
 import com.laexclusiva.service.AuthenticationService;
-import com.laexclusiva.service.CustomerService;
-import com.laexclusiva.service.SellerService;
 import com.laexclusiva.ui.controller.LoginController;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -22,9 +18,8 @@ import java.io.UncheckedIOException;
 public class App extends Application {
 
     private final UserRepository userRepository = new InMemoryUserRepository();
-    private final CustomerService customerService = new CustomerService(new CustomerRepository());
-    private final SellerService sellerService = new SellerService(new SellerRepository());
     private final AuthenticationService authenticationService = new AuthenticationService(userRepository);
+    private ApplicationServices applicationServices;
 
     public UserRepository getUserRepository() {
         return userRepository;
@@ -60,6 +55,7 @@ public class App extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         processInitialization(getParameters());
+        applicationServices = ApplicationServices.fromEnvironment();
         showLogin(primaryStage);
     }
 
@@ -69,8 +65,7 @@ public class App extends Application {
 
         LoginController loginController = loader.getController();
         loginController.setAuthenticationService(authenticationService);
-        loginController.setCustomerService(customerService);
-        loginController.setSellerService(sellerService);
+        loginController.setApplicationServices(applicationServices);
         loginController.setOnLogout(() -> {
             try {
                 showLogin(primaryStage);

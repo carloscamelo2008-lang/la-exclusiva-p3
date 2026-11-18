@@ -28,11 +28,12 @@ import org.junit.jupiter.api.Test;
 /** Pruebas opcionales contra la base PostgreSQL dedicada a integración. */
 class InventoryRepositoryJdbcPostgresIntegrationTest {
     @Test
-    void insertsAndUpdatesOneRowPerProductAndReadsZeroStock() {
+    void insertsInitialRowAndRejectsStaleSnapshotWhileReadingZeroStock() {
         JdbcConnectionProvider provider = testProvider();
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         ProductRepositoryJdbc products = new ProductRepositoryJdbc(provider, transactions);
         InventoryRepositoryJdbc inventory = new InventoryRepositoryJdbc(provider, transactions);
+        InventoryStockAdjusterJdbc adjustments = new InventoryStockAdjusterJdbc(provider);
         BeerProduct product = product();
         String id = product.getId();
         String missingId = "INVENTORY-MISSING-" + UUID.randomUUID();
@@ -49,14 +50,12 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
             assertEquals(0, countRows(provider, id));
             transactions.inTransaction(() -> inventory.save(item));
             assertEquals(0, inventory.findByProductId(id).orElseThrow().totalUnits());
-            item.add(31);
-            assertThrows(IllegalStateException.class, () -> inventory.save(item));
-            assertEquals(0, inventory.findByProductId(id).orElseThrow().totalUnits());
-            transactions.inTransaction(() -> {
-                InventoryItem locked = inventory.findByProductIdForUpdate(id).orElseThrow();
-                locked.add(31);
-                inventory.save(locked);
-            });
+            InventoryItem staleSnapshot = inventory.findByProductId(id).orElseThrow();
+            adjustments.increaseStock(id, 31);
+            staleSnapshot.add(100);
+            assertThrows(IllegalArgumentException.class,
+                    () -> transactions.inTransaction(() -> inventory.save(staleSnapshot)));
+            assertEquals(31, inventory.findByProductId(id).orElseThrow().totalUnits());
 
             assertEquals(1, countRows(provider, id));
             assertItem(product, inventory.findByProductId(id).orElseThrow(), 31);
@@ -83,6 +82,7 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         ProductRepositoryJdbc products = new ProductRepositoryJdbc(provider, transactions);
         InventoryRepositoryJdbc inventory = new InventoryRepositoryJdbc(provider, transactions);
+        InventoryStockAdjusterJdbc adjustments = new InventoryStockAdjusterJdbc(provider);
         BeerProduct product = product();
         String id = product.getId();
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -112,8 +112,7 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
                         secondPid.complete(backendPid(provider));
                         InventoryItem waiting = inventory.findByProductIdForUpdate(id).orElseThrow();
                         int observedStock = waiting.totalUnits();
-                        waiting.remove(2);
-                        inventory.save(waiting);
+                        adjustments.decreaseStock(id, 2);
                         return observedStock;
                     } catch (RuntimeException | Error failure) {
                         secondPid.completeExceptionally(failure);
@@ -123,8 +122,7 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
                 int waitingPid = assertDoesNotThrow(() -> secondPid.get(5, TimeUnit.SECONDS));
                 awaitBlockedBy(provider, waitingPid, firstPid);
                 assertFalse(secondResult.join().isDone());
-                locked.remove(3);
-                inventory.save(locked);
+                adjustments.decreaseStock(id, 3);
                 if (!commit) {
                     throw abort;
                 }

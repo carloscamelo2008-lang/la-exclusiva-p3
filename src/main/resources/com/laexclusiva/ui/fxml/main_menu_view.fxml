@@ -39,6 +39,16 @@
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
+            <Button fx:id="btnInventory" onAction="#handleShowInventory" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Catálogo e Inventario">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnSales" onAction="#handleShowSales" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Registrar Venta">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
             <Button fx:id="btnAdminUsers" mnemonicParsing="false" prefHeight="64.0" prefWidth="260.0" styleClass="nav-button" disable="true" wrapText="true" text="Gestión de Usuarios (pendiente)">
                <padding>
                   <Insets left="20.0" top="10.0" />
