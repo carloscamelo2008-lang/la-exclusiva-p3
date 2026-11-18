@@ -528,3 +528,52 @@ Advertencias observadas: Maven mostró avisos existentes del modelo efectivo par
 registró su aviso de clases en un módulo no nombrado. Las trazas de errores simulados de consultas
 en `AuthenticationServiceTest` pertenecen a casos que aprobaron. No se ejecutaron operaciones
 destructivas, no se usó la base de desarrollo y no se modificó el esquema.
+
+### Correcciones a observaciones de revisión del PR #18 (2026-11-18)
+
+Los controladores JavaFX reciben ahora `UserSession` como fuente de autorización y consultan
+`AuthorizationService` en cada escritura: ventas, abonos, altas de productos, entradas de inventario,
+clientes y vendedores. Ocultar o deshabilitar controles es solo una ayuda visual. Si la sesión expiró,
+la cuenta se desactivó o el permiso falta, el servicio de escritura no se invoca.
+
+En Ventas, un trabajador con `sellerId` válido ve seleccionado automáticamente ese vendedor y el
+selector permanece bloqueado. Si no tiene asignación o el ID no corresponde a un vendedor registrado,
+la pantalla lo informa y el controlador rechaza el registro. La autorización del vendedor se vuelve a
+comprobar al enviar la venta. El administrador conserva la lista completa y la selección manual.
+
+La confirmación de alta de venta se separa de las consultas posteriores. El carrito se limpia solo si
+`registerSale` retorna una venta; si la llamada falla con resultado incierto, se conserva y se recomienda
+consultar el historial antes de un nuevo intento, ya que el alta todavía no tiene clave idempotente.
+Un fallo al actualizar clientes o historial conserva el mensaje de venta confirmada y ofrece
+«Actualizar historial», acción que solo consulta.
+
+En Cartera, un abono confirmado no se informa como fallido si la actualización visual no responde. La
+clave y los datos del intento se conservan ante un resultado incierto; el usuario solo puede reintentar
+la misma venta con el mismo importe hasta resolverlo, usando la misma clave. Al confirmar el flujo,
+se libera el intento antes de refrescar y se muestra el resultado confirmado aunque falle la consulta.
+«Actualizar cartera» vuelve a consultar clientes, saldos y ventas sin volver a registrar un abono.
+Una consulta incompleta limpia las tablas, selección y saldos mostrados y los identifica como no
+disponibles. No se alteró `JdbcSalesWorkflow` ni su unidad transaccional.
+
+Las regresiones JavaFX cubren: abono confirmado con error al refrescar y un único pago; resultado
+incierto que reusa la clave y bloquea cambios de operación; error de consulta con limpieza y reintento;
+venta confirmada con error del historial sin repetir el alta; escrituras rechazadas antes de llegar a
+los servicios por sesión/permisos; y rechazo de una venta bajo un vendedor distinto al asignado. La
+prueba existente de asignación también verifica selección automática, asignación ausente/desconocida
+y el selector del administrador.
+
+La validación se ejecutó el 2026-11-18 con Microsoft JDK 17.0.18, Maven 3.10.0 y PostgreSQL 18.6.
+Una consulta de solo lectura confirmó `la_exclusiva_test`, las diez tablas V001 y la columna/restricción
+V002. La contraseña se recuperó localmente mediante DPAPI y no se mostró ni guardó. `mvn clean verify`
+terminó en `BUILD SUCCESS`: 229 pruebas, 0 fallidas, 0 errores y 0 omitidas; las 12 pruebas
+PostgreSQL reales aprobaron (cartera 1, clientes/vendedores 1, inventario 3, flujo de ventas 1,
+productos/precios 3, ventas/pagos 1 y movimientos 2). La suite dirigida de regresiones y autenticación
+pasó 38/38. No hubo migraciones ni operaciones de esquema; cada fixture automatizado usa IDs propios y
+limpieza limitada a sus registros. No se realizó un recorrido manual adicional de escritorio en esta
+intervención; los handlers y FXML afectados sí se ejercitaron en JavaFX sobre Windows.
+
+Los commits de código y pruebas son `f96747d` (`fix(ui): make JavaFX writes session-aware and
+refresh-safe`) y `5ed54e6` (`test(ui): cover controller write and refresh regressions`). Se documenta
+esta intervención también en `docs/ai-usage/leader-ai-log.md`. Sigue pendiente la revisión humana de
+Daniel y Jesús. La alta de ventas aún no es idempotente; ante una respuesta incierta, el usuario debe
+consultar el historial antes de volver a iniciar una alta.

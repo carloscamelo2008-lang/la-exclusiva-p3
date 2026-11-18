@@ -416,3 +416,36 @@ La aplicación selecciona `JdbcSalesWorkflow` solo cuando el modo `postgres` se 
 explícitamente. No se habilita por defecto ni se cambia la autenticación en memoria. La validación
 de componentes PostgreSQL quedó aprobada en `la_exclusiva_test`; la rama aún requiere revisión
 humana y recorrido manual de la interfaz antes de usarla con una instalación local.
+
+## Autorización y confirmación de operaciones JavaFX (2026-11-18)
+
+Los controladores de clientes, vendedores, inventario, ventas y cartera se configuran con el objeto
+`UserSession`, no con indicadores booleanos de permiso calculados al abrir la pantalla. Cada handler
+de escritura consulta `AuthorizationService.hasPermission(session, Permission)` inmediatamente antes
+de invocar el servicio; el método también exige una sesión vigente y una cuenta activa. La visibilidad
+de campos sigue la misma fuente de permisos, pero no reemplaza la comprobación al ejecutar. Las
+operaciones protegidas son `REGISTER_CUSTOMER`, `REGISTER_SELLERS`, `MANAGE_PRODUCTS`,
+`MANAGE_INVENTORY_ENTRIES`, `REGISTER_SALE` más `VIEW_SALES`, y `REGISTER_PAYMENT`.
+
+La sesión del trabajador limita ventas al vendedor asignado y válido. El controlador selecciona el
+vendedor automáticamente, bloquea el selector y vuelve a verificar su asociación antes de escribir.
+Las asignaciones faltantes o desconocidas se rechazan; el administrador conserva selección libre.
+
+El retorno normal de `SalesWorkflow.registerSale` confirma el alta, y solo entonces el controlador
+limpia el carrito. Las consultas visuales posteriores son operaciones separadas; fallos de refresco
+no cambian el estado confirmado ni vuelven a llamar al caso de uso. No existe todavía una clave
+idempotente persistente para el alta de ventas, por lo que ante una excepción de resultado incierto se
+conserva el carrito y se requiere consultar el historial antes de otro intento.
+
+Para los abonos, el retorno normal de `SalesWorkflow.registerPayment` confirma la escritura. Si la
+llamada falla con resultado incierto, Cartera conserva venta, importe y clave y permite volver a enviar
+solo esa operación con la misma clave; no acepta otro importe/venta hasta resolverla. Una vez
+confirmada, la clave del intento se libera antes de refrescar la vista. El botón de actualización
+consulta clientes y cartera sin registrar pagos. Si una consulta falla, se vacían los datos parciales,
+se muestran saldos como no disponibles y se ofrece reintentar solo la consulta. `JdbcSalesWorkflow`,
+su idempotencia durable y su transacción compartida no se modificaron.
+
+Estas reglas de presentación no amplían los contratos JDBC ni cambian el almacenamiento. Las
+regresiones dirigidas se ejecutaron con JavaFX/FXML sobre Windows; `mvn clean verify` aprobó 229/229,
+incluidas las 12 integraciones PostgreSQL reales en `la_exclusiva_test`. Los detalles verificables y
+límites están en `database/sales-jdbc-integration.md` y en el Registro 25 de la bitácora IA.
