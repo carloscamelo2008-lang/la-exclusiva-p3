@@ -155,7 +155,8 @@ default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
 }
 ```
 
-- `save(item)`: inserta o actualiza por `product_id` (upsert).
+- `save(item)`: inserta o actualiza por `product_id` (upsert). En JDBC requiere una transacción activa incluso para la primera inserción. Fuera de ella lanza `IllegalStateException`.
+- Para actualizar o descontar existencias, el llamador debe ejecutar `findByProductIdForUpdate(productId)`, calcular el nuevo saldo con el ítem devuelto y llamar a `save(item)` dentro de la misma llamada a `JdbcTransactionManager.inTransaction(...)`, compartiendo el proveedor de conexiones. La consulta bloquea una fila existente. Si todavía no hay fila, devuelve vacío y el primer alta debe realizarse dentro de una transacción.
 - `findByProductId(...)`: consulta normal sin bloqueo.
 - `findByProductIdForUpdate(...)`: el adaptador JDBC sobrescribe el método con `SELECT ... FOR UPDATE`. Debe exigir `transactionManager.isTransactionActive()`; de lo contrario lanza `IllegalStateException`. El método default mantiene compatible la implementación en memoria, que no necesita bloqueo SQL.
 

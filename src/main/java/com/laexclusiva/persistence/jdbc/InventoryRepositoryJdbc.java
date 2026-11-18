@@ -11,7 +11,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Persiste existencias por producto y permite bloquear su fila en una transacción activa. */
+/**
+ * Persiste existencias por producto. Toda escritura requiere una transacción activa.
+ * Para actualizar o descontar un saldo existente, el llamador debe bloquearlo con
+ * {@link #findByProductIdForUpdate(String)} y guardar el ítem modificado en la
+ * misma llamada a {@link JdbcTransactionManager#inTransaction(Runnable)}.
+ */
 public final class InventoryRepositoryJdbc implements InventoryRepository {
     private static final String INVENTORY_SELECT = """
             SELECT p.id, p.name, p.volume_ml, p.units_per_basket, p.container_type,
@@ -37,6 +42,9 @@ public final class InventoryRepositoryJdbc implements InventoryRepository {
     public void save(InventoryItem item) {
         if (item == null) {
             throw new IllegalArgumentException("El inventario es obligatorio.");
+        }
+        if (!transactionManager.isTransactionActive()) {
+            throw new IllegalStateException("Guardar inventario requiere una transacción JDBC activa.");
         }
         String sql = """
                 INSERT INTO inventory_item (product_id, total_units)
