@@ -17,7 +17,7 @@ public class AuthorizationService {
     }
 
     public boolean isAdministrator(UserSession session) {
-        return session != null && isAdministrator(session.getUserAccount());
+        return session != null && session.isActive() && isAdministrator(session.getUserAccount());
     }
 
     public boolean hasRole(UserAccount user, UserRole requiredRole) {
@@ -25,7 +25,7 @@ public class AuthorizationService {
     }
 
     public boolean hasRole(UserSession session, UserRole requiredRole) {
-        return session != null && hasRole(session.getUserAccount(), requiredRole);
+        return session != null && session.isActive() && hasRole(session.getUserAccount(), requiredRole);
     }
 
     public boolean hasPermission(UserAccount user, Permission permission) {
@@ -33,6 +33,6 @@ public class AuthorizationService {
     }
 
     public boolean hasPermission(UserSession session, Permission permission) {
-        return session != null && hasPermission(session.getUserAccount(), permission);
+        return session != null && session.isActive() && hasPermission(session.getUserAccount(), permission);
     }
 }
