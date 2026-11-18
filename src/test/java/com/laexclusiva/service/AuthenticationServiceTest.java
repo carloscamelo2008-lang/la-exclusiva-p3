@@ -1,6 +1,7 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
@@ -108,6 +109,30 @@ public class AuthenticationServiceTest {
                 "/com/laexclusiva/ui/fxml/sales_view.fxml")).load());
         assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
                 "/com/laexclusiva/ui/fxml/portfolio_view.fxml")).load());
+    }
+
+    @Test
+    void salePresentationAndPortfolioTextAreHumanReadable() throws Exception {
+        FutureTask<Void> checkLabels = new FutureTask<>(() -> {
+            FXMLLoader salesLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            salesLoader.load();
+            @SuppressWarnings("unchecked")
+            ComboBox<SalePresentation> presentations = (ComboBox<SalePresentation>)
+                    salesLoader.getNamespace().get("presentationCombo");
+            assertEquals("Unidad", presentations.getConverter().toString(SalePresentation.UNIT));
+            assertEquals("Media canasta", presentations.getConverter().toString(SalePresentation.HALF_BASKET));
+            assertEquals("Canasta completa", presentations.getConverter().toString(SalePresentation.FULL_BASKET));
+
+            FXMLLoader portfolioLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/portfolio_view.fxml"));
+            portfolioLoader.load();
+            Label subtitle = (Label) portfolioLoader.getNamespace().get("portfolioSubtitle");
+            assertEquals("Consulta de saldos por cliente y registro de abonos a ventas.", subtitle.getText());
+            return null;
+        });
+        Platform.runLater(checkLabels);
+        checkLabels.get(10, TimeUnit.SECONDS);
     }
 
     @Test

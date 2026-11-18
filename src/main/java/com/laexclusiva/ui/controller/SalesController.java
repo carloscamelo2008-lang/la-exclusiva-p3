@@ -62,6 +62,7 @@ public class SalesController {
     private void initialize() {
         presentationCombo.getItems().setAll(SalePresentation.UNIT,
                 SalePresentation.HALF_BASKET, SalePresentation.FULL_BASKET);
+        presentationCombo.setConverter(converter(SalesController::presentationName));
         presentationCombo.setValue(SalePresentation.UNIT);
         quantityField.setText("1");
         initialPaymentField.setText("0");
@@ -205,6 +206,15 @@ public class SalesController {
     private static String safeMessage(Throwable failure) {
         return failure.getMessage() == null || failure.getMessage().isBlank()
                 ? "Error inesperado." : failure.getMessage();
+    }
+
+    private static String presentationName(SalePresentation presentation) {
+        return switch (presentation.code()) {
+            case "UNIT" -> "Unidad";
+            case "HALF_BASKET" -> "Media canasta";
+            case "FULL_BASKET" -> "Canasta completa";
+            default -> presentation.code();
+        };
     }
 
     private static <T> T require(T value) {
