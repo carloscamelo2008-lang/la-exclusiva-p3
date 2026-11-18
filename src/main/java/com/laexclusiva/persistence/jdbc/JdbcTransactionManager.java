@@ -8,7 +8,7 @@ import java.util.function.Supplier;
  * Coordina transacciones JDBC. Las llamadas anidadas se unen a la transacción exterior:
  * solo quien abrió la conexión puede hacer commit o rollback.
  */
-public final class JdbcTransactionManager {
+public final class JdbcTransactionManager implements TransactionBoundary {
     private final JdbcConnectionProvider connectionProvider;
     private final JdbcConnectionContext connectionContext;
 
@@ -29,6 +29,7 @@ public final class JdbcTransactionManager {
      * @param <T> tipo del resultado
      * @return resultado de la operación
      */
+    @Override
     public <T> T inTransaction(Supplier<T> operation) {
         if (operation == null) {
             throw new IllegalArgumentException("La operación transaccional es obligatoria.");
@@ -79,6 +80,7 @@ public final class JdbcTransactionManager {
     }
 
     /** Variante para operaciones que no necesitan devolver un resultado. */
+    @Override
     public void inTransaction(Runnable operation) {
         if (operation == null) {
             throw new IllegalArgumentException("La operación transaccional es obligatoria.");

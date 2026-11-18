@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Persiste existencias por producto y permite bloquear su fila en una transacción activa. */
+/** Consulta existencias y permite insertar filas; los cambios se hacen con ajustes por delta. */
 public final class InventoryRepositoryJdbc implements InventoryRepository {
     private static final String INVENTORY_SELECT = """
             SELECT p.id, p.name, p.volume_ml, p.units_per_basket, p.container_type,
@@ -41,13 +41,17 @@ public final class InventoryRepositoryJdbc implements InventoryRepository {
         String sql = """
                 INSERT INTO inventory_item (product_id, total_units)
                 VALUES (?, ?)
-                ON CONFLICT (product_id) DO UPDATE SET total_units = EXCLUDED.total_units
+                ON CONFLICT (product_id) DO NOTHING
                 """;
         connectionProvider.withConnection(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, item.getProduct().getId());
                 statement.setInt(2, item.totalUnits());
-                statement.executeUpdate();
+                if (statement.executeUpdate() == 0) {
+                    throw new IllegalArgumentException("Ya existe inventario para el producto "
+                            + item.getProduct().getId()
+                            + "; los cambios deben aplicarse con InventoryStockAdjuster.");
+                }
             }
             return null;
         });

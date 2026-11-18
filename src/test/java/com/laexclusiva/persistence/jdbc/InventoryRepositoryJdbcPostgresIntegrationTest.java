@@ -35,6 +35,7 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         ProductRepositoryJdbc products = new ProductRepositoryJdbc(provider, transactions);
         InventoryRepositoryJdbc inventory = new InventoryRepositoryJdbc(provider, transactions);
+        InventoryStockAdjusterJdbc adjustments = new InventoryStockAdjusterJdbc(provider);
         BeerProduct product = product();
         String id = product.getId();
         String missingId = "INVENTORY-MISSING-" + UUID.randomUUID();
@@ -49,8 +50,10 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
             InventoryItem item = new InventoryItem(product);
             inventory.save(item);
             assertEquals(0, inventory.findByProductId(id).orElseThrow().totalUnits());
-            item.add(31);
-            inventory.save(item);
+            InventoryItem staleSnapshot = inventory.findByProductId(id).orElseThrow();
+            adjustments.increaseStock(id, 31);
+            staleSnapshot.add(100);
+            assertThrows(IllegalArgumentException.class, () -> inventory.save(staleSnapshot));
 
             assertEquals(1, countRows(provider, id));
             assertItem(product, inventory.findByProductId(id).orElseThrow(), 31);
@@ -69,6 +72,7 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         ProductRepositoryJdbc products = new ProductRepositoryJdbc(provider, transactions);
         InventoryRepositoryJdbc inventory = new InventoryRepositoryJdbc(provider, transactions);
+        InventoryStockAdjusterJdbc adjustments = new InventoryStockAdjusterJdbc(provider);
         BeerProduct product = product();
         String id = product.getId();
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -104,8 +108,7 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
                 int waitingPid = assertDoesNotThrow(() -> secondPid.get(5, TimeUnit.SECONDS));
                 awaitBlockedBy(provider, waitingPid, firstPid);
                 assertFalse(secondResult.join().isDone());
-                locked.add(4);
-                inventory.save(locked);
+                adjustments.increaseStock(id, 4);
                 if (!commit) {
                     throw abort;
                 }
