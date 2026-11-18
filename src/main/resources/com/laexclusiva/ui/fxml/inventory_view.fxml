@@ -48,6 +48,7 @@
         <Button fx:id="registerStockButton" text="Registrar entrada" onAction="#handleAddStock" />
     </HBox>
     <Label fx:id="messageLabel" wrapText="true" />
+    <Button fx:id="refreshInventoryButton" text="Actualizar inventario" onAction="#handleRefreshInventory" />
     <Label text="Movimientos de inventario" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
     <TableView fx:id="movementTable" VBox.vgrow="ALWAYS">
         <columns>

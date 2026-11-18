@@ -112,10 +112,11 @@ public class InventoryController {
     /** Registra una referencia nueva con precios independientes para cada presentación. */
     @FXML
     private void handleRegisterProduct() {
+        BeerProduct product;
         try {
             requirePermission(Permission.MANAGE_PRODUCTS, "No tiene permiso para modificar el catálogo.");
             ContainerType containerType = productType();
-            BeerProduct product = new BeerProduct(productIdField.getText().trim(), productNameField.getText().trim(),
+            product = new BeerProduct(productIdField.getText().trim(), productNameField.getText().trim(),
                     Integer.parseInt(volumeField.getText().trim()),
                     Integer.parseInt(unitsPerBasketField.getText().trim()), containerType,
                     containerGroupField.getText().trim().isEmpty() ? null : containerGroupField.getText().trim());
@@ -124,40 +125,91 @@ public class InventoryController {
                     new java.math.BigDecimal(halfBasketPriceField.getText().trim()));
             product.definePrice(SalePresentation.FULL_BASKET,
                     new java.math.BigDecimal(fullBasketPriceField.getText().trim()));
-            products.register(product);
-            productIdField.clear();
-            productNameField.clear();
-            volumeField.clear();
-            unitsPerBasketField.clear();
-            containerGroupField.clear();
-            unitPriceField.clear();
-            halfBasketPriceField.clear();
-            fullBasketPriceField.clear();
-            messageLabel.setText("Producto y precios registrados en el catálogo.");
-            refresh();
         } catch (RuntimeException failure) {
             messageLabel.setText("No se registró el producto: " + safeMessage(failure));
+            return;
         }
+
+        try {
+            products.register(product);
+        } catch (RuntimeException failure) {
+            messageLabel.setText("No se pudo confirmar el registro del producto. Use «Actualizar inventario» "
+                    + "y compruebe el catálogo antes de volver a intentarlo. " + safeMessage(failure));
+            return;
+        }
+
+        clearProductFields();
+        refreshAfterConfirmedWrite("Producto y precios registrados en el catálogo.");
     }
 
     @FXML
     private void handleAddStock() {
+        BeerProduct product;
+        int baskets;
+        int loose;
         try {
             requirePermission(Permission.MANAGE_INVENTORY_ENTRIES,
                     "No tiene permiso para registrar entradas de inventario.");
-            BeerProduct product = productCombo.getValue();
+            product = productCombo.getValue();
             if (product == null) throw new IllegalArgumentException("Seleccione un producto.");
-            int baskets = parseNonNegative(fullBasketsField.getText(), "canastas");
-            int loose = parseNonNegative(looseUnitsField.getText(), "unidades sueltas");
-            inventory.addStock(product.getId(), baskets, loose, reasonField.getText());
-            messageLabel.setText("Entrada registrada dentro de la transacción de inventario.");
-            fullBasketsField.setText("0");
-            looseUnitsField.setText("0");
-            reasonField.clear();
-            refresh();
+            baskets = parseNonNegative(fullBasketsField.getText(), "canastas");
+            loose = parseNonNegative(looseUnitsField.getText(), "unidades sueltas");
+            if (reasonField.getText() == null || reasonField.getText().isBlank()) {
+                throw new IllegalArgumentException("El motivo de la entrada es obligatorio.");
+            }
+            if (product.equivalentUnits(baskets, loose) <= 0) {
+                throw new IllegalArgumentException("Debe ingresar al menos una unidad.");
+            }
         } catch (RuntimeException failure) {
             messageLabel.setText("No se registró la entrada: " + safeMessage(failure));
+            return;
         }
+
+        try {
+            inventory.addStock(product.getId(), baskets, loose, reasonField.getText());
+        } catch (RuntimeException failure) {
+            messageLabel.setText("No se pudo confirmar el resultado de la entrada. Use «Actualizar inventario» "
+                    + "para verificar las existencias y movimientos antes de intentar otra entrada. "
+                    + safeMessage(failure));
+            return;
+        }
+
+        fullBasketsField.setText("0");
+        looseUnitsField.setText("0");
+        reasonField.clear();
+        refreshAfterConfirmedWrite("Entrada registrada dentro de la transacción de inventario.");
+    }
+
+    /** Vuelve a consultar catálogo, existencias y movimientos sin ejecutar ninguna escritura. */
+    @FXML
+    private void handleRefreshInventory() {
+        try {
+            refresh();
+            messageLabel.setText("Inventario actualizado.");
+        } catch (RuntimeException failure) {
+            messageLabel.setText("No se pudo actualizar el inventario: " + safeMessage(failure));
+        }
+    }
+
+    private void refreshAfterConfirmedWrite(String successMessage) {
+        messageLabel.setText(successMessage);
+        try {
+            refresh();
+        } catch (RuntimeException failure) {
+            messageLabel.setText(successMessage + " No se pudo actualizar la vista. Use «Actualizar inventario» "
+                    + "para consultar el estado actual. " + safeMessage(failure));
+        }
+    }
+
+    private void clearProductFields() {
+        productIdField.clear();
+        productNameField.clear();
+        volumeField.clear();
+        unitsPerBasketField.clear();
+        containerGroupField.clear();
+        unitPriceField.clear();
+        halfBasketPriceField.clear();
+        fullBasketPriceField.clear();
     }
 
     private void requirePermission(Permission permission, String message) {
