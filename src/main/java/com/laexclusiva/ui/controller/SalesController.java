@@ -15,11 +15,13 @@ import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
 import com.laexclusiva.service.SalesWorkflow;
+import com.laexclusiva.service.SaleRequestFingerprint;
 import com.laexclusiva.service.SellerService;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.fxml.FXML;
@@ -51,6 +53,7 @@ public class SalesController {
     @FXML private TableColumn<Sale, BigDecimal> historyBalanceColumn;
     @FXML private Label totalLabel;
     @FXML private Label messageLabel;
+    @FXML private Label saleOperationKeyLabel;
 
     private ProductService products;
     private InventoryService inventory;
@@ -60,6 +63,8 @@ public class SalesController {
     private boolean canViewAllSales;
     private String assignedSellerId;
     private UserSession session;
+    private String saleOperationKey = UUID.randomUUID().toString();
+    private String uncertainSaleFingerprint;
     private final AuthorizationService authorizationService = new AuthorizationService();
 
     @FXML
@@ -70,6 +75,7 @@ public class SalesController {
         presentationCombo.setValue(SalePresentation.UNIT);
         quantityField.setText("1");
         initialPaymentField.setText("0");
+        refreshSaleOperationKeyLabel();
         productCombo.setConverter(converter(BeerProduct::toString));
         sellerCombo.setConverter(converter(Seller::getName));
         customerCombo.setConverter(converter(Customer::getName));
@@ -173,6 +179,8 @@ public class SalesController {
     @FXML
     private void handleRegisterSale() {
         Sale saved;
+        String submittedFingerprint = null;
+        boolean submitted = false;
         try {
             requirePermission(Permission.REGISTER_SALE, "No tiene permiso para registrar ventas.");
             requirePermission(Permission.VIEW_SALES, "No tiene permiso para consultar las ventas.");
@@ -186,15 +194,23 @@ public class SalesController {
             Customer customer = customerCombo.getValue();
             BigDecimal initialPayment = new BigDecimal(initialPaymentField.getText().trim());
             List<StockRequest> requests = cartTable.getItems().stream().map(CartLine::request).toList();
-            saved = sales.registerSale(requests, seller.getId(),
+            submittedFingerprint = SaleRequestFingerprint.calculate(requests, seller.getId(),
                     customer == null ? null : customer.getId(), initialPayment);
+            if (uncertainSaleFingerprint != null && !uncertainSaleFingerprint.equals(submittedFingerprint)) {
+                throw new IllegalArgumentException("Hay un intento anterior de resultado incierto. Restaure el mismo "
+                        + "carrito, cliente, vendedor y pago inicial para reintentar con la referencia visible.");
+            }
+            submitted = true;
+            saved = sales.registerSale(requests, seller.getId(),
+                    customer == null ? null : customer.getId(), initialPayment, saleOperationKey);
         } catch (IllegalArgumentException | SecurityException rejected) {
             messageLabel.setText("Venta no registrada: " + safeMessage(rejected) + " El carrito se conserva.");
             return;
         } catch (RuntimeException failure) {
+            if (submitted) uncertainSaleFingerprint = submittedFingerprint;
             messageLabel.setText("No se pudo confirmar el resultado de la venta: " + safeMessage(failure)
-                    + " El carrito se conserva. Revise el historial antes de reintentar; la creación de ventas "
-                    + "no tiene clave de idempotencia.");
+                    + " El carrito y la referencia se conservan. Reintente únicamente la misma solicitud "
+                    + "o verifique el historial antes de cambiar los datos.");
             return;
         }
         String persistence = sales.supportsDurableIdempotency() ? "PostgreSQL" : "memoria";
@@ -202,6 +218,9 @@ public class SalesController {
                 + " · saldo " + money(saved.calculateBalance()));
         cartTable.getItems().clear();
         initialPaymentField.setText("0");
+        uncertainSaleFingerprint = null;
+        saleOperationKey = UUID.randomUUID().toString();
+        refreshSaleOperationKeyLabel();
         refreshTotal();
         try {
             customerCombo.getItems().setAll(customers.getAllCustomers());
@@ -245,6 +264,12 @@ public class SalesController {
         BigDecimal total = cartTable.getItems().stream().map(line -> line.line().getSubtotal())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         totalLabel.setText("Total: " + money(total));
+    }
+
+    private void refreshSaleOperationKeyLabel() {
+        if (saleOperationKeyLabel != null) {
+            saleOperationKeyLabel.setText("Referencia de operación: " + saleOperationKey);
+        }
     }
 
     private void requirePermission(Permission permission, String message) {

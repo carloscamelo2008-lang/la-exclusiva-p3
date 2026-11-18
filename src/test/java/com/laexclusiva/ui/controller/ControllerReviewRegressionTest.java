@@ -186,6 +186,50 @@ class ControllerReviewRegressionTest {
     }
 
     @Test
+    void uncertainSaleKeepsVisibleKeyAndRequiresTheSamePayloadForRetry() throws Exception {
+        runOnFx(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            Seller seller = services.sellers().registerSeller("Vendedor de reintento", "3000000202", "Calle 2");
+            BeerProduct product = services.products().listAll().get(0);
+            services.inventory().addStock(product.getId(), 0, 2, "Fixture de idempotencia JavaFX");
+            UncertainSaleWorkflow sales = new UncertainSaleWorkflow(services.sales());
+            FXMLLoader loader = load("sales_view.fxml");
+            SalesController controller = loader.getController();
+            controller.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), sales, adminSession());
+            ((ComboBox<BeerProduct>) loader.getNamespace().get("productCombo")).setValue(product);
+            ((ComboBox<SalePresentation>) loader.getNamespace().get("presentationCombo"))
+                    .setValue(SalePresentation.UNIT);
+            ((ComboBox<Seller>) loader.getNamespace().get("sellerCombo")).setValue(seller);
+            text(loader, "initialPaymentField").setText(product.priceFor(SalePresentation.UNIT).toPlainString());
+            button(loader, "Agregar línea").fire();
+            String operationReference = label(loader, "saleOperationKeyLabel").getText();
+            sales.throwAfterNextSale = true;
+
+            button(loader, "Registrar venta").fire();
+            assertEquals(1, services.sales().listAll().size(), "El primer intento pudo confirmarse en memoria.");
+            assertEquals(1, services.inventory().getStock(product.getId()).totalUnits());
+            assertEquals(1, sales.keys.size());
+            assertTrue(label(loader, "messageLabel").getText().contains("referencia se conservan"));
+            assertEquals(operationReference, label(loader, "saleOperationKeyLabel").getText());
+
+            text(loader, "initialPaymentField").setText("0");
+            button(loader, "Registrar venta").fire();
+            assertEquals(1, sales.keys.size(), "No se envía una solicitud distinta con la clave incierta.");
+
+            text(loader, "initialPaymentField").setText(product.priceFor(SalePresentation.UNIT).toPlainString());
+            button(loader, "Registrar venta").fire();
+            assertEquals(2, sales.keys.size());
+            assertEquals(sales.keys.get(0), sales.keys.get(1));
+            assertEquals(1, services.sales().listAll().size());
+            assertEquals(1, services.inventory().getStock(product.getId()).totalUnits());
+            assertTrue(label(loader, "messageLabel").getText().contains("Venta registrada"));
+            assertNotEquals(operationReference, label(loader, "saleOperationKeyLabel").getText());
+            return null;
+        });
+    }
+
+    @Test
     void writeHandlersRecheckSessionAndPermissionsBeforeCallingServices() throws Exception {
         runOnFx(() -> {
             CountingCustomerService customers = new CountingCustomerService();
@@ -410,6 +454,11 @@ class ControllerReviewRegressionTest {
             saleRegistrations++;
             return delegate.registerSale(lines, sellerId, customerId, initialPayment);
         }
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key) {
+            saleRegistrations++;
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment, key);
+        }
         @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
             return delegate.registerPayment(saleId, amount, key);
         }
@@ -421,6 +470,38 @@ class ControllerReviewRegressionTest {
             }
             return delegate.listAll();
         }
+        @Override public BigDecimal outstandingSalesDebt(String customerId) {
+            return delegate.outstandingSalesDebt(customerId);
+        }
+        @Override public boolean supportsDurableIdempotency() { return delegate.supportsDurableIdempotency(); }
+    }
+
+    private static final class UncertainSaleWorkflow implements SalesWorkflow {
+        private final SalesWorkflow delegate;
+        private final List<String> keys = new ArrayList<>();
+        private boolean throwAfterNextSale;
+
+        private UncertainSaleWorkflow(SalesWorkflow delegate) { this.delegate = delegate; }
+
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment) {
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment);
+        }
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key) {
+            keys.add(key);
+            Sale saved = delegate.registerSale(lines, sellerId, customerId, initialPayment, key);
+            if (throwAfterNextSale) {
+                throwAfterNextSale = false;
+                throw new IllegalStateException("Respuesta perdida después del commit.");
+            }
+            return saved;
+        }
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
+            return delegate.registerPayment(saleId, amount, key);
+        }
+        @Override public Sale findById(String saleId) { return delegate.findById(saleId); }
+        @Override public List<Sale> listAll() { return delegate.listAll(); }
         @Override public BigDecimal outstandingSalesDebt(String customerId) {
             return delegate.outstandingSalesDebt(customerId);
         }

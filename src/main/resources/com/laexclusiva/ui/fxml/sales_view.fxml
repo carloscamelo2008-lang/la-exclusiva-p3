@@ -37,6 +37,7 @@
         <Label fx:id="totalLabel" text="Total: $ 0,00" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
         <Button fx:id="registerSaleButton" text="Registrar venta" onAction="#handleRegisterSale" />
     </HBox>
+    <Label fx:id="saleOperationKeyLabel" wrapText="true" text="Referencia de operación" />
     <Label fx:id="messageLabel" wrapText="true" style="-fx-text-fill: #1f5c37;" />
     <HBox spacing="8.0" alignment="CENTER_LEFT">
         <Label text="Ventas registradas" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
