@@ -21,6 +21,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -66,12 +67,49 @@ class CustomerSellerJdbcTest {
         assertEquals("Ana", customers.findById("C-1").getName());
         assertEquals(0, customers.findById("C-1").getBalance().compareTo(new BigDecimal("100.00")));
 
-        customers.update(customer("C-1", "Ana actualizada", "125.50"));
+        customers.update(new Customer("C-1", "Ana actualizada", "3111111111", "Nueva dirección",
+                new BigDecimal("100.00")));
         assertEquals("Ana actualizada", customers.findById("C-1").getName());
-        assertEquals(0, customers.findById("C-1").getBalance().compareTo(new BigDecimal("125.50")));
+        assertEquals("3111111111", customers.findById("C-1").getPhone());
+        assertEquals("Nueva dirección", customers.findById("C-1").getAddress());
+        assertEquals(0, customers.findById("C-1").getBalance().compareTo(new BigDecimal("100.00")));
+        assertTrue(database.lastCustomerUpdateSql.contains("and balance = ?"));
+        assertFalse(database.lastCustomerUpdateSql.substring(0, database.lastCustomerUpdateSql.indexOf("where"))
+                .contains("balance"),
+                "La actualización personal no debe escribir el saldo.");
         assertThrows(IllegalArgumentException.class,
                 () -> customers.update(customer("C-MISSING", "Sin fila", "0.00")));
         assertNull(customers.findById("C-MISSING"));
+    }
+
+    @Test
+    void staleCustomerSnapshotCannotRestoreBalanceAfterAtomicPayment() {
+        customers.save(customer("C-STALE", "Cliente original", "100.00"));
+        Customer staleSnapshot = customers.findById("C-STALE");
+
+        assertEquals(0, balances.decreaseBalance("C-STALE", new BigDecimal("80.00"))
+                .compareTo(new BigDecimal("20.00")));
+
+        assertThrows(ConcurrentModificationException.class, () -> customers.update(staleSnapshot));
+
+        assertEquals("Cliente original", customers.findById("C-STALE").getName());
+        assertEquals(0, customers.findById("C-STALE").getBalance().compareTo(new BigDecimal("20.00")));
+        assertEquals(new BigDecimal("100.00"), staleSnapshot.getBalance());
+    }
+
+    @Test
+    void personalUpdateAndBalanceAdjustmentRollBackTogether() {
+        customers.save(customer("C-PROFILE-ROLLBACK", "Nombre inicial", "100.00"));
+
+        assertThrows(IllegalStateException.class, () -> transactionManager.inTransaction(() -> {
+            customers.update(customer("C-PROFILE-ROLLBACK", "Nombre temporal", "100.00"));
+            balances.decreaseBalance("C-PROFILE-ROLLBACK", new BigDecimal("80.00"));
+            throw new IllegalStateException("fallo posterior simulado");
+        }));
+
+        Customer restored = customers.findById("C-PROFILE-ROLLBACK");
+        assertEquals("Nombre inicial", restored.getName());
+        assertEquals(0, restored.getBalance().compareTo(new BigDecimal("100.00")));
     }
 
     @Test
@@ -204,6 +242,7 @@ class CustomerSellerJdbcTest {
         private int rollbacks;
         private boolean failNextStatement;
         private String lastAtomicDecreaseSql;
+        private String lastCustomerUpdateSql;
 
         private synchronized Connection openConnection() {
             connectionsOpened++;
@@ -277,11 +316,14 @@ class CustomerSellerJdbcTest {
                 return 1;
             }
             if (sql.startsWith("update customer set name =")) {
-                String id = (String) values.get(5);
+                lastCustomerUpdateSql = sql;
+                String id = (String) values.get(4);
                 CustomerRow current = customers.get(id);
                 if (current == null) return 0;
+                BigDecimal expectedBalance = (BigDecimal) values.get(5);
+                if (current.balance().compareTo(expectedBalance) != 0) return 0;
                 customers.put(id, new CustomerRow(id, (String) values.get(1), (String) values.get(2),
-                        (String) values.get(3), (BigDecimal) values.get(4)));
+                        (String) values.get(3), current.balance()));
                 return 1;
             }
             if (sql.startsWith("insert into seller ")) {
