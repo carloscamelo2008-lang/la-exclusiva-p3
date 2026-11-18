@@ -51,6 +51,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -68,6 +69,7 @@ class FinancialOperationsPostgresIntegrationTest {
     private CustomerRepositoryJdbc customers;
     private SellerRepositoryJdbc sellers;
     private ProductRepositoryJdbc products;
+    private InventoryRepositoryJdbc inventoryRepository;
     private InventoryStockAdjusterJdbc inventory;
     private StockMovementRepositoryJdbc stockMovements;
     private SaleRepositoryJdbc salesRepository;
@@ -111,6 +113,7 @@ class FinancialOperationsPostgresIntegrationTest {
         customers = new CustomerRepositoryJdbc(connections);
         sellers = new SellerRepositoryJdbc(connections);
         products = new ProductRepositoryJdbc(connections, transactions);
+        inventoryRepository = new InventoryRepositoryJdbc(connections, transactions);
         inventory = new InventoryStockAdjusterJdbc(connections);
         stockMovements = new StockMovementRepositoryJdbc(connections);
         salesRepository = new SaleRepositoryJdbc(connections, transactions);
@@ -340,6 +343,72 @@ class FinancialOperationsPostgresIntegrationTest {
         assertEquals(new BigDecimal("100.00"), customers.findById(customerId).getBalance());
         assertEquals(new BigDecimal("70.00"), salesDebt.findOutstandingSalesDebt(customerId));
         assertEquals(new BigDecimal("30.00"), generalDebt.findBalance(customerId).generalDebt());
+    }
+
+    @Test
+    void saleCreationRollbackRemovesIdentityPaymentInventoryBalanceAndInitialCash() {
+        String key = "sale-create-full-rollback-" + UUID.randomUUID();
+        int stockBefore = inventoryRepository.findByProductId(productId).orElseThrow().totalUnits();
+        BigDecimal balanceBefore = customers.findById(customerId).getBalance();
+        int exitsBefore = count("SELECT COUNT(*) FROM stock_movement WHERE product_id = ? AND movement_type = 'EXIT'",
+                productId);
+        AtomicReference<String> initialCashReference = new AtomicReference<>();
+        CashMovementRepository observedCash = new CashMovementRepository() {
+            @Override public java.util.Optional<RequestRecord> findByIdempotencyKey(String candidate) {
+                return cashRepository.findByIdempotencyKey(candidate);
+            }
+            @Override public SaveResult saveOnce(CashMovement movement, String fingerprint) {
+                initialCashReference.set(movement.sourceReference());
+                return cashRepository.saveOnce(movement, fingerprint);
+            }
+            @Override public List<CashMovement> find(LocalDate from, LocalDate through, String category) {
+                return cashRepository.find(from, through, category);
+            }
+            @Override public BigDecimal findInvoicedSales(LocalDate from, LocalDate through) {
+                return cashRepository.findInvoicedSales(from, through);
+            }
+        };
+        InventoryStockAdjuster failAfterStockDelta = new InventoryStockAdjuster() {
+            @Override public int increaseStock(String id, int units) { return inventory.increaseStock(id, units); }
+            @Override public int decreaseStock(String id, int units) {
+                int remaining = inventory.decreaseStock(id, units);
+                throw new IllegalStateException("Fallo simulado tras aplicar el delta de inventario " + remaining);
+            }
+        };
+        SalesWorkflow failing = new JdbcSalesWorkflow(products, customers, sellers, salesRepository,
+                salesRepository, salesDebt, balances, failAfterStockDelta, stockMovements, transactions, observedCash);
+        List<StockRequest> request = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
+
+        assertThrows(IllegalStateException.class, () -> failing.registerSale(request, sellerId, customerId,
+                new BigDecimal("25.00"), key));
+
+        assertTrue(initialCashReference.get() != null, "La falla debe ocurrir después de intentar el recibo inicial.");
+        assertEquals(0, count("SELECT COUNT(*) FROM sale WHERE idempotency_key = ?", key));
+        assertEquals(0, count("SELECT COUNT(*) FROM sale_payment WHERE sale_id = ?", initialCashReference.get()));
+        assertEquals(0, count("SELECT COUNT(*) FROM sale_line WHERE sale_id = ?", initialCashReference.get()));
+        assertEquals(0, count("SELECT COUNT(*) FROM cash_movement WHERE source_type = 'SALE_INITIAL' "
+                + "AND source_reference = ?", initialCashReference.get()));
+        assertEquals(stockBefore, inventoryRepository.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(exitsBefore, count("SELECT COUNT(*) FROM stock_movement "
+                + "WHERE product_id = ? AND movement_type = 'EXIT'", productId));
+        assertEquals(balanceBefore, customers.findById(customerId).getBalance());
+
+        Sale retried = sales.registerSale(request, sellerId, customerId, new BigDecimal("25.00"), key);
+        assertEquals(1, count("SELECT COUNT(*) FROM sale WHERE idempotency_key = ?", key));
+        assertEquals(1, count("SELECT COUNT(*) FROM sale_line WHERE sale_id = ?", retried.getId()));
+        assertEquals(1, count("SELECT COUNT(*) FROM sale_payment WHERE sale_id = ?", retried.getId()));
+        assertEquals(1, count("SELECT COUNT(*) FROM cash_movement WHERE source_type = 'SALE_INITIAL' "
+                + "AND source_reference = ?", retried.getId()));
+        assertEquals(stockBefore - 1, inventoryRepository.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(exitsBefore + 1, count("SELECT COUNT(*) FROM stock_movement "
+                + "WHERE product_id = ? AND movement_type = 'EXIT'", productId));
+        assertEquals(balanceBefore.add(new BigDecimal("75.00")), customers.findById(customerId).getBalance());
+        Sale replay = sales.registerSale(request, sellerId, customerId, new BigDecimal("25.00"), key);
+        assertEquals(retried.getId(), replay.getId());
+        assertEquals(1, count("SELECT COUNT(*) FROM sale WHERE idempotency_key = ?", key));
+        assertEquals(1, count("SELECT COUNT(*) FROM sale_payment WHERE sale_id = ?", retried.getId()));
+        assertEquals(1, count("SELECT COUNT(*) FROM cash_movement WHERE source_type = 'SALE_INITIAL' "
+                + "AND source_reference = ?", retried.getId()));
     }
 
     private boolean attemptGeneralPayment(CountDownLatch start, String key) throws Exception {

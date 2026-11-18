@@ -37,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Regresiones visuales de permisos de caja y separación de la cartera financiera. */
@@ -289,6 +290,78 @@ class FinancialControllersTest {
         });
     }
 
+    @Test
+    void confirmedGeneralDebtWithInternalRefreshFailureKeepsSuccessAndRefreshIsReadOnly() throws Exception {
+        runOnFx(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            String customerId = "CUS-GENERAL-DEBT-REFRESH";
+            services.customers().registerCustomer(customerId, "Cliente ficticio", "3000000411", "Dirección");
+            RefreshFailingGeneralDebtWorkflow generalDebt =
+                    new RefreshFailingGeneralDebtWorkflow(services.generalDebt());
+            FXMLLoader loader = load("portfolio_view.fxml");
+            ((PortfolioController) loader.getController()).configure(services.customers(), services.sales(),
+                    generalDebt, adminSession());
+            ((PortfolioController) loader.getController()).showPortfolio(services.customers().getAllCustomers());
+            text(loader, "generalDebtAmountField").setText("35.00");
+            text(loader, "generalDebtCategoryField").setText("Ajuste ficticio");
+            text(loader, "generalDebtDescriptionField").setText("Alta con fallo de consulta");
+
+            button(loader, "registerGeneralDebtButton").fire();
+
+            String message = label(loader, "messageLabel").getText();
+            assertEquals(1, generalDebt.debtWrites);
+            assertTrue(message.contains("Deuda general registrada correctamente"), message);
+            assertTrue(message.contains("No se pudo actualizar la consulta de cartera"), message);
+            assertTrue(label(loader, "generalDebtLabel").getText().contains("no disponible"));
+            assertTrue(table(loader, "portfolioTable").getItems().isEmpty());
+            assertNull(((ComboBox<?>) loader.getNamespace().get("customerCombo")).getValue());
+            assertTrue(label(loader, "generalDebtOperationKeyLabel").getText().contains("se genera al registrar"));
+
+            button(loader, "refreshPortfolioButton").fire();
+            assertEquals(1, generalDebt.debtWrites, "Actualizar cartera no debe repetir el cargo confirmado.");
+            assertTrue(label(loader, "messageLabel").getText().contains("Cartera actualizada"));
+            assertTrue(label(loader, "generalDebtLabel").getText().startsWith("Deuda general:"));
+            return null;
+        });
+    }
+
+    @Test
+    void confirmedGeneralPaymentWithInternalRefreshFailureKeepsSuccessAndRefreshIsReadOnly() throws Exception {
+        runOnFx(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            String customerId = "CUS-GENERAL-PAYMENT-REFRESH";
+            services.customers().registerCustomer(customerId, "Cliente ficticio", "3000000412", "Dirección");
+            services.generalDebt().registerDebt(customerId, new BigDecimal("60.00"), "Fixture",
+                    "Saldo ficticio para regresión", "seed-general-refresh-" + customerId);
+            RefreshFailingGeneralDebtWorkflow generalDebt =
+                    new RefreshFailingGeneralDebtWorkflow(services.generalDebt());
+            FXMLLoader loader = load("portfolio_view.fxml");
+            ((PortfolioController) loader.getController()).configure(services.customers(), services.sales(),
+                    generalDebt, adminSession());
+            ((PortfolioController) loader.getController()).showPortfolio(services.customers().getAllCustomers());
+            text(loader, "generalDebtAmountField").setText("20.00");
+            text(loader, "generalDebtCategoryField").setText("Abono ficticio");
+            text(loader, "generalDebtDescriptionField").setText("Pago con fallo de consulta");
+
+            button(loader, "payGeneralDebtButton").fire();
+
+            String message = label(loader, "messageLabel").getText();
+            assertEquals(1, generalDebt.paymentWrites);
+            assertTrue(message.contains("Abono general confirmado"), message);
+            assertTrue(message.contains("No se pudo actualizar la consulta de cartera"), message);
+            assertTrue(label(loader, "generalDebtLabel").getText().contains("no disponible"));
+            assertTrue(table(loader, "portfolioTable").getItems().isEmpty());
+            assertNull(((ComboBox<?>) loader.getNamespace().get("customerCombo")).getValue());
+            assertTrue(label(loader, "generalDebtOperationKeyLabel").getText().contains("se genera al registrar"));
+
+            button(loader, "refreshPortfolioButton").fire();
+            assertEquals(1, generalDebt.paymentWrites, "Actualizar cartera solo consulta; no aplica otro abono.");
+            assertTrue(label(loader, "messageLabel").getText().contains("Cartera actualizada"));
+            assertTrue(label(loader, "generalDebtLabel").getText().startsWith("Deuda general:"));
+            return null;
+        });
+    }
+
     private static UserSession adminSession() {
         return new UserSession(new UserAccount(701L, "admin-ficticio", "unused", UserRole.ADMINISTRATOR, null));
     }
@@ -310,6 +383,11 @@ class FinancialControllersTest {
 
     private static Label label(FXMLLoader loader, String id) {
         return (Label) loader.getNamespace().get(id);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static TableView<Object> table(FXMLLoader loader, String id) {
+        return (TableView<Object>) loader.getNamespace().get(id);
     }
 
     private static CashMovement existingCashMovement() {
@@ -458,6 +536,50 @@ class FinancialControllersTest {
                                                                  LocalDate through, String category) {
             return delegate.listMovements(customerId, from, through, category);
         }
+        @Override public boolean supportsDurableIdempotency() { return delegate.supportsDurableIdempotency(); }
+    }
+
+    private static final class RefreshFailingGeneralDebtWorkflow implements CustomerGeneralDebtWorkflow {
+        private final CustomerGeneralDebtWorkflow delegate;
+        private int debtWrites;
+        private int paymentWrites;
+        private boolean failNextBalance;
+
+        private RefreshFailingGeneralDebtWorkflow(CustomerGeneralDebtWorkflow delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override public CustomerDebtBreakdown findBalance(String customerId) {
+            if (failNextBalance) {
+                failNextBalance = false;
+                throw new IllegalStateException("consulta simulada de saldo no disponible");
+            }
+            return delegate.findBalance(customerId);
+        }
+
+        @Override public GeneralDebtMovement registerDebt(String customerId, BigDecimal amount, String category,
+                                                          String description, String idempotencyKey) {
+            debtWrites++;
+            GeneralDebtMovement confirmed = delegate.registerDebt(customerId, amount, category, description,
+                    idempotencyKey);
+            failNextBalance = true;
+            return confirmed;
+        }
+
+        @Override public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
+                                                             String description, String idempotencyKey) {
+            paymentWrites++;
+            GeneralDebtMovement confirmed = delegate.registerPayment(customerId, amount, category, description,
+                    idempotencyKey);
+            failNextBalance = true;
+            return confirmed;
+        }
+
+        @Override public List<GeneralDebtMovement> listMovements(String customerId, LocalDate from,
+                                                                 LocalDate through, String category) {
+            return delegate.listMovements(customerId, from, through, category);
+        }
+
         @Override public boolean supportsDurableIdempotency() { return delegate.supportsDurableIdempotency(); }
     }
 }
