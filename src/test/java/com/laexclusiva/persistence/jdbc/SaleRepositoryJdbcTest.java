@@ -14,6 +14,7 @@ import com.laexclusiva.model.SalePayment;
 import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
 import com.laexclusiva.repository.jdbc.SaleRepositoryJdbc;
+import com.laexclusiva.repository.IdempotentSaleRepository;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -133,6 +134,27 @@ class SaleRepositoryJdbcTest {
         assertEquals(CREATED_AT.withNano(123_456_000), database.sales.get("SALE-DUP").get("created_at"));
         assertEquals(1, database.lines.size());
         assertEquals(1, database.rollbacks);
+    }
+
+    @Test
+    void saleRequestKeyReturnsOriginalAndRejectsDifferentPayload() {
+        Sale original = simpleSale("SALE-IDEMPOTENT-1");
+        String key = "sale-request-123";
+        String fingerprint = "a".repeat(64);
+
+        IdempotentSaleRepository.SaveResult created = repository.saveOnce(original, key, fingerprint);
+        IdempotentSaleRepository.SaveResult replay = repository.saveOnce(simpleSale("SALE-IDEMPOTENT-2"), key, fingerprint);
+
+        assertTrue(created.inserted());
+        assertFalse(replay.inserted());
+        assertEquals("SALE-IDEMPOTENT-1", replay.sale().getId());
+        assertEquals(1, database.sales.size());
+        assertEquals(1, database.lines.size());
+        assertEquals(2, database.commits);
+        assertThrows(IllegalArgumentException.class,
+                () -> repository.saveOnce(simpleSale("SALE-IDEMPOTENT-3"), key, "b".repeat(64)));
+        assertEquals(1, database.sales.size());
+        assertEquals(1, database.lines.size());
     }
 
     @Test
@@ -486,11 +508,17 @@ class SaleRepositoryJdbcTest {
             }
             if (sql.startsWith("insert into sale (")) {
                 String id = (String) values.get(1);
+                String idempotencyKey = (String) values.get(5);
+                if (sql.contains("on conflict (idempotency_key)") && idempotencyKey != null
+                        && sales.values().stream().anyMatch(row -> idempotencyKey.equals(row.get("idempotency_key")))) {
+                    return 0;
+                }
                 if (sales.containsKey(id)) {
                     throw new SQLException("duplicate key", "23505");
                 }
                 sales.put(id, row("sale_id", id, "created_at", values.get(2),
-                        "seller_id", values.get(3), "customer_id", values.get(4)));
+                        "seller_id", values.get(3), "customer_id", values.get(4),
+                        "idempotency_key", idempotencyKey, "request_fingerprint", values.get(6)));
                 return 1;
             }
             if (sql.startsWith("insert into sale_line")) {
@@ -513,6 +541,12 @@ class SaleRepositoryJdbcTest {
         }
 
         private List<Map<String, Object>> query(String sql, Map<Integer, Object> parameters) throws SQLException {
+            if (sql.startsWith("select id, request_fingerprint from sale where idempotency_key = ?")) {
+                return sales.values().stream()
+                        .filter(sale -> java.util.Objects.equals(sale.get("idempotency_key"), parameters.get(1)))
+                        .map(sale -> row("id", sale.get("sale_id"),
+                                "request_fingerprint", sale.get("request_fingerprint"))).toList();
+            }
             if (sql.startsWith("select customer_id from sale where id = ?")) {
                 Map<String, Object> sale = sales.get(parameters.get(1));
                 return sale == null ? List.of() : List.of(row("customer_id", sale.get("customer_id")));

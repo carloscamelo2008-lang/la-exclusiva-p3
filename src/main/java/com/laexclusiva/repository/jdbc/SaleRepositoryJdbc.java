@@ -12,6 +12,7 @@ import com.laexclusiva.persistence.jdbc.JdbcConnectionProvider;
 import com.laexclusiva.persistence.jdbc.JdbcPersistenceException;
 import com.laexclusiva.persistence.jdbc.JdbcTransactionManager;
 import com.laexclusiva.repository.IdempotentSalePaymentAppender;
+import com.laexclusiva.repository.IdempotentSaleRepository;
 import com.laexclusiva.repository.SaleRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -35,7 +36,8 @@ import java.util.Optional;
  * y luego la venta; las actualizaciones por instantánea se rechazan. Las consultas cargan relaciones
  * por lotes y conservan los snapshots SQL.</p>
  */
-public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSalePaymentAppender {
+public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSalePaymentAppender,
+        IdempotentSaleRepository {
 
     private static final String SALE_SELECT = """
             SELECT s.id AS sale_id, s.created_at, se.id AS seller_id, se.name AS seller_name,
@@ -93,7 +95,7 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
     public void save(Sale sale) {
         validateSale(sale);
         transactionManager.inTransaction(() -> connectionProvider.withConnection(connection -> {
-            insertSale(connection, sale);
+            insertSale(connection, sale, null, null);
             for (SaleLine line : sale.getLines()) {
                 insertLine(connection, sale.getId(), line);
             }
@@ -101,6 +103,69 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
                 insertPayment(connection, sale.getId(), payment, null);
             }
             return null;
+        }));
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public Optional<RequestRecord> findByIdempotencyKey(String idempotencyKey) {
+        requireSaleKey(idempotencyKey);
+        return connectionProvider.withConnection(connection -> {
+            String sql = "SELECT id, request_fingerprint FROM sale WHERE idempotency_key = ?";
+            String saleId;
+            String fingerprint;
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, idempotencyKey);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (!resultSet.next()) return Optional.empty();
+                    saleId = resultSet.getString("id");
+                    fingerprint = resultSet.getString("request_fingerprint").trim();
+                }
+            }
+            Sale sale = findById(saleId).orElseThrow(() -> new JdbcPersistenceException(
+                    "La clave de venta apunta a una cabecera que no puede reconstruirse."));
+            return Optional.of(new RequestRecord(sale, fingerprint));
+        });
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public SaveResult saveOnce(Sale sale, String idempotencyKey, String fingerprint) {
+        validateSale(sale);
+        requireSaleKey(idempotencyKey);
+        requireFingerprint(fingerprint);
+        return transactionManager.inTransaction(() -> connectionProvider.withConnection(connection -> {
+            String sql = """
+                    INSERT INTO sale (id, created_at, seller_id, customer_id, idempotency_key, request_fingerprint)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (idempotency_key) DO NOTHING
+                    """;
+            int inserted;
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, sale.getId());
+                statement.setObject(2, normalize(sale.getCreatedAt()));
+                statement.setString(3, sale.getSeller().getId());
+                if (sale.getCustomer() == null) statement.setNull(4, java.sql.Types.VARCHAR);
+                else statement.setString(4, sale.getCustomer().getId());
+                statement.setString(5, idempotencyKey);
+                statement.setString(6, fingerprint);
+                inserted = statement.executeUpdate();
+            }
+            if (inserted == 0) {
+                RequestRecord existing = findRequestRecord(connection, idempotencyKey);
+                if (existing == null) {
+                    throw new JdbcPersistenceException("PostgreSQL no devolvió la venta asociada a la clave usada.");
+                }
+                if (!existing.fingerprint().equals(fingerprint)) {
+                    throw new IllegalArgumentException("La clave de venta ya se usó con datos diferentes.");
+                }
+                Sale persisted = findById(existing.sale().getId()).orElseThrow(() ->
+                        new JdbcPersistenceException("No se pudo reconstruir la venta idempotente."));
+                return new SaveResult(persisted, false);
+            }
+            for (SaleLine line : sale.getLines()) insertLine(connection, sale.getId(), line);
+            for (SalePayment payment : sale.getPayments()) insertPayment(connection, sale.getId(), payment, null);
+            return new SaveResult(sale, true);
         }));
     }
 
@@ -228,8 +293,12 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
         });
     }
 
-    private static void insertSale(Connection connection, Sale sale) throws SQLException {
-        String sql = "INSERT INTO sale (id, created_at, seller_id, customer_id) VALUES (?, ?, ?, ?)";
+    private static void insertSale(Connection connection, Sale sale, String idempotencyKey,
+                                   String fingerprint) throws SQLException {
+        String sql = """
+                INSERT INTO sale (id, created_at, seller_id, customer_id, idempotency_key, request_fingerprint)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, sale.getId());
             statement.setObject(2, normalize(sale.getCreatedAt()));
@@ -240,6 +309,8 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
             } else {
                 statement.setString(4, customer.getId());
             }
+            statement.setString(5, idempotencyKey);
+            statement.setString(6, fingerprint);
             try {
                 requireOneRow(statement.executeUpdate(), "No se insertó la cabecera de la venta.");
             } catch (SQLException failure) {
@@ -248,6 +319,35 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
                 }
                 throw failure;
             }
+        }
+    }
+
+    private RequestRecord findRequestRecord(Connection connection, String key) throws SQLException {
+        String sql = "SELECT id, request_fingerprint FROM sale WHERE idempotency_key = ?";
+        String saleId;
+        String fingerprint;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, key);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) return null;
+                saleId = resultSet.getString("id");
+                fingerprint = resultSet.getString("request_fingerprint").trim();
+            }
+        }
+        Sale sale = findById(saleId).orElseThrow(() ->
+                new JdbcPersistenceException("La venta asociada a la clave no puede reconstruirse."));
+        return new RequestRecord(sale, fingerprint);
+    }
+
+    private static void requireSaleKey(String key) {
+        if (key == null || key.isBlank() || key.length() > 64) {
+            throw new IllegalArgumentException("La clave idempotente de la venta debe tener entre 1 y 64 caracteres.");
+        }
+    }
+
+    private static void requireFingerprint(String fingerprint) {
+        if (fingerprint == null || !fingerprint.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("La huella de la solicitud de venta no es válida.");
         }
     }
 
