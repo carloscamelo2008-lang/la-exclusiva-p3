@@ -201,10 +201,22 @@ negativo. Los importes se validan con `BigDecimal`; no se redondean valores con 
 
 `save` es siempre una inserción: los IDs duplicados se rechazan y nunca se convierten en upsert.
 La búsqueda/listado devuelve entidades reconstituidas, y el repositorio de vendedores no añade una
-operación de actualización que su interfaz no define. `CustomerRepositoryJdbc.update` conserva el
-comportamiento del repositorio en memoria y reemplaza el snapshot, incluido `balance`; por eso puede
-sobrescribir un ajuste concurrente si se invoca con un snapshot antiguo. No se debe usar para
-aplicar pagos ni ajustes concurrentes de saldo.
+operación de actualización que su interfaz no define. El contrato compartido tiene una diferencia
+intencional entre adaptadores: el repositorio en memoria sigue reemplazando el snapshot completo,
+incluido `balance`, mientras que `CustomerRepositoryJdbc.update` solo escribe nombre, teléfono y
+dirección. El adaptador JDBC añade `WHERE id = ? AND balance = ?`; el saldo del snapshot funciona
+como control optimista, nunca aparece en `SET`. Si el cliente no existe lanza
+`IllegalArgumentException`; si existe pero el saldo ya cambió lanza
+`ConcurrentModificationException` y solicita recargarlo. Así, una instantánea antigua no puede
+restaurar un saldo anterior. `CustomerBalanceAdjusterJdbc` se mantiene como única vía JDBC para
+escribir `customer.balance`.
+
+`CustomerService` todavía aplica operaciones de deuda mediante snapshots y usa actualizaciones de
+repositorio para compensar fallos. Por tanto, no se debe conectar todavía a `CustomerRepositoryJdbc`.
+Antes de habilitar JDBC, el servicio debe separar las modificaciones personales de los ajustes
+financieros, usar exclusivamente `CustomerBalanceAdjuster` para estos últimos y ejecutar los cambios
+relacionados bajo el mismo `JdbcTransactionManager`; las compensaciones por snapshots deben
+reemplazarse por rollback transaccional. La implementación en memoria conserva su semántica actual.
 
 Para operaciones financieras se añade el puerto `CustomerBalanceAdjuster` y su adaptador
 `CustomerBalanceAdjusterJdbc`:

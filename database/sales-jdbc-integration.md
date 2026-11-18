@@ -148,13 +148,20 @@ El trabajo actual de inventario implementa compensaciones en memoria y el saldo 
    no incluye el balance general del cliente ni modifica historial. La futura sustitución del mapa
    `saleDebts` debe mantener `customer.balance - deuda de ventas` como deuda general y coordinar
    ajustes de balance con la venta bajo la misma unidad de trabajo.
-9. **Contrato de snapshot y saldo.** `CustomerRepositoryJdbc.update` mantiene el comportamiento
-   del repositorio en memoria y reemplaza también el `balance` recibido. Un snapshot antiguo puede
-   pisar un ajuste concurrente;
-   por eso las escrituras financieras deben pasar por `CustomerBalanceAdjuster` dentro de la unidad
-   compartida. El adaptador incrementa mediante suma SQL y reduce con una condición atómica que
-   impide saldos negativos. Los dos adaptadores de cliente/vendedor y este puerto ya están
-   implementados, pero su integración en servicios queda pendiente.
+9. **Contrato de snapshot y saldo.** La implementación en memoria de
+   `CustomerRepositoryInterface.update` conserva el reemplazo del snapshot completo. En JDBC, la
+   operación solo actualiza nombre, teléfono y dirección con `WHERE id = ? AND balance = ?`; nunca
+   escribe el saldo. Si el cliente desapareció se lanza `IllegalArgumentException`, y si el saldo
+   cambió desde la lectura se rechaza con `ConcurrentModificationException`. Por tanto, una copia
+   antigua no puede restaurar un saldo después de un abono. `CustomerBalanceAdjusterJdbc` es la única
+   vía de escritura financiera JDBC: incrementa mediante suma SQL y reduce con una condición atómica
+   que impide saldos negativos.
+   `CustomerService` aún actualiza snapshots al cambiar deuda y al compensar fallos; no debe
+   conectarse al adaptador JDBC hasta adaptar esas rutas para usar el ajustador y compartir una
+   transacción JDBC, sustituyendo compensaciones manuales por rollback. La ruta en memoria no cambia.
+   La regresión simulada cubre la guarda y el rollback. También se añadió el escenario de integración
+   PostgreSQL, que no se ejecutó en esta intervención porque faltaban las variables del entorno
+   aislado de pruebas.
 10. **Coordinación con los DAO de Jesús.** Cuando estén disponibles, confirmar firmas de consulta
    y bloqueo, su uso del proveedor compartido y contratos de rollback. Después integrar bajo el
    límite de servicio, añadir pruebas de concurrencia/integración en la base exclusiva de pruebas
