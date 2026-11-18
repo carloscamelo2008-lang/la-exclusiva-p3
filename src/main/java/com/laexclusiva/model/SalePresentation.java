@@ -17,6 +17,19 @@ public interface SalePresentation {
     /** Presentación de una canasta completa. */
     SalePresentation FULL_BASKET = new FullBasketPresentation();
 
+    /** Recupera una presentación a partir de su código persistido. */
+    static SalePresentation fromCode(String code) {
+        if (code == null) {
+            throw new IllegalArgumentException("El código de presentación es obligatorio.");
+        }
+        return switch (code) {
+            case "UNIT" -> UNIT;
+            case "HALF_BASKET" -> HALF_BASKET;
+            case "FULL_BASKET" -> FULL_BASKET;
+            default -> throw new IllegalArgumentException("Código de presentación desconocido: " + code);
+        };
+    }
+
     /**
      * Devuelve el identificador estable de esta presentación, usado como llave de precios.
      *

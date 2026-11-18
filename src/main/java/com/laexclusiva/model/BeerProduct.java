@@ -1,6 +1,7 @@
 package com.laexclusiva.model;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -59,17 +60,35 @@ public class BeerProduct {
      * Ejemplo: precio de una unidad de $2.500 COP -> {@code BigDecimal.valueOf(2500L)}.
      *
      * @throws IllegalArgumentException si la presentación o el precio son nulos, o si el
-     *                                  precio no es mayor que cero
+     *                                  precio no es positivo o no cabe en NUMERIC(19,2)
      */
     public void definePrice(SalePresentation presentation, BigDecimal price) {
         requirePresentation(presentation);
+        validatePrice(price);
+        prices.put(presentation.code(), price);
+    }
+
+    /** Verifica que el precio es positivo y cabe exactamente en NUMERIC(19,2). */
+    public static void validatePrice(BigDecimal price) {
         if (price == null) {
             throw new IllegalArgumentException("El precio es obligatorio.");
         }
         if (price.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El precio debe ser mayor que cero.");
         }
-        prices.put(presentation.code(), price);
+        if ((long) price.precision() - price.scale() > 17) {
+            throw new IllegalArgumentException("El precio supera NUMERIC(19,2).");
+        }
+        try {
+            price.setScale(2, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException failure) {
+            throw new IllegalArgumentException("El precio debe ser exacto a dos decimales.", failure);
+        }
+    }
+
+    public boolean hasPrice(SalePresentation presentation) {
+        requirePresentation(presentation);
+        return prices.containsKey(presentation.code());
     }
 
     /**
@@ -91,9 +110,9 @@ public class BeerProduct {
     }
 
     public boolean hasAllPrices() {
-        return prices.containsKey(SalePresentation.UNIT.code())
-                && prices.containsKey(SalePresentation.HALF_BASKET.code())
-                && prices.containsKey(SalePresentation.FULL_BASKET.code());
+        return hasPrice(SalePresentation.UNIT)
+                && hasPrice(SalePresentation.HALF_BASKET)
+                && hasPrice(SalePresentation.FULL_BASKET);
     }
 
     /**

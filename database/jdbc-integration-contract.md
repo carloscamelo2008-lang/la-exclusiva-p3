@@ -155,7 +155,8 @@ default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
 }
 ```
 
-- `save(item)`: inserta o actualiza por `product_id` (upsert).
+- `save(item)`: inserta o actualiza por `product_id` (upsert). En JDBC requiere una transacción activa incluso para la primera inserción. Fuera de ella lanza `IllegalStateException`.
+- Para actualizar o descontar existencias, el llamador debe ejecutar `findByProductIdForUpdate(productId)`, calcular el nuevo saldo con el ítem devuelto y llamar a `save(item)` dentro de la misma llamada a `JdbcTransactionManager.inTransaction(...)`, compartiendo el proveedor de conexiones. La consulta bloquea una fila existente. Si todavía no hay fila, devuelve vacío y el primer alta debe realizarse dentro de una transacción.
 - `findByProductId(...)`: consulta normal sin bloqueo.
 - `findByProductIdForUpdate(...)`: el adaptador JDBC sobrescribe el método con `SELECT ... FOR UPDATE`. Debe exigir `transactionManager.isTransactionActive()`; de lo contrario lanza `IllegalStateException`. El método default mantiene compatible la implementación en memoria, que no necesita bloqueo SQL.
 
@@ -163,6 +164,8 @@ default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
 
 - `SalePresentation.fromCode(String)`: convierte únicamente `UNIT`, `HALF_BASKET` y `FULL_BASKET`. Un valor nulo o desconocido se rechaza.
 - `StockMovementRepository.remove(...)`: la implementación JDBC lanza `UnsupportedOperationException` con un mensaje claro. El historial no se borra para compensar una operación; el rollback revierte las inserciones.
+- `stock_movement.id` es una clave técnica generada por PostgreSQL. Las lecturas JDBC exponen ese ID y el producto del catálogo asociado en `StockMovement`. El constructor de cinco argumentos sigue disponible para movimientos nuevos y el repositorio en memoria conserva `remove(...)` para la compensación local.
+- Las lecturas JDBC ordenan por `occurred_at` ascendente y usan el ID generado para desempatar marcas de tiempo iguales.
 - `InventoryService.discountSale(...)` procesa los IDs de producto en orden ascendente antes de bloquear las filas, reduciendo el riesgo de deadlocks.
 
 Los snapshots de líneas de venta deben conservar `unit_price` y `units_per_basket_snapshot` leídos de la fila histórica; nunca se reconstruyen con los precios ni la capacidad actuales del catálogo.

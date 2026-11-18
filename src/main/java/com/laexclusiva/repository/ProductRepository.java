@@ -1,6 +1,8 @@
 package com.laexclusiva.repository;
 
 import com.laexclusiva.model.BeerProduct;
+import com.laexclusiva.model.SalePresentation;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,7 +13,15 @@ import java.util.Optional;
  */
 public interface ProductRepository {
 
+    /** Inserta un producto con sus tres precios y rechaza un identificador duplicado. */
     void save(BeerProduct product);
+
+    /** Actualiza un precio existente. Rechaza productos o precios ausentes e importes inválidos. */
+    void updatePrice(String productId, SalePresentation presentation, BigDecimal newPrice);
+
+    /** Inserta un precio faltante. Rechaza productos ausentes, precios duplicados e importes inválidos. */
+    void addMissingPrice(String productId, SalePresentation presentation, BigDecimal price);
+
 
     Optional<BeerProduct> findById(String id);
 
