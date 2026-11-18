@@ -112,8 +112,7 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
                         secondPid.complete(backendPid(provider));
                         InventoryItem waiting = inventory.findByProductIdForUpdate(id).orElseThrow();
                         int observedStock = waiting.totalUnits();
-                        waiting.remove(2);
-                        inventory.save(waiting);
+                        adjustments.decreaseStock(id, 2);
                         return observedStock;
                     } catch (RuntimeException | Error failure) {
                         secondPid.completeExceptionally(failure);
