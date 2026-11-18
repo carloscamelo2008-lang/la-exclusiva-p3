@@ -10,10 +10,13 @@ Este documento fija la interfaz de integración entre la infraestructura JDBC de
 - Jesús parte inicialmente de `feature/jdbc-infrastructure` para compilar contra las clases compartidas.
 - **Estado actualizado el 2026-11-17:** el PR #15 (`feature/jdbc-infrastructure`) se fusionó en
   `develop` (`ea85865`); el PR #16 (`feature/products-inventory`) sigue abierto. La rama
-  `feature/full-jdbc-integration` parte del head `426a65e` de #16 e integra la base anterior de
-  `develop` (`8d00215`), las protecciones del PR #15 y el `develop` actual (`ea85865`, incluido el
-  PR #17) mediante el merge `ecadf8b`. El borrador seguirá basado en #16 hasta que este se fusione.
-  Esta rama temporal no reemplaza ni publica cambios en la rama de Jesús.
+  `feature/full-jdbc-integration` parte del head `426a65e` de #16 e integra `develop` (`ea85865`,
+  incluido el PR #17) mediante `ecadf8b`. Después se incorporó el avance de la rama de dependencia
+  hasta `dbbaf28` con el merge normal `c2ab247`. Se resolvieron conflictos en el adaptador de
+  inventario, su contrato y una prueba PostgreSQL, conservando la exigencia de transacción activa,
+  la inserción inicial sin sobrescritura y los ajustes por delta. No se modificó ni publicó la rama
+  de Jesús. El borrador #18 se mantiene basado en `feature/products-inventory` hasta que #16 se
+  fusione.
 
 ## Configuración de bases locales
 
@@ -161,10 +164,10 @@ default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
 }
 ```
 
-- `save(item)`: inserta o actualiza por `product_id` (upsert). En JDBC requiere una transacción activa incluso para la primera inserción. Fuera de ella lanza `IllegalStateException`.
-- Para actualizar o descontar existencias, el llamador debe ejecutar `findByProductIdForUpdate(productId)`, calcular el nuevo saldo con el ítem devuelto y llamar a `save(item)` dentro de la misma llamada a `JdbcTransactionManager.inTransaction(...)`, compartiendo el proveedor de conexiones. La consulta bloquea una fila existente. Si todavía no hay fila, devuelve vacío y el primer alta debe realizarse dentro de una transacción.
+- `save(item)`: crea la fila inicial de inventario y requiere una transacción JDBC activa. Si ya existe la fila del producto, la rechaza; nunca reemplaza el total con el contenido de un snapshot. Fuera de una transacción lanza `IllegalStateException`.
+- Los aumentos y descuentos posteriores se aplican mediante `InventoryStockAdjuster` dentro de la transacción compartida. El SQL incrementa por delta o descuenta solo si hay unidades suficientes; no se guarda un total reconstruido desde un snapshot.
 - `findByProductId(...)`: consulta normal sin bloqueo.
-- `findByProductIdForUpdate(...)`: el adaptador JDBC sobrescribe el método con `SELECT ... FOR UPDATE`. Debe exigir `transactionManager.isTransactionActive()`; de lo contrario lanza `IllegalStateException`. El método default mantiene compatible la implementación en memoria, que no necesita bloqueo SQL.
+- `findByProductIdForUpdate(...)`: el adaptador JDBC sobrescribe el método con `SELECT ... FOR UPDATE` y exige `transactionManager.isTransactionActive()`; de lo contrario lanza `IllegalStateException`. Permite leer la fila bajo bloqueo cuando el caso de uso requiere una comprobación coordinada. El método default mantiene compatible la implementación en memoria, que no necesita bloqueo SQL.
 
 ### Presentaciones y movimientos
 
@@ -257,6 +260,15 @@ fallos, errores ni omisiones. Los reportes Surefire locales registran aprobadas 
 `CustomerSellerJdbcPostgresIntegrationTest`, `CustomerDebtQueryJdbcPostgresIntegrationTest` y
 `SaleRepositoryJdbcPostgresIntegrationTest` (una prueba cada una). Codex verificó las 22 suites XML
 y sus marcas de tiempo, sin repetir Maven ni conectarse a la base. No se registraron credenciales.
+
+Después de integrar el tip `dbbaf28` de `origin/feature/products-inventory` mediante el merge
+`c2ab247`, `mvn clean verify` con Temurin JDK 17.0.21 y Maven 3.10.0 terminó en `BUILD SUCCESS`:
+222 pruebas, 210 aprobadas, 0 fallidas, 0 errores y 12 omitidas. Las omitidas corresponden a las
+suites PostgreSQL de cartera, clientes/vendedores, inventario (3), workflow de ventas, productos
+(3), ventas y movimientos (2). Las tres variables de conexión no estaban presentes; no se abrió una
+conexión, no se aplicaron migraciones ni se modificó una base. `git diff --check` pasó después de
+resolver los conflictos. Maven mostró avisos existentes del modelo JavaFX y JavaFX informó su
+configuración no modular durante las pruebas de interfaz.
 
 ## Nombres de columnas acordados
 

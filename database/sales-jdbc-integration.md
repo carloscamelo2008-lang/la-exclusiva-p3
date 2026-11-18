@@ -366,7 +366,8 @@ Clientes y vendedores pasan por los repositorios seleccionados en la composició
 ### Verificación local observada
 
 Con Temurin JDK 17.0.21 y Maven 3.10.0, después de integrar `origin/develop` (`ea85865`) mediante
-el merge `ecadf8b`, el 2026-11-17 `mvn clean verify` terminó en `BUILD SUCCESS`: 222 pruebas
+`ecadf8b` y el avance de `origin/feature/products-inventory` hasta `dbbaf28` mediante el merge
+`c2ab247`, el 2026-11-17 `mvn clean verify` terminó en `BUILD SUCCESS`: 222 pruebas
 contabilizadas, 210 aprobadas, 0 fallidas, 0 errores y 12 omitidas.
 Las 12 omitidas son las pruebas PostgreSQL opcionales; el proceso no tenía
 `LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` ni
@@ -390,6 +391,14 @@ configuración validada por `DatabaseConfig.fromTestEnvironment()`, que exige la
 ventas y filas relacionadas por el vendedor único de la prueba, más el producto/cliente/vendedor
 con IDs exactos propios. La prueba cubre rollback, saldo general, pagos idempotentes y carreras reales
 de abonos y stock. No pudo ejecutarse sin las variables dedicadas; no debe citarse como aprobada.
+
+El último merge de la dependencia añadió la exigencia de transacción activa a
+`InventoryRepositoryJdbc.save`. Se mantuvo `save` como alta inicial insert-only; para cambios de
+stock, `JdbcSalesWorkflow` usa `InventoryStockAdjusterJdbc` por delta y bajo la transacción común,
+sin volver a guardar snapshots. Las regresiones PostgreSQL verifican el guardado solo dentro de
+transacción, el rechazo de un snapshot obsoleto y la concurrencia de ajustes; esos casos quedaron
+entre las 3 omisiones de `InventoryRepositoryJdbcPostgresIntegrationTest` al faltar la configuración
+dedicada.
 
 Después de configurar la base aislada con V001 y V002 aplicadas, ejecutar desde PowerShell:
 
