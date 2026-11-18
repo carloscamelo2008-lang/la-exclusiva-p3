@@ -358,10 +358,9 @@ Clientes y vendedores pasan por los repositorios seleccionados en la composició
 - No se aplican V001/V002 ni se inicializa el catálogo al arrancar. La aplicación no escribe en la
   base hasta una acción del usuario; la pantalla de administración puede registrar productos.
 - Al 2026-11-18, `origin/develop` apunta a `e92d874` y contiene, según la comprobación de ancestry,
-  el tip `dbbaf28` de productos/inventario. La página GitHub del PR #16 aún lo mostraba abierto al
-  momento de revisar; queda una discrepancia de estado que debe aclararse, sin alterar ese PR. El
-  merge local `0936ad8` integró `origin/develop` en esta rama sin conflictos. PR #18 se actualiza
-  para usar `develop` como base.
+  el tip `dbbaf28` de productos/inventario. La interfaz del PR #16 inicialmente lo mostraba abierto;
+  después se confirmó en el timeline el merge `e92d874` hacia `develop`. El merge local `0936ad8`
+  integró `origin/develop` en esta rama sin conflictos. PR #18 usa `develop` como base.
 
 ### Verificación local observada
 
@@ -390,15 +389,16 @@ configuración validada por `DatabaseConfig.fromTestEnvironment()`, que exige la
 `la_exclusiva_test`. Genera IDs aleatorios, verifica que no existan antes de crear fixtures y limpia
 ventas y filas relacionadas por el vendedor único de la prueba, más el producto/cliente/vendedor
 con IDs exactos propios. La prueba cubre rollback, saldo general, pagos idempotentes y carreras reales
-de abonos y stock. No pudo ejecutarse sin las variables dedicadas; no debe citarse como aprobada.
+de abonos y stock. En la revisión inicial del PR #18 quedó omitida por falta de variables; el registro
+de validación definitiva más abajo consigna su ejecución real aprobada.
 
 El último merge de la dependencia añadió la exigencia de transacción activa a
 `InventoryRepositoryJdbc.save`. Se mantuvo `save` como alta inicial insert-only; para cambios de
 stock, `JdbcSalesWorkflow` usa `InventoryStockAdjusterJdbc` por delta y bajo la transacción común,
 sin volver a guardar snapshots. Las regresiones PostgreSQL verifican el guardado solo dentro de
 transacción, el rechazo de un snapshot obsoleto y la concurrencia de ajustes; esos casos quedaron
-entre las 3 omisiones de `InventoryRepositoryJdbcPostgresIntegrationTest` al faltar la configuración
-dedicada.
+entre las 3 omisiones de `InventoryRepositoryJdbcPostgresIntegrationTest` en la ejecución anterior
+que no tenía configuración dedicada.
 
 Después de configurar la base aislada con V001 y V002 aplicadas, ejecutar desde PowerShell:
 
@@ -423,8 +423,9 @@ Tras integrar `origin/develop` (`e92d874`) con el merge normal `0936ad8`, la rev
 `JdbcSalesWorkflow`, `ApplicationServices`, `InventoryStockAdjusterJdbc`, los repositorios JDBC,
 sus pruebas y las pantallas JavaFX no encontró un defecto reproducible dentro del alcance que
 requiriera cambiar código. La rama quedó sin conflictos de merge local. El historial de
-`origin/develop` contiene el tip `dbbaf28` de inventario; aunque la interfaz de GitHub todavía
-mostraba el PR #16 abierto, no se modificó ninguna rama ni PR de compañeros.
+`origin/develop` contiene el tip `dbbaf28` de inventario. La interfaz de GitHub inicialmente mostró
+el PR #16 abierto; luego se confirmó su merge mediante `e92d874`. No se modificó ninguna rama ni PR
+de compañeros.
 
 Con Temurin JDK 17.0.21 y Maven 3.10.0, `mvn clean verify` terminó en `BUILD SUCCESS`: 222 pruebas,
 210 aprobadas, 0 fallidas, 0 errores y 12 omitidas. Las 12 omitidas fueron exclusivamente suites
@@ -442,3 +443,36 @@ PostgreSQL, así que ese flujo queda pendiente de validación humana. También s
 login/cuentas/asignación de vendedor persistentes, el pago JDBC de deuda general, una clave
 idempotente para crear ventas y la unificación del `SaleService` tradicional con
 `JdbcSalesWorkflow`.
+
+### Validación PostgreSQL definitiva del PR #18 (2026-11-18)
+
+La comprobación se ejecutó con Microsoft JDK 17.0.18, Maven 3.10.0 y PostgreSQL 18.6. La conexión
+de solo lectura confirmó `current_database() = la_exclusiva_test`, las diez tablas esperadas de V001,
+la columna `sale_payment.idempotency_key` y su restricción única de V002. No se ejecutaron
+migraciones. El proceso Maven recibió únicamente la URL de `la_exclusiva_test`; no se conectó a
+`la_exclusiva` ni se modificó la base de desarrollo.
+
+La primera ejecución de `mvn clean verify` ejecutó las 222 pruebas, con 0 fallos de aserción,
+2 errores y 0 omisiones. Los errores fueron dos casos de concurrencia en
+`InventoryRepositoryJdbcPostgresIntegrationTest`: tras adquirir `FOR UPDATE`, el segundo hilo
+guardaba un snapshot existente con `InventoryRepositoryJdbc.save`, operación insert-only.
+Actualicé solo esa prueba para aplicar el descuento concurrente mediante `InventoryStockAdjusterJdbc`.
+La suite enfocada pasó 3/3 contra PostgreSQL; no se modificó código de producción.
+
+La segunda ejecución completa de `mvn clean verify` terminó en `BUILD SUCCESS`: 222 pruebas,
+0 fallidas, 0 errores y 0 omitidas. Los reportes Surefire confirman 12/12 integraciones PostgreSQL
+reales aprobadas: cartera (1), clientes/vendedores (1), inventario (3), workflow transaccional de
+ventas (1), productos/precios (3), ventas/pagos (1) y movimientos (2). Se probaron rollback,
+idempotencia, saldos/cartera, persistencia histórica y transacciones, además de bloqueos concurrentes
+reales para abonos y stock. La consulta de cartera preservó importes por venta y el flujo coordinado
+conservó la consistencia de saldo, inventario y movimientos. Las pruebas usaron fixtures propios y
+limpieza por IDs generados; no se ejecutaron `TRUNCATE`, `DROP` ni limpiezas generales. Se generó el
+JAR.
+
+Maven informó seis problemas del modelo efectivo para cada artefacto `javafx-controls` y
+`javafx-fxml`; JavaFX registró el aviso conocido de módulos no nombrados y advertencias esperadas
+de pruebas simuladas. Windows ejecutó las pruebas FXML,
+por lo que Xvfb no fue necesario. `git diff --check` se ejecutó después de actualizar la documentación.
+Queda pendiente el recorrido manual autenticado completo y la revisión humana del PR; también siguen
+los límites de autenticación/asignación en memoria, pago JDBC de deuda general, idempotencia de alta
+de ventas y separación del `SaleService` tradicional.

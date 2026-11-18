@@ -10,12 +10,12 @@ Este documento fija la interfaz de integración entre la infraestructura JDBC de
 - Jesús parte inicialmente de `feature/jdbc-infrastructure` para compilar contra las clases compartidas.
 - **Estado actualizado el 2026-11-18:** `origin/develop` apunta a `e92d874`, cuyo historial
   contiene el tip `dbbaf28` de `feature/products-inventory`; la comprobación de ancestry confirma
-  que sus cambios están incorporados. La página del PR #16 todavía lo mostraba abierto al revisar,
-  discrepancia que queda pendiente de aclarar con el equipo y que no se modificó desde esta tarea.
+  que sus cambios están incorporados. Aunque la página del PR #16 inicialmente lo mostraba abierto,
+  el timeline confirmó su merge a `develop` mediante `e92d874`; no se modificó ese PR desde esta tarea.
   La rama `feature/full-jdbc-integration` integró `origin/develop` mediante el merge normal
-  `0936ad8`, sin conflictos. PR #18 debe comparar ahora contra `develop`; el cambio de base y la
-  descripción se verifican por separado en GitHub. No se modificó ni publicó ninguna rama de Jesús
-  o Daniel.
+  `0936ad8`, sin conflictos. PR #18 usa `develop` como base; la descripción se actualiza con los
+  resultados finales de PostgreSQL en GitHub. No se modificó ni
+  publicó ninguna rama de Jesús o Daniel.
 
 ## Configuración de bases locales
 
@@ -332,9 +332,10 @@ existencias, movimientos y saldo.
 `InventoryStockAdjusterJdbc` aplica sumas SQL atómicas y descuentos condicionados por existencias.
 En esta rama, `InventoryRepositoryJdbc.save` solo inserta y rechaza sobrescribir una fila existente;
 los cambios de stock usan el ajustador. Esto mitiga el riesgo del `ON CONFLICT ... DO UPDATE SET
-total_units = EXCLUDED.total_units` observado en #16, pero la corrección solo está en esta rama de
-integración y Jesús debe revisarla antes de fusionar #16. El endurecimiento de conexiones indirectas
-del commit `2676023` ya llegó a `develop` al fusionarse el PR #15.
+total_units = EXCLUDED.total_units` observado en #16. El PR #16 ya está integrado en `develop`
+mediante `e92d874`; esta rama conserva además la regla insert-only para impedir que snapshots
+obsoletos sustituyan existencias. Ese endurecimiento se revisa como parte del PR #18. El commit
+`2676023` llegó antes a `develop` al fusionarse el PR #15.
 
 Las pantallas JavaFX consultan productos, existencias, movimientos, clientes y vendedores; permiten
 registrar productos y sus tres precios, entradas de inventario, ventas por unidad/media canasta/
@@ -363,38 +364,40 @@ Límites que requieren revisión antes de habilitarlo al equipo:
 - El registro de ventas no tiene una clave idempotente de solicitud. Los reintentos persistentes
   cubren abonos; una respuesta incierta al registrar venta podría crear una segunda venta.
 - `JdbcSalesWorkflowPostgresIntegrationTest` cubre fixtures propios, rollback, snapshots históricos,
-  separación de deuda general, reintento idempotente y concurrencia de pagos/stock, pero requiere
-  ejecutar contra PostgreSQL real para probar bloqueos y comportamiento del servidor.
+  separación de deuda general, reintento idempotente y concurrencia real de pagos/stock.
 
-Con Temurin JDK 17.0.21 y Maven 3.10.0, la última ejecución `mvn clean verify` terminó en
-`BUILD SUCCESS`: 222 pruebas contabilizadas, 210 aprobadas, 0 fallidas, 0 errores y 12 omitidas.
-Las 12 omitidas son las integraciones PostgreSQL porque `LAEXCLUSIVA_TEST_DB_URL`,
-`LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` no estaban configuradas. No se abrió conexión,
-no se ejecutaron migraciones ni escrituras de base. Las pruebas JavaFX cargaron las vistas FXML bajo
-Windows y verificaron un alta simulada de producto; Xvfb no fue necesario. Las advertencias fueron
-los problemas existentes del modelo efectivo de JavaFX, el aviso de configuración JavaFX no modular
-y registros esperados de las pruebas de fallo simulado de consultas. Se omitieron
-`CustomerDebtQueryJdbcPostgresIntegrationTest` (1), `CustomerSellerJdbcPostgresIntegrationTest` (1),
-`InventoryRepositoryJdbcPostgresIntegrationTest` (3), `JdbcSalesWorkflowPostgresIntegrationTest` (1),
-`ProductRepositoryJdbcPostgresIntegrationTest` (3), `SaleRepositoryJdbcPostgresIntegrationTest` (1)
-y `StockMovementRepositoryJdbcPostgresIntegrationTest` (2).
+### Validación PostgreSQL real del PR #18 (2026-11-18)
 
-La validación del 2026-11-18 con Temurin JDK 17.0.21 y Maven 3.10.0, posterior al merge `0936ad8`
-de `origin/develop` (`e92d874`), terminó en `BUILD SUCCESS`: 222 pruebas contabilizadas, 210
-aprobadas, 0 fallidas, 0 errores y 12 omitidas. Las 12 omitidas corresponden a las siete suites
-PostgreSQL (cartera 1, clientes/vendedores 1, inventario 3, workflow de ventas 1, productos 3,
-ventas 1 y movimientos 2). Las variables de conexión de prueba no estaban presentes; no se abrió
-conexión, no se ejecutaron migraciones ni se modificó base alguna. Las pruebas JavaFX se ejecutaron
-bajo Windows, por lo que Xvfb no era necesario. `git diff --check` se verificó después de los
-cambios documentales. Maven emitió las advertencias conocidas del modelo JavaFX y el aviso de
-configuración no modular; no afectaron el resultado.
+La ejecución se realizó con Microsoft JDK 17.0.18, Maven 3.10.0 y PostgreSQL 18.6 en
+`localhost:5432`. La consulta de solo lectura confirmó que la base activa era exactamente
+`la_exclusiva_test`, que estaban presentes las diez tablas de V001 y que V002 estaba aplicada por
+la columna `sale_payment.idempotency_key` y la restricción única
+`uq_sale_payment_sale_idempotency_key`. No se ejecutaron migraciones. La URL JDBC de desarrollo no
+se configuró y no se abrió ni modificó `la_exclusiva`.
 
-La inspección del flujo y los controladores no encontró un defecto reproducible dentro del alcance
-que requiriera modificar código. La transacción común, los ajustes de inventario por delta, la
-idempotencia de abonos y el uso de precios/capacidades históricos están cubiertos en código y pruebas
-simuladas. La atomicidad real de PostgreSQL, bloqueos, restricciones y carreras de inventario/pagos
-siguen pendientes de ejecutar en `la_exclusiva_test`; la aprobación de Maven no demuestra esos
-comportamientos del servidor.
+La primera ejecución completa encontró dos errores en
+`InventoryRepositoryJdbcPostgresIntegrationTest`: sus pruebas concurrentes intentaban guardar con
+`InventoryRepositoryJdbc.save` un snapshot de una fila ya existente. Ese método es insert-only por
+diseño; los ajustes posteriores deben usar `InventoryStockAdjusterJdbc`. Se corrigió únicamente la
+prueba para que el segundo hilo aplique su descuento mediante el ajustador atómico, preservando la
+lectura `FOR UPDATE`, la espera del bloqueo y la comprobación de commit/rollback. No se cambió código
+de producción. La suite enfocada pasó 3/3 contra PostgreSQL.
+
+Después del arreglo, `mvn clean verify` terminó en `BUILD SUCCESS`: 222 pruebas, 0 fallidas,
+0 errores y 0 omitidas. Surefire reportó 29 archivos; las siete suites PostgreSQL ejecutaron 12/12:
+cartera 1, clientes/vendedores 1, inventario 3, workflow de ventas 1, productos 3, ventas 1 y
+movimientos 2. Las doce aprobaron en PostgreSQL real. Las pruebas comprobaron persistencia de ventas,
+líneas, pagos, productos, precios y movimientos; rollback transaccional; idempotencia de abonos;
+consulta de cartera y saldos; y bloqueos/ajustes concurrentes de inventario y pagos. Las pruebas
+JavaFX se ejecutaron bajo Windows, por lo que Xvfb no fue necesario. Maven informó seis problemas
+del modelo efectivo para cada artefacto `javafx-controls` y `javafx-fxml`; las pruebas JavaFX también
+registraron advertencias esperadas de escenarios simulados. El JAR se generó.
+
+Las pruebas usaron fixtures con IDs propios y limpieza acotada a dichos registros. No se usaron
+`TRUNCATE`, `DROP` ni migraciones. La autenticación/asignación de vendedores sigue en memoria, el
+pago JDBC de deuda general no está implementado, el alta de venta carece de clave idempotente y
+`SaleService` sigue separado de `JdbcSalesWorkflow`; queda pendiente la revisión humana del PR y un
+recorrido manual autenticado completo.
 
 La autenticación y la asignación de vendedores siguen en memoria, el pago de deuda general no tiene
 flujo JDBC completo, el alta de ventas no posee clave idempotente persistida y `SaleService` continúa
@@ -405,9 +408,11 @@ integraciones contra la base aislada y revisar estos límites con el equipo.
 
 - Carlos: coordina la integración transaccional, composición PostgreSQL/JavaFX y documentación.
 - Jesús: mantiene sus entregas de infraestructura y DAO de productos, precios, inventario y
-  movimientos; revisa la protección contra snapshots de inventario descrita para el PR #16.
+  movimientos; el PR #16 ya está integrado en `develop`, y la protección insert-only contra
+  snapshots se revisa en el PR #18.
 - Daniel: revisa permisos, navegación y pantallas JavaFX integradas con los contratos JDBC.
 
 La aplicación selecciona `JdbcSalesWorkflow` solo cuando el modo `postgres` se configura
-explícitamente. No se habilita por defecto ni se cambia la autenticación en memoria. La rama aún
-requiere revisión humana y una ejecución PostgreSQL real antes de usarla con una instalación local.
+explícitamente. No se habilita por defecto ni se cambia la autenticación en memoria. La validación
+de componentes PostgreSQL quedó aprobada en `la_exclusiva_test`; la rama aún requiere revisión
+humana y recorrido manual de la interfaz antes de usarla con una instalación local.
