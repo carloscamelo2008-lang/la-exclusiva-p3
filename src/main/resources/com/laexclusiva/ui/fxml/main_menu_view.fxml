@@ -7,9 +7,9 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<BorderPane fx:id="rootPane" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="600.0" prefWidth="800.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.MainController">
+<BorderPane fx:id="rootPane" minHeight="500.0" minWidth="780.0" prefHeight="600.0" prefWidth="800.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.MainController" stylesheets="@../css/navigation.css">
    <left>
-      <VBox prefHeight="600.0" prefWidth="220.0" style="-fx-background-color: #2c3e50;" BorderPane.alignment="CENTER">
+      <VBox prefHeight="600.0" prefWidth="260.0" style="-fx-background-color: #2c3e50;" BorderPane.alignment="CENTER">
          <children>
             <Label text="LA EXCLUSIVA" textFill="WHITE">
                <font>
@@ -19,41 +19,42 @@
                   <Insets bottom="20.0" left="20.0" top="25.0" />
                </VBox.margin>
             </Label>
-            <Button fx:id="btnDashboard" onAction="#handleShowDashboard" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  📊 Resumen / Inicio">
+            <Button fx:id="btnDashboard" onAction="#handleShowDashboard" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Resumen / Inicio">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnCustomers" onAction="#handleShowCustomers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  👥 Clientes">
+            <Button fx:id="btnCustomers" onAction="#handleShowCustomers" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Clientes">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnSellers" onAction="#handleShowSellers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  🤝 Vendedores">
+            <Button fx:id="btnSellers" onAction="#handleShowSellers" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Vendedores">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnCredit" onAction="#handleShowPortfolio" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  💰 Cartera y Abonos">
+            <Button fx:id="btnCredit" onAction="#handleShowPortfolio" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Cartera (consulta)">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnInventory" onAction="#handleShowInventory" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  📦 Catálogo e Inventario">
+            <Button fx:id="btnInventory" onAction="#handleShowInventory" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Catálogo e Inventario">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnSales" onAction="#handleShowSales" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  🧾 Registrar Venta">
+            <Button fx:id="btnSales" onAction="#handleShowSales" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Registrar Venta">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnAdminUsers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: #e74c3c; -fx-alignment: POS_TOP_LEFT;" text="  ⚙️ Gestión de Usuarios (Admin)">
+            <Button fx:id="btnAdminUsers" mnemonicParsing="false" prefHeight="64.0" prefWidth="260.0" styleClass="nav-button" disable="true" wrapText="true" text="Gestión de Usuarios (pendiente)">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
+            <Button fx:id="btnLogout" onAction="#handleLogout" text="Cerrar sesión" styleClass="nav-button" prefWidth="260.0" />
          </children>
       </VBox>
    </left>
@@ -65,9 +66,9 @@
                   <Font size="22.0" />
                </font>
             </Label>
-            <Label fx:id="roleLabel" text="Rol: " textFill="#7f8c8d">
+            <Label fx:id="roleLabel" text="Rol: " textFill="#42515c">
                <font>
-                  <Font size="14.0" />
+                  <Font size="16.0" />
                </font>
                <VBox.margin>
                   <Insets top="10.0" />

@@ -26,6 +26,7 @@ public class LoginController {
     private CustomerService customerService;
     private SellerService sellerService;
     private ApplicationServices applicationServices;
+    private Runnable onLogout;
 
     public void setAuthenticationService(AuthenticationService authenticationService) {
         this.authenticationService = authenticationService;
@@ -41,6 +42,10 @@ public class LoginController {
 
     public void setApplicationServices(ApplicationServices applicationServices) {
         this.applicationServices = applicationServices;
+    }
+
+    public void setOnLogout(Runnable onLogout) {
+        this.onLogout = onLogout;
     }
 
     @FXML
@@ -71,11 +76,15 @@ public class LoginController {
                     mainController.setCustomerService(customerService);
                     mainController.setSellerService(sellerService);
                 }
+                mainController.setOnLogout(onLogout);
                 mainController.initSession(session);
                 
                 // Cambiar la escena en la ventana actual
                 Stage stage = (Stage) usernameField.getScene().getWindow();
+                stage.setMinWidth(800);
+                stage.setMinHeight(600);
                 stage.setScene(new Scene(root, 800, 600));
+                stage.sizeToScene();
                 stage.setTitle("La Exclusiva - Menú Principal");
                 stage.centerOnScreen();
                 

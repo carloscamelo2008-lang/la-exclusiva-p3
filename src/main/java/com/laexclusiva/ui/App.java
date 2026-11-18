@@ -12,10 +12,14 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 
 public class App extends Application {
 
     private final UserRepository userRepository = new InMemoryUserRepository();
+    private final AuthenticationService authenticationService = new AuthenticationService(userRepository);
+    private ApplicationServices applicationServices;
 
     public UserRepository getUserRepository() {
         return userRepository;
@@ -51,19 +55,33 @@ public class App extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         processInitialization(getParameters());
-        ApplicationServices applicationServices = ApplicationServices.fromEnvironment();
+        applicationServices = ApplicationServices.fromEnvironment();
+        showLogin(primaryStage);
+    }
 
-        AuthenticationService authService = new AuthenticationService(userRepository);
-
+    private void showLogin(Stage primaryStage) throws IOException {
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
         Parent root = loader.load();
 
         LoginController loginController = loader.getController();
-        loginController.setAuthenticationService(authService);
+        loginController.setAuthenticationService(authenticationService);
         loginController.setApplicationServices(applicationServices);
+        loginController.setOnLogout(() -> {
+            try {
+                showLogin(primaryStage);
+            } catch (IOException failure) {
+                throw new UncheckedIOException(failure);
+            }
+        });
 
+        // Libera la ventana nativa y sus cambios de maximización pendientes antes de mostrar el Login.
+        primaryStage.hide();
         primaryStage.setTitle("La Exclusiva - Iniciar Sesión");
-        primaryStage.setScene(new Scene(root, 400, 300));
+        primaryStage.setMaximized(false);
+        primaryStage.setMinWidth(400);
+        primaryStage.setMinHeight(370);
+        primaryStage.setScene(new Scene(root, 400, 340));
+        primaryStage.sizeToScene();
         primaryStage.centerOnScreen();
         primaryStage.show();
     }
