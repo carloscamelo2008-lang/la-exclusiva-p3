@@ -328,10 +328,20 @@ public class PortfolioController {
         messageLabel.setText(payment ? "Abono aplicado solo a deuda general." : "Deuda general registrada.");
         try {
             showPortfolio(customerService.getAllCustomers());
+            if (!lastQuerySucceeded) {
+                messageLabel.setText(confirmedGeneralOperationMessage(payment)
+                        + " No se pudo actualizar la consulta de cartera; use Actualizar cartera sin repetir la operación.");
+            }
         } catch (RuntimeException refreshFailure) {
-            messageLabel.setText((payment ? "Abono general confirmado." : "Deuda general confirmada.")
-                    + " No se pudo actualizar la cartera; consulte de nuevo sin repetir la operación.");
+            clearPortfolioView();
+            messageLabel.setText(confirmedGeneralOperationMessage(payment)
+                    + " No se pudo actualizar la cartera: " + safeMessage(refreshFailure)
+                    + " Use Actualizar cartera sin repetir la operación.");
         }
+    }
+
+    private static String confirmedGeneralOperationMessage(boolean payment) {
+        return payment ? "Abono general confirmado." : "Deuda general registrada correctamente.";
     }
 
     @FXML
