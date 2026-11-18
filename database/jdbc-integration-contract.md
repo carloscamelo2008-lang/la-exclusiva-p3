@@ -5,9 +5,14 @@ Este documento fija la interfaz de integración entre la infraestructura JDBC de
 ## Ramas y flujo
 
 - Infraestructura: `feature/jdbc-infrastructure` (Carlos).
-- DAO de productos e inventario: `feature/product-inventory-jdbc` (Jesús).
-- Rama de integración: `develop`.
-- Jesús parte inicialmente de `feature/jdbc-infrastructure` para poder compilar contra las clases nuevas. Cuando la infraestructura se integre en `develop`, actualizará su rama con esa base y abrirá su PR hacia `develop`.
+- DAO de productos, precios, inventario y movimientos: `feature/products-inventory` (Jesús), PR #16.
+- Rama actual de integración temporal: `feature/full-jdbc-integration`.
+- Jesús parte inicialmente de `feature/jdbc-infrastructure` para compilar contra las clases compartidas.
+- **Estado actualizado el 2026-11-17:** el PR #15 (`feature/jdbc-infrastructure`) se fusionó en
+  `develop` (`ea85865`); el PR #16 (`feature/products-inventory`) sigue abierto. La rama
+  `feature/full-jdbc-integration` parte del head `426a65e` de #16 e integra la base anterior de
+  `develop` (`8d00215`) y las protecciones del PR #15. Se actualizará con el `develop` actual antes
+  de publicar el borrador. Esta rama temporal no reemplaza ni publica cambios en la rama de Jesús.
 
 ## Configuración de bases locales
 
@@ -286,7 +291,7 @@ importe se rechaza. `SaleRepositoryJdbc.update(Sale)` rechaza instantáneas, por
 lleva la clave persistida y una instantánea obsoleta no permite distinguir de forma segura un
 reintento de un pago nuevo. La restricción única de PostgreSQL respalda el bloqueo ante carreras.
 
-Ejecutar V001 una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea las diez tablas, restricciones e índices. No inserta productos ni existencias iniciales: esa responsabilidad corresponde al inicializador Java idempotente. La migración falla si se intenta ejecutar por segunda vez sobre la misma base.
+Ejecutar V001 una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea las diez tablas, restricciones e índices. No inserta productos ni existencias iniciales. La composición PostgreSQL de la rama de integración no ejecuta un inicializador; un administrador crea el catálogo desde la pantalla de inventario. La migración falla si se intenta ejecutar por segunda vez sobre la misma base.
 
 ## Pruebas y seguridad de los datos
 
@@ -297,10 +302,81 @@ Ejecutar V001 una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea 
 - No ejecutar `DROP`, `TRUNCATE` ni limpieza de fixtures en `la_exclusiva`.
 - Utilizar únicamente datos ficticios.
 
+## Integración JavaFX y unidad de trabajo completa (2026-11-17)
+
+La rama `feature/full-jdbc-integration` añade una composición seleccionable mediante
+`LAEXCLUSIVA_PERSISTENCE_MODE=memory|postgres`; si falta la variable conserva `memory`. La
+composición PostgreSQL crea un `JdbcConnectionProvider` y un `JdbcTransactionManager` compartidos
+por repositorios y ajustadores, sin abrir conexiones durante el arranque.
+
+`JdbcSalesWorkflow` coordina venta, descuentos atómicos de inventario, movimientos, pago inicial,
+saldo de cliente, líneas históricas y consulta posterior dentro de una sola transacción. Agrupa
+unidades por producto y ajusta inventario por ID ascendente. Para abonos,
+`IdempotentSalePaymentAppender.AppendResult.inserted` distingue inserciones nuevas de reintentos;
+solo la primera reduce el saldo agregado. Un fallo en cualquier paso revierte venta, líneas, pagos,
+existencias, movimientos y saldo.
+
+`InventoryStockAdjusterJdbc` aplica sumas SQL atómicas y descuentos condicionados por existencias.
+En esta rama, `InventoryRepositoryJdbc.save` solo inserta y rechaza sobrescribir una fila existente;
+los cambios de stock usan el ajustador. Esto mitiga el riesgo del `ON CONFLICT ... DO UPDATE SET
+total_units = EXCLUDED.total_units` observado en #16, pero la corrección solo está en esta rama de
+integración y Jesús debe revisarla antes de fusionar #16. El endurecimiento de conexiones indirectas
+del commit `2676023` ya llegó a `develop` al fusionarse el PR #15.
+
+Las pantallas JavaFX consultan productos, existencias, movimientos, clientes y vendedores; permiten
+registrar productos y sus tres precios, entradas de inventario, ventas por unidad/media canasta/
+canasta, pagos iniciales y abonos a ventas específicas. El modo en memoria conserva su catálogo y
+servicios anteriores. PostgreSQL se activa solo con configuración explícita.
+
+Límites que requieren revisión antes de habilitarlo al equipo:
+
+- El login y las cuentas siguen en `InMemoryUserRepository`; no se conectó `user_account` ni se
+  cambió el flujo de Daniel. Cuentas y asignación de vendedor no son persistentes.
+- La pantalla de ventas respeta `VIEW_SALES` y `VIEW_SELLERS`: un trabajador solo ve su propio
+  historial y solo puede usar su vendedor asignado. Si la cuenta no tiene `sellerId`, el selector
+  queda vacío; el usuario demo que crea `App` actualmente no tiene asignación y requiere revisión.
+- El formulario de catálogo usa `MANAGE_PRODUCTS` y la entrada de existencias usa
+  `MANAGE_INVENTORY_ENTRIES`; son permisos separados.
+- `CustomerService` se utiliza para alta y consulta; sus operaciones de deuda general siguen
+  usando `saleDebts`. En el modo PostgreSQL las ventas y abonos pasan por `JdbcSalesWorkflow`; la
+  deuda general se muestra como `customer.balance - deuda de ventas`, pero no se registra un pago
+  de deuda general en esta rama. Ese caso debe diseñarse antes de ofrecerlo desde JavaFX.
+- `SaleService` conserva el camino en memoria y no se conecta a JDBC. En PostgreSQL la pantalla
+  usa `SalesWorkflow`/`JdbcSalesWorkflow`; `InventoryService.discountSale` y `rollbackDiscount`
+  rechazan el modo JDBC para evitar compensaciones basadas en snapshots.
+- No se sembraron productos ni se ejecutaron migraciones desde la aplicación. Para pruebas, V001 y
+  V002 deben estar aplicadas previamente a `la_exclusiva_test`; un administrador puede registrar
+  el catálogo desde la pantalla después de configurar la conexión.
+- El registro de ventas no tiene una clave idempotente de solicitud. Los reintentos persistentes
+  cubren abonos; una respuesta incierta al registrar venta podría crear una segunda venta.
+- `JdbcSalesWorkflowPostgresIntegrationTest` cubre fixtures propios, rollback, snapshots históricos,
+  separación de deuda general, reintento idempotente y concurrencia de pagos/stock, pero requiere
+  ejecutar contra PostgreSQL real para probar bloqueos y comportamiento del servidor.
+
+Con Temurin JDK 17.0.21 y Maven 3.10.0, la última ejecución `mvn clean verify` terminó en
+`BUILD SUCCESS`: 215 pruebas contabilizadas, 203 aprobadas, 0 fallidas, 0 errores y 12 omitidas.
+Las 12 omitidas son las integraciones PostgreSQL porque `LAEXCLUSIVA_TEST_DB_URL`,
+`LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` no estaban configuradas. No se abrió conexión,
+no se ejecutaron migraciones ni escrituras de base. Las pruebas JavaFX cargaron las vistas FXML bajo
+Windows y verificaron un alta simulada de producto; Xvfb no fue necesario. Las advertencias fueron
+los problemas existentes del modelo efectivo de JavaFX, el aviso de configuración JavaFX no modular
+y registros esperados de las pruebas de fallo simulado de consultas. Se omitieron
+`CustomerDebtQueryJdbcPostgresIntegrationTest` (1), `CustomerSellerJdbcPostgresIntegrationTest` (1),
+`InventoryRepositoryJdbcPostgresIntegrationTest` (3), `JdbcSalesWorkflowPostgresIntegrationTest` (1),
+`ProductRepositoryJdbcPostgresIntegrationTest` (3), `SaleRepositoryJdbcPostgresIntegrationTest` (1)
+y `StockMovementRepositoryJdbcPostgresIntegrationTest` (2).
+
+Mientras #16 siga abierto, el PR de integración debe ser borrador contra
+`feature/products-inventory`. Después de que Jesús integre ese PR, actualizarlo para que compare con
+`develop` y ejecutar las pruebas PostgreSQL reales antes de habilitar el modo `postgres` al equipo.
+
 ## División de responsabilidades
 
-- Carlos: migración, dependencia, configuración, proveedor de conexiones, coordinador transaccional e integración de límites transaccionales en servicios.
-- Jesús: DAO de producto, precios, inventario y movimientos; `SalePresentation.fromCode`; inicializador idempotente; pruebas unitarias de JDBC y pruebas con driver simulado.
-- Daniel: interfaz JavaFX, FXML, controladores y CSS, sin tareas SQL/DAO/JDBC.
+- Carlos: coordina la integración transaccional, composición PostgreSQL/JavaFX y documentación.
+- Jesús: mantiene sus entregas de infraestructura y DAO de productos, precios, inventario y
+  movimientos; revisa la protección contra snapshots de inventario descrita para el PR #16.
+- Daniel: revisa permisos, navegación y pantallas JavaFX integradas con los contratos JDBC.
 
-La conexión de los DAO a `Main` se realizará después de revisar la sustitución de las compensaciones manuales por transacciones reales.
+La aplicación selecciona `JdbcSalesWorkflow` solo cuando el modo `postgres` se configura
+explícitamente. No se habilita por defecto ni se cambia la autenticación en memoria. La rama aún
+requiere revisión humana y una ejecución PostgreSQL real antes de usarla con una instalación local.

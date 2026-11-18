@@ -2,12 +2,13 @@
 
 ## Estado y alcance
 
-Este documento acompaña el trabajo de `feature/sales-jdbc`. Las capacidades se marcan como
-implementadas solo después de contar con código y pruebas ejecutadas. El adaptador JDBC y el puerto
-de abonos idempotentes están implementados. En `feature/customer-debt-jdbc` también se implementa
-la consulta JDBC de cartera de ventas y, en `feature/customers-sellers-jdbc`, los repositorios JDBC
-de clientes/vendedores y el puerto atómico de ajuste de saldo. No se conectan todavía a
-`CustomerService`, `SaleService` ni `Main`.
+Este documento registra el avance desde `feature/sales-jdbc` hasta la rama temporal
+`feature/full-jdbc-integration`. El adaptador JDBC de ventas, el puerto de abonos idempotentes, la
+consulta de cartera, los repositorios de clientes/vendedores y los ajustadores atómicos ya existen.
+La rama de integración conecta esos componentes mediante `JdbcSalesWorkflow` y JavaFX, con un modo
+en memoria como valor predeterminado. El flujo simulado y las vistas JavaFX se ejecutaron en Maven;
+la prueba PostgreSQL de extremo a extremo está preparada, pero aún no se ejecutó porque faltan las
+variables de conexión.
 
 ## Incompatibilidades encontradas y decisión aplicada
 
@@ -103,7 +104,7 @@ ventas, líneas ni pagos. Antes de conectar el adaptador al flujo actual habrá 
 coordinación del servicio a una transacción JDBC real; las compensaciones actuales dependen del
 borrado permitido por repositorios en memoria.
 
-## Diseño de la transacción futura de `SaleService`
+## Diseño transaccional previsto para el servicio de venta (registro de la fase JDBC inicial)
 
 El trabajo actual de inventario implementa compensaciones en memoria y el saldo de ventas de
 `CustomerService` vive en un mapa en memoria. Por ello no es seguro activar parcialmente un
@@ -167,8 +168,12 @@ El trabajo actual de inventario implementa compensaciones en memoria y el saldo 
    límite de servicio, añadir pruebas de concurrencia/integración en la base exclusiva de pruebas
    y revisar el cambio con el equipo antes de conectar `Main` a PostgreSQL.
 
-No se modificaron `SaleService`, `InventoryService`, `CustomerService` ni los DAO de productos o
-inventario. La integración final depende de esos contratos y requiere revisión del equipo.
+En la rama de integración no se conectó `SaleService` ni se cambiaron las operaciones de deuda de
+`CustomerService`; siguen en memoria. `InventoryService` se amplió para registrar entradas JDBC
+con el ajustador de inventario y la misma transacción, y rechaza su flujo antiguo de compensación
+para descuentos JDBC. `InventoryRepositoryJdbc.save` ahora es insert-only; no se modificaron ni
+publicaron las ramas de los DAO de Jesús. La integración requiere revisión del equipo y validación
+con PostgreSQL real antes de habilitar el modo PostgreSQL para uso del equipo.
 
 ## Pruebas y limitaciones
 
@@ -309,8 +314,93 @@ La tabla `sale_line` conserva únicamente el precio histórico de la presentaci�
 producto asociado a una línea reconstituida no ofrece un snapshot histórico de los otros precios
 del catálogo; para cálculos históricos se debe usar `SaleLine.getUnitPrice()`.
 
-## Próximos pasos
+## Integración JavaFX y flujo JDBC de extremo a extremo (2026-11-17)
 
-1. Integrar `CustomerDebtQuery` con `CustomerService` sin mezclar la deuda de ventas con la deuda general.
-2. Diseñar con el equipo cómo `SaleService` obtendrá y conservará una clave estable por operación.
-3. Coordinar ventas, abonos, cartera e inventario bajo una unidad de trabajo que comparta proveedor y transacción.
+La rama `feature/full-jdbc-integration` implementa `SalesWorkflow`, con adaptadores en memoria y
+`JdbcSalesWorkflow`. Este último coordina en una sola transacción el inventario, movimientos,
+venta/cabecera, líneas con precio y capacidad históricos, pago inicial y saldo agregado del cliente.
+Las filas de inventario se descuentan en orden ascendente por ID mediante `InventoryStockAdjusterJdbc`;
+el SQL impide resultados negativos. Si falla la persistencia de la venta o cualquier operación
+posterior, PostgreSQL revierte toda la transacción sin borrar registros ni restaurar snapshots.
+
+Para pagos, el adaptador JDBC de `SaleRepositoryJdbc` devuelve si `appendPaymentOnce` insertó una
+clave o si respondió a un reintento. Solo una clave nueva reduce `customer.balance`; repetir la misma
+clave e importe no duplica `sale_payment` ni vuelve a bajar el saldo. La deuda de ventas se consulta
+desde `sale_line` y `sale_payment`; la diferencia respecto al saldo del cliente sigue siendo deuda
+general y no se convierte en cartera de ventas.
+
+JavaFX ofrece configuración explícita `LAEXCLUSIVA_PERSISTENCE_MODE=memory|postgres` y mantiene
+`memory` como valor por defecto. La pantalla de inventario consulta catálogo/existencias/movimientos
+y permite registrar productos con tres precios y entradas de stock según permisos. La pantalla de
+ventas permite unidad, media canasta o canasta completa, selección de cliente/vendedor y pago inicial.
+La cartera permite elegir una venta pendiente y registrar un abono con clave conservada para reintento.
+Clientes y vendedores pasan por los repositorios seleccionados en la composición.
+
+### Límites y acciones previas a producción
+
+- `App` conserva el login en `InMemoryUserRepository`; esta fase no persiste cuentas ni asignaciones
+  de vendedores en `user_account`.
+- La pantalla de ventas requiere `REGISTER_SALE` y `VIEW_SALES`; el trabajador solo consulta su
+  propio historial y solo selecciona su vendedor asignado. Si una cuenta de trabajador no tiene
+  `sellerId`, el selector queda vacío y no puede registrar ventas. Las cuentas demo actuales se
+  crean sin vendedor asignado, por lo que esa asignación debe resolverse antes de usar esa cuenta.
+- El catálogo y las entradas de inventario se controlan con `MANAGE_PRODUCTS` y
+  `MANAGE_INVENTORY_ENTRIES` por separado.
+- Las operaciones generales `CustomerService.addDebtToCustomer` y
+  `applyPaymentToCustomer` aún usan el mapa `saleDebts`/snapshots. El modo PostgreSQL no las invoca;
+  para deudas generales muestra el cálculo `balance agregado - deuda de ventas`, pero no ofrece un
+  pago general.
+- `SaleService` no se conectó a JDBC y conserva su estrategia de compensación en memoria. La ruta
+  JavaFX PostgreSQL usa `JdbcSalesWorkflow`. `InventoryService.discountSale` y `rollbackDiscount`
+  rechazan su uso en modo JDBC; así se evita mezclar la unidad transaccional con compensaciones.
+- La creación de venta no tiene clave idempotente propia. La idempotencia durable cubre pagos, no
+  reintentos de registro de venta con respuesta incierta.
+- No se aplican V001/V002 ni se inicializa el catálogo al arrancar. La aplicación no escribe en la
+  base hasta una acción del usuario; la pantalla de administración puede registrar productos.
+- El PR #15 de infraestructura se fusionó en `develop` (`ea85865`) y el PR #16 de
+  productos/inventario continúa abierto según el estado consultado el 2026-11-17. La rama de
+  integración conserva el endurecimiento `2676023` y protege los ajustes de inventario contra
+  snapshots; Jesús debe revisar esa corrección en #16. El borrador depende de #16 y no sustituye su
+  entrega.
+
+### Verificación local observada
+
+Con Temurin JDK 17.0.21 y Maven 3.10.0, el 2026-11-17 `mvn clean verify` terminó en
+`BUILD SUCCESS`: 215 pruebas contabilizadas, 203 aprobadas, 0 fallidas, 0 errores y 12 omitidas.
+Las 12 omitidas son las pruebas PostgreSQL opcionales; el proceso no tenía
+`LAEXCLUSIVA_TEST_DB_URL`, `LAEXCLUSIVA_DB_USER` ni
+`LAEXCLUSIVA_DB_PASSWORD`. No se abrió conexión, se aplicaron migraciones ni se tocaron bases de
+datos. Las pruebas aprobadas incluyeron carga e interacción FXML, alta simulada de catálogo, ajustes
+de entradas con puertos simulados, el workflow con repositorios simulados y las suites anteriores.
+Maven informó las advertencias de modelo JavaFX existentes y JavaFX mostró el aviso no modular
+durante sus pruebas. Se omitieron las suites PostgreSQL de cartera, clientes/vendedores, inventario
+(3 casos), ventas coordinadas, productos (3 casos), ventas JDBC y movimientos de inventario (2 casos).
+
+La navegación JavaFX también aplica `REGISTER_SALE` junto con `VIEW_SALES`, limita las ventas de
+trabajadores al vendedor asignado, deja el selector vacío cuando no hay asignación y separa
+`MANAGE_PRODUCTS` de `MANAGE_INVENTORY_ENTRIES`. La prueba de interfaz de trabajador asignado pasó
+dentro de las 203 pruebas aprobadas.
+
+La prueba PostgreSQL nueva `JdbcSalesWorkflowPostgresIntegrationTest` utiliza únicamente la
+configuración validada por `DatabaseConfig.fromTestEnvironment()`, que exige la base
+`la_exclusiva_test`. Genera IDs aleatorios, verifica que no existan antes de crear fixtures y limpia
+ventas y filas relacionadas por el vendedor único de la prueba, más el producto/cliente/vendedor
+con IDs exactos propios. La prueba cubre rollback, saldo general, pagos idempotentes y carreras reales
+de abonos y stock. No pudo ejecutarse sin las variables dedicadas; no debe citarse como aprobada.
+
+Después de configurar la base aislada con V001 y V002 aplicadas, ejecutar desde PowerShell:
+
+```powershell
+$javaVersion = java -version 2>&1 | Out-String
+if ($javaVersion -notmatch 'version "17\.') { throw 'Se requiere Java 17.' }
+if ($env:LAEXCLUSIVA_TEST_DB_URL -notmatch '^jdbc:postgresql://[^/]+/la_exclusiva_test(?:\?.*)?$') {
+    throw 'La URL de prueba debe apuntar exclusivamente a la_exclusiva_test.'
+}
+if ([string]::IsNullOrWhiteSpace($env:LAEXCLUSIVA_DB_USER) -or
+    [string]::IsNullOrWhiteSpace($env:LAEXCLUSIVA_DB_PASSWORD)) {
+    throw 'Configura las credenciales de prueba en esta sesión sin imprimirlas.'
+}
+& 'C:\apache-maven-3.10.0\bin\mvn.cmd' `
+    '-Dtest=JdbcSalesWorkflowPostgresIntegrationTest,InventoryRepositoryJdbcPostgresIntegrationTest,StockMovementRepositoryJdbcPostgresIntegrationTest,ProductRepositoryJdbcPostgresIntegrationTest,CustomerSellerJdbcPostgresIntegrationTest,CustomerDebtQueryJdbcPostgresIntegrationTest,SaleRepositoryJdbcPostgresIntegrationTest' test
+if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas PostgreSQL.' }
+```
