@@ -8,6 +8,8 @@ import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.CustomerRepository;
 import com.laexclusiva.repository.SellerRepository;
 import com.laexclusiva.ui.App;
+import com.laexclusiva.ui.ApplicationServices;
+import com.laexclusiva.ui.controller.InventoryController;
 import com.laexclusiva.ui.controller.MainController;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
@@ -15,6 +17,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -90,6 +93,43 @@ public class AuthenticationServiceTest {
             FXMLLoader menuLoader = new FXMLLoader(menuUrl);
             menuLoader.load();
         });
+
+        assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
+                "/com/laexclusiva/ui/fxml/inventory_view.fxml")).load());
+        assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
+                "/com/laexclusiva/ui/fxml/sales_view.fxml")).load());
+        assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
+                "/com/laexclusiva/ui/fxml/portfolio_view.fxml")).load());
+    }
+
+    @Test
+    void inventoryScreenRegistersCatalogProductThroughConfiguredService() throws Exception {
+        FutureTask<Void> registration = new FutureTask<>(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE,
+                    java.util.Map.of());
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
+            loader.load();
+            InventoryController controller = loader.getController();
+            controller.configure(services.products(), services.inventory(), true);
+            setText(loader, "productIdField", "UI-CATALOG-TEST");
+            setText(loader, "productNameField", "Producto de interfaz");
+            setText(loader, "volumeField", "330");
+            setText(loader, "unitsPerBasketField", "24");
+            setText(loader, "unitPriceField", "100");
+            setText(loader, "halfBasketPriceField", "1100");
+            setText(loader, "fullBasketPriceField", "2100");
+            ((Button) loader.getNamespace().get("registerProductButton")).fire();
+            assertTrue(services.products().listAll().stream()
+                    .anyMatch(product -> product.getId().equals("UI-CATALOG-TEST")));
+            return null;
+        });
+        Platform.runLater(registration);
+        registration.get(10, TimeUnit.SECONDS);
+    }
+
+    private static void setText(FXMLLoader loader, String fieldId, String value) {
+        ((TextField) loader.getNamespace().get(fieldId)).setText(value);
     }
 
     @ParameterizedTest

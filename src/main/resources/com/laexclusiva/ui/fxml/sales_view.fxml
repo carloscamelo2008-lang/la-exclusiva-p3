@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox spacing="10.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.laexclusiva.ui.controller.SalesController">
+    <padding><Insets top="14.0" right="16.0" bottom="14.0" left="16.0" /></padding>
+    <Label text="Registrar venta" style="-fx-font-size: 21px; -fx-font-weight: bold;" />
+    <HBox spacing="8.0">
+        <ComboBox fx:id="productCombo" promptText="Producto" prefWidth="240.0" />
+        <ComboBox fx:id="presentationCombo" promptText="Presentación" prefWidth="150.0" />
+        <TextField fx:id="quantityField" promptText="Cantidad" prefWidth="90.0" />
+        <Button text="Agregar línea" onAction="#handleAddLine" />
+        <Button text="Quitar seleccionada" onAction="#handleRemoveLine" />
+    </HBox>
+    <TableView fx:id="cartTable" prefHeight="170.0">
+        <columns>
+            <TableColumn fx:id="cartProductColumn" text="Producto" prefWidth="190.0" />
+            <TableColumn fx:id="cartPresentationColumn" text="Presentación" prefWidth="115.0" />
+            <TableColumn fx:id="cartQuantityColumn" text="Cantidad" prefWidth="75.0" />
+            <TableColumn fx:id="cartPriceColumn" text="Precio" prefWidth="105.0" />
+            <TableColumn fx:id="cartSubtotalColumn" text="Subtotal" prefWidth="115.0" />
+        </columns>
+    </TableView>
+    <HBox spacing="8.0">
+        <ComboBox fx:id="sellerCombo" promptText="Vendedor" prefWidth="180.0" />
+        <ComboBox fx:id="customerCombo" promptText="Cliente (requerido para crédito)" prefWidth="230.0" />
+        <TextField fx:id="initialPaymentField" promptText="Pago inicial (COP)" prefWidth="150.0" />
+        <Label fx:id="totalLabel" text="Total: $ 0,00" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
+        <Button text="Registrar venta" onAction="#handleRegisterSale" />
+    </HBox>
+    <Label fx:id="messageLabel" wrapText="true" style="-fx-text-fill: #1f5c37;" />
+    <Label text="Ventas registradas" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
+    <TableView fx:id="historyTable" VBox.vgrow="ALWAYS">
+        <columns>
+            <TableColumn fx:id="historyIdColumn" text="Venta" prefWidth="330.0" />
+            <TableColumn fx:id="historyCustomerColumn" text="Cliente" prefWidth="160.0" />
+            <TableColumn fx:id="historyTotalColumn" text="Total" prefWidth="120.0" />
+            <TableColumn fx:id="historyBalanceColumn" text="Pendiente" prefWidth="120.0" />
+        </columns>
+    </TableView>
+</VBox>

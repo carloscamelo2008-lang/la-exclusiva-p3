@@ -5,6 +5,10 @@ import com.laexclusiva.service.AuthorizationService; // Ajusta el paquete según
 import com.laexclusiva.model.Permission; // Ajusta el paquete según corresponda
 import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.SellerService;
+import com.laexclusiva.service.InventoryService;
+import com.laexclusiva.service.ProductService;
+import com.laexclusiva.service.SalesWorkflow;
+import com.laexclusiva.ui.ApplicationServices;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
@@ -27,11 +31,16 @@ public class MainController {
     @FXML private Label welcomeLabel;
     @FXML private Label roleLabel;
     @FXML private Button btnSellers;
+    @FXML private Button btnInventory;
+    @FXML private Button btnSales;
     @FXML private Button btnAdminUsers;
 
     private UserSession currentSession;
     private CustomerService customerService;
     private SellerService sellerService;
+    private ProductService productService;
+    private InventoryService inventoryService;
+    private SalesWorkflow salesWorkflow;
     private final AuthorizationService authorizationService = new AuthorizationService(); // O inyectado por constructor/setter
 
     public void setCustomerService(CustomerService customerService) {
@@ -40,6 +49,17 @@ public class MainController {
 
     public void setSellerService(SellerService sellerService) {
         this.sellerService = sellerService;
+    }
+
+    public void setApplicationServices(ApplicationServices services) {
+        if (services == null) {
+            throw new IllegalArgumentException("La composición de servicios es obligatoria.");
+        }
+        this.customerService = services.customers();
+        this.sellerService = services.sellers();
+        this.productService = services.products();
+        this.inventoryService = services.inventory();
+        this.salesWorkflow = services.sales();
     }
 
     @FXML
@@ -55,6 +75,8 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/customers_view.fxml"));
             Node customerView = loader.load();
             CustomerController controller = loader.getController();
+            controller.configure(customerService,
+                    authorizationService.hasPermission(currentSession, Permission.REGISTER_CUSTOMER));
             controller.showCustomers(customerService.getAllCustomers());
             rootPane.setCenter(customerView);
             navigationMessage.setText("");
@@ -77,6 +99,8 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/sellers_view.fxml"));
             Node sellerView = loader.load();
             SellerController controller = loader.getController();
+            controller.configure(sellerService,
+                    authorizationService.hasPermission(currentSession, Permission.REGISTER_SELLERS));
             controller.showSellers(sellerService.getAllSellers());
             rootPane.setCenter(sellerView);
             navigationMessage.setText("");
@@ -99,14 +123,58 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/portfolio_view.fxml"));
             Node portfolioView = loader.load();
             PortfolioController controller = loader.getController();
-            controller.showDebtors(customerService.getAllCustomers().stream()
-                    .filter(customer -> customer.getBalance().compareTo(BigDecimal.ZERO) > 0)
-                    .toList());
+            controller.configure(customerService, salesWorkflow,
+                    authorizationService.hasPermission(currentSession, Permission.REGISTER_PAYMENT));
+            controller.showPortfolio(customerService.getAllCustomers());
             rootPane.setCenter(portfolioView);
             navigationMessage.setText("");
         } catch (IOException | RuntimeException failure) {
             LOGGER.log(Level.WARNING, "No se pudo abrir la consulta de cartera.", failure);
             navigationMessage.setText("No se pudo consultar la cartera.");
+        }
+    }
+
+    @FXML
+    private void handleShowSales() {
+        if (!authorizationService.hasPermission(currentSession, Permission.REGISTER_SALE)) {
+            handleShowDashboard();
+            navigationMessage.setText("No tiene permiso para registrar ventas.");
+            return;
+        }
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            Node view = loader.load();
+            SalesController controller = loader.getController();
+            controller.configure(productService, inventoryService, customerService,
+                    sellerService, salesWorkflow, currentSession);
+            rootPane.setCenter(view);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir el registro de ventas.", failure);
+            navigationMessage.setText("No se pudo abrir el registro de ventas.");
+        }
+    }
+
+    @FXML
+    private void handleShowInventory() {
+        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_INVENTORY)) {
+            handleShowDashboard();
+            navigationMessage.setText("No tiene permiso para consultar el inventario.");
+            return;
+        }
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
+            Node view = loader.load();
+            InventoryController controller = loader.getController();
+            controller.configure(productService, inventoryService,
+                    authorizationService.hasPermission(currentSession, Permission.MANAGE_INVENTORY_ENTRIES));
+            rootPane.setCenter(view);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir el inventario.", failure);
+            navigationMessage.setText("No se pudo consultar el inventario.");
         }
     }
 
@@ -133,5 +201,12 @@ public class MainController {
         boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
         btnSellers.setVisible(canViewSellers);
         btnSellers.setManaged(canViewSellers);
+
+        boolean canViewInventory = authorizationService.hasPermission(session, Permission.VIEW_INVENTORY);
+        btnInventory.setVisible(canViewInventory);
+        btnInventory.setManaged(canViewInventory);
+        boolean canRegisterSales = authorizationService.hasPermission(session, Permission.REGISTER_SALE);
+        btnSales.setVisible(canRegisterSales);
+        btnSales.setManaged(canRegisterSales);
     }
 }

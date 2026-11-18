@@ -2,14 +2,10 @@ package com.laexclusiva.ui;
 
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
-import com.laexclusiva.repository.CustomerRepository;
 import com.laexclusiva.repository.InMemoryUserRepository;
-import com.laexclusiva.repository.SellerRepository;
 import com.laexclusiva.repository.UserRepository;
 import com.laexclusiva.security.PasswordHasher;
 import com.laexclusiva.service.AuthenticationService;
-import com.laexclusiva.service.CustomerService;
-import com.laexclusiva.service.SellerService;
 import com.laexclusiva.ui.controller.LoginController;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -55,6 +51,7 @@ public class App extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         processInitialization(getParameters());
+        ApplicationServices applicationServices = ApplicationServices.fromEnvironment();
 
         AuthenticationService authService = new AuthenticationService(userRepository);
 
@@ -63,8 +60,7 @@ public class App extends Application {
 
         LoginController loginController = loader.getController();
         loginController.setAuthenticationService(authService);
-        loginController.setCustomerService(new CustomerService(new CustomerRepository()));
-        loginController.setSellerService(new SellerService(new SellerRepository()));
+        loginController.setApplicationServices(applicationServices);
 
         primaryStage.setTitle("La Exclusiva - Iniciar Sesión");
         primaryStage.setScene(new Scene(root, 400, 300));
