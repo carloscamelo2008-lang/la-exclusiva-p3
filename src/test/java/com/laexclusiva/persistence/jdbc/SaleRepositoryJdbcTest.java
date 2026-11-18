@@ -1,6 +1,7 @@
 package com.laexclusiva.persistence.jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -203,10 +204,14 @@ class SaleRepositoryJdbcTest {
         LocalDateTime originalTime = LocalDateTime.of(2026, 11, 12, 9, 0);
         SaleRepositoryJdbc firstAttempt = repositoryWithClock(originalTime);
         SaleRepositoryJdbc laterRetry = repositoryWithClock(originalTime.plusDays(1));
-        SalePayment first = firstAttempt.appendPayment("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
-        SalePayment retry = laterRetry.appendPayment("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
+        var firstResult = firstAttempt.appendPaymentOnce("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
+        var retryResult = laterRetry.appendPaymentOnce("SALE-UPDATE", BigDecimal.valueOf(5_000), "retry-key");
+        SalePayment first = firstResult.payment();
+        SalePayment retry = retryResult.payment();
 
         assertEquals(2, database.payments.size());
+        assertTrue(firstResult.inserted());
+        assertFalse(retryResult.inserted());
         assertTrue(database.executedSql.stream().anyMatch(sql -> sql.contains("for update of s")));
         assertEquals(first.getTimestamp(), retry.getTimestamp());
         assertEquals(originalTime, retry.getTimestamp());

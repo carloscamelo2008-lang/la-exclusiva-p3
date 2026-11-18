@@ -11,7 +11,7 @@ import com.laexclusiva.model.Seller;
 import com.laexclusiva.persistence.jdbc.JdbcConnectionProvider;
 import com.laexclusiva.persistence.jdbc.JdbcPersistenceException;
 import com.laexclusiva.persistence.jdbc.JdbcTransactionManager;
-import com.laexclusiva.repository.SalePaymentAppender;
+import com.laexclusiva.repository.IdempotentSalePaymentAppender;
 import com.laexclusiva.repository.SaleRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -34,7 +34,7 @@ import java.util.Optional;
  * Los abonos nuevos requieren una clave idempotente y bloqueo de fila; las actualizaciones por
  * instantánea se rechazan. Las consultas cargan relaciones por lotes y conservan los snapshots SQL.</p>
  */
-public final class SaleRepositoryJdbc implements SaleRepository, SalePaymentAppender {
+public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSalePaymentAppender {
 
     private static final String SALE_SELECT = """
             SELECT s.id AS sale_id, s.created_at, se.id AS seller_id, se.name AS seller_name,
@@ -118,6 +118,12 @@ public final class SaleRepositoryJdbc implements SaleRepository, SalePaymentAppe
     /** {@inheritDoc} */
     @Override
     public SalePayment appendPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+        return appendPaymentOnce(saleId, amount, idempotencyKey).payment();
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public AppendResult appendPaymentOnce(String saleId, BigDecimal amount, String idempotencyKey) {
         requireId(saleId, "El identificador de venta es obligatorio.");
         if (saleId.length() > 48) throw new IllegalArgumentException("El identificador supera el límite SQL.");
         BigDecimal normalizedAmount = requireMoney(amount, "importe del abono");
@@ -132,7 +138,7 @@ public final class SaleRepositoryJdbc implements SaleRepository, SalePaymentAppe
                 if (existing.getAmount().compareTo(normalizedAmount) != 0) {
                     throw new IllegalArgumentException("La clave de idempotencia ya se registró con otro importe.");
                 }
-                return existing;
+                return new AppendResult(existing, false);
             }
             BigDecimal[] totals = findSaleTotals(connection, saleId);
             BigDecimal balance = totals[0].subtract(totals[1]);
@@ -141,7 +147,7 @@ public final class SaleRepositoryJdbc implements SaleRepository, SalePaymentAppe
             }
             SalePayment payment = new SalePayment(normalizedAmount, normalize(LocalDateTime.now(clock)));
             insertPayment(connection, saleId, payment, idempotencyKey);
-            return payment;
+            return new AppendResult(payment, true);
         }));
     }
 
