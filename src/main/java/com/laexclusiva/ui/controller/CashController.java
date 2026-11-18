@@ -100,9 +100,14 @@ public final class CashController {
         directionCombo.setDisable(!canRegister);
         entryCategoryCombo.setDisable(!canRegister);
         if (canView) {
-            refresh();
+            try {
+                refresh();
+            } catch (RuntimeException failure) {
+                clearUnavailableView();
+                messageLabel.setText("No se pudo consultar caja: " + safeMessage(failure));
+            }
         } else {
-            movementsTable.getItems().clear();
+            clearUnavailableView();
             messageLabel.setText("No tiene permiso para consultar caja.");
         }
     }
@@ -157,8 +162,14 @@ public final class CashController {
         operationKeyLabel.setText("Referencia de operación: " + operationKey);
         amountField.clear();
         descriptionField.clear();
-        messageLabel.setText("Movimiento registrado.");
-        if (authorization.hasPermission(session, Permission.VIEW_CASH)) refresh();
+        try {
+            if (authorization.hasPermission(session, Permission.VIEW_CASH)) refresh();
+            messageLabel.setText("Movimiento registrado.");
+        } catch (RuntimeException refreshFailure) {
+            clearUnavailableView();
+            messageLabel.setText("Movimiento registrado correctamente, pero no se pudo actualizar la vista de caja: "
+                    + safeMessage(refreshFailure) + " Use Consultar para volver a cargarla.");
+        }
     }
 
     @FXML
@@ -168,7 +179,7 @@ public final class CashController {
             refresh();
             messageLabel.setText("Caja actualizada.");
         } catch (RuntimeException failure) {
-            movementsTable.getItems().clear();
+            clearUnavailableView();
             messageLabel.setText("No se pudo consultar caja: " + safeMessage(failure));
         }
     }
@@ -176,8 +187,9 @@ public final class CashController {
     private void refresh() {
         List<CashMovement> records = cash.listMovements(fromDatePicker.getValue(),
                 throughDatePicker.getValue(), categoryFilterCombo.getValue());
-        movementsTable.getItems().setAll(records);
         CashSummary summary = cash.summarize(fromDatePicker.getValue(), throughDatePicker.getValue());
+        // Solo se actualiza la vista cuando la tabla y el resumen corresponden a consultas exitosas.
+        movementsTable.getItems().setAll(records);
         invoicedSalesLabel.setText("Ventas facturadas: " + money(summary.invoicedSales()));
         saleReceiptsLabel.setText("Efectivo recibido por ventas: " + money(summary.saleReceipts()));
         generalDebtReceiptsLabel.setText("Pagos de deuda general: " + money(summary.generalDebtReceipts()));
@@ -185,6 +197,18 @@ public final class CashController {
         expensesLabel.setText("Egresos: " + money(summary.expenses()));
         cashInLabel.setText("Ingresos reales de caja: " + money(summary.cashIn()));
         netCashLabel.setText("Saldo neto de caja: " + money(summary.netCash()));
+    }
+
+    /** Limpia datos de lecturas parciales y evita presentar cifras de una consulta anterior como actuales. */
+    private void clearUnavailableView() {
+        movementsTable.getItems().clear();
+        invoicedSalesLabel.setText("Ventas facturadas: no disponible");
+        saleReceiptsLabel.setText("Efectivo recibido por ventas: no disponible");
+        generalDebtReceiptsLabel.setText("Pagos de deuda general: no disponible");
+        otherIncomeLabel.setText("Otros ingresos: no disponible");
+        expensesLabel.setText("Egresos: no disponible");
+        cashInLabel.setText("Ingresos reales de caja: no disponible");
+        netCashLabel.setText("Saldo neto de caja: no disponible");
     }
 
     private void refreshEntryCategories() {
