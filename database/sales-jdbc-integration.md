@@ -809,3 +809,40 @@ integración futura de caja con compras/proveedores de Jesús. Usuarios y asigna
 siguen en el almacenamiento de autenticación existente. Esta validación fue automatizada con
 PostgreSQL y JavaFX/FXML; no constituye una revisión manual del equipo ni una prueba bancaria o de
 producción.
+
+## Revisión final de consistencia visual de Caja (2026-11-18)
+
+En la revisión del PR #20 se identificó que el controlador escribía las filas de la tabla antes de
+obtener el resumen. Si la segunda lectura fallaba, la tabla nueva podía convivir con cifras viejas.
+También podía escapar el error del refresco posterior a una escritura confirmada, aunque la clave ya
+se hubiera rotado y el movimiento estuviera persistido.
+
+`CashController.refresh()` ahora obtiene filas y resumen en variables locales y solo modifica la
+vista después de que ambas consultas terminan. Al fallar cualquiera, `clearUnavailableView()` elimina
+las filas y marca como `no disponible` los siete indicadores de facturación, recaudos, ingresos y
+egresos. La carga inicial trata el fallo de lectura con el mismo contrato.
+
+El handler de registro sigue comprobando `REGISTER_CASH_MOVEMENT` con la sesión vigente. Cuando
+`registerMovement` retorna, limpia el estado incierto, genera la clave siguiente y conserva el éxito;
+una excepción posterior de lectura se informa por separado y no vuelve a invocar la escritura. Una
+excepción de la escritura sigue reteniendo la clave y datos para el reintento idempotente. El botón
+«Consultar» comprueba `VIEW_CASH` y solamente llama las dos lecturas; no registra movimientos.
+
+`FinancialControllersTest` ahora tiene ocho casos y agrega estas regresiones: escritura confirmada
+seguida de fallo del resumen (una sola escritura, clave rotada tras confirmar y mensaje separado),
+fallo de consulta sin tabla ni cifras antiguas, actualización que solo lee y sesión invalidada antes
+de ejecutar handlers de lectura/escritura. Las pruebas previas siguen cubriendo respuesta incierta,
+reintento con la misma clave y permisos de trabajador.
+
+La ejecución completa se hizo con Microsoft JDK 17.0.18, Maven 3.10.0 y PostgreSQL 18.6 en
+`la_exclusiva_test`: `mvn clean verify`, `BUILD SUCCESS`, **257 pruebas, 0 fallidas, 0 errores y 0
+omitidas**, 38 reportes Surefire y JAR generado. Las **21 integraciones PostgreSQL reales** pasaron
+(cartera 1, clientes/vendedores 1, finanzas/caja 5, inventario 3, workflow de ventas 5,
+productos 3, ventas 1 y movimientos 2); las otras 236 fueron simuladas/unitarias/JavaFX. La prueba
+dirigida `FinancialControllersTest` pasó 8/8. `git diff --check` pasó. No se ejecutaron migraciones
+ni se usó `la_exclusiva`.
+
+Una ejecución dirigida inicial encontró únicamente una aserción que esperaba una variante distinta
+del mensaje de autorización; se ajustó al texto español real y la suite dirigida y completa pasaron.
+Persisten las advertencias conocidas de Maven/JavaFX. Los commits de corrección y regresiones son
+`299c0fe` y `8b76009`; el nuevo HEAD se publicó en el PR #20 y se solicitó revisión a Daniel y Jesús.
