@@ -357,11 +357,11 @@ Clientes y vendedores pasan por los repositorios seleccionados en la composició
   reintentos de registro de venta con respuesta incierta.
 - No se aplican V001/V002 ni se inicializa el catálogo al arrancar. La aplicación no escribe en la
   base hasta una acción del usuario; la pantalla de administración puede registrar productos.
-- El PR #15 de infraestructura se fusionó en `develop` (`ea85865`) y el PR #16 de
-  productos/inventario continúa abierto según el estado consultado el 2026-11-17. La rama de
-  integración conserva el endurecimiento `2676023` y protege los ajustes de inventario contra
-  snapshots; Jesús debe revisar esa corrección en #16. El borrador depende de #16 y no sustituye su
-  entrega.
+- Al 2026-11-18, `origin/develop` apunta a `e92d874` y contiene, según la comprobación de ancestry,
+  el tip `dbbaf28` de productos/inventario. La página GitHub del PR #16 aún lo mostraba abierto al
+  momento de revisar; queda una discrepancia de estado que debe aclararse, sin alterar ese PR. El
+  merge local `0936ad8` integró `origin/develop` en esta rama sin conflictos. PR #18 se actualiza
+  para usar `develop` como base.
 
 ### Verificación local observada
 
@@ -416,3 +416,29 @@ if ([string]::IsNullOrWhiteSpace($env:LAEXCLUSIVA_DB_USER) -or
     '-Dtest=JdbcSalesWorkflowPostgresIntegrationTest,InventoryRepositoryJdbcPostgresIntegrationTest,StockMovementRepositoryJdbcPostgresIntegrationTest,ProductRepositoryJdbcPostgresIntegrationTest,CustomerSellerJdbcPostgresIntegrationTest,CustomerDebtQueryJdbcPostgresIntegrationTest,SaleRepositoryJdbcPostgresIntegrationTest' test
 if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas PostgreSQL.' }
 ```
+
+### Revisión final del PR #18 (2026-11-18)
+
+Tras integrar `origin/develop` (`e92d874`) con el merge normal `0936ad8`, la revisión de
+`JdbcSalesWorkflow`, `ApplicationServices`, `InventoryStockAdjusterJdbc`, los repositorios JDBC,
+sus pruebas y las pantallas JavaFX no encontró un defecto reproducible dentro del alcance que
+requiriera cambiar código. La rama quedó sin conflictos de merge local. El historial de
+`origin/develop` contiene el tip `dbbaf28` de inventario; aunque la interfaz de GitHub todavía
+mostraba el PR #16 abierto, no se modificó ninguna rama ni PR de compañeros.
+
+Con Temurin JDK 17.0.21 y Maven 3.10.0, `mvn clean verify` terminó en `BUILD SUCCESS`: 222 pruebas,
+210 aprobadas, 0 fallidas, 0 errores y 12 omitidas. Las 12 omitidas fueron exclusivamente suites
+PostgreSQL: cartera (1), clientes/vendedores (1), inventario (3), workflow de ventas (1), productos
+(3), ventas (1) y movimientos (2). Las variables PostgreSQL de prueba no estaban presentes, por
+lo que no se abrió conexión, no se ejecutaron migraciones ni se escribieron datos. No se afirma
+validación real de atomicidad, bloqueos ni concurrencia en PostgreSQL. Las pruebas JavaFX corrieron
+bajo Windows; Xvfb no era necesario. `git diff --check` pasó después de actualizar la documentación.
+
+La revisión estática confirma que el workflow comparte proveedor y coordinador transaccional,
+aplica ajustes de stock por delta, persiste pagos idempotentes y construye ventas con snapshots
+históricos; las consultas de deuda separan cartera de ventas de deuda general. Los tests simulados
+y de JavaFX aprobaron. No se realizó un recorrido manual de extremo a extremo con autenticación y
+PostgreSQL, así que ese flujo queda pendiente de validación humana. También siguen pendientes el
+login/cuentas/asignación de vendedor persistentes, el pago JDBC de deuda general, una clave
+idempotente para crear ventas y la unificación del `SaleService` tradicional con
+`JdbcSalesWorkflow`.

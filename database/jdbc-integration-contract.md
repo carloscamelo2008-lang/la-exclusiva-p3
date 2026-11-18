@@ -8,15 +8,14 @@ Este documento fija la interfaz de integración entre la infraestructura JDBC de
 - DAO de productos, precios, inventario y movimientos: `feature/products-inventory` (Jesús), PR #16.
 - Rama actual de integración temporal: `feature/full-jdbc-integration`.
 - Jesús parte inicialmente de `feature/jdbc-infrastructure` para compilar contra las clases compartidas.
-- **Estado actualizado el 2026-11-17:** el PR #15 (`feature/jdbc-infrastructure`) se fusionó en
-  `develop` (`ea85865`); el PR #16 (`feature/products-inventory`) sigue abierto. La rama
-  `feature/full-jdbc-integration` parte del head `426a65e` de #16 e integra `develop` (`ea85865`,
-  incluido el PR #17) mediante `ecadf8b`. Después se incorporó el avance de la rama de dependencia
-  hasta `dbbaf28` con el merge normal `c2ab247`. Se resolvieron conflictos en el adaptador de
-  inventario, su contrato y una prueba PostgreSQL, conservando la exigencia de transacción activa,
-  la inserción inicial sin sobrescritura y los ajustes por delta. No se modificó ni publicó la rama
-  de Jesús. El borrador #18 se mantiene basado en `feature/products-inventory` hasta que #16 se
-  fusione.
+- **Estado actualizado el 2026-11-18:** `origin/develop` apunta a `e92d874`, cuyo historial
+  contiene el tip `dbbaf28` de `feature/products-inventory`; la comprobación de ancestry confirma
+  que sus cambios están incorporados. La página del PR #16 todavía lo mostraba abierto al revisar,
+  discrepancia que queda pendiente de aclarar con el equipo y que no se modificó desde esta tarea.
+  La rama `feature/full-jdbc-integration` integró `origin/develop` mediante el merge normal
+  `0936ad8`, sin conflictos. PR #18 debe comparar ahora contra `develop`; el cambio de base y la
+  descripción se verifican por separado en GitHub. No se modificó ni publicó ninguna rama de Jesús
+  o Daniel.
 
 ## Configuración de bases locales
 
@@ -380,9 +379,27 @@ y registros esperados de las pruebas de fallo simulado de consultas. Se omitiero
 `ProductRepositoryJdbcPostgresIntegrationTest` (3), `SaleRepositoryJdbcPostgresIntegrationTest` (1)
 y `StockMovementRepositoryJdbcPostgresIntegrationTest` (2).
 
-Mientras #16 siga abierto, el PR de integración debe ser borrador contra
-`feature/products-inventory`. Después de que Jesús integre ese PR, actualizarlo para que compare con
-`develop` y ejecutar las pruebas PostgreSQL reales antes de habilitar el modo `postgres` al equipo.
+La validación del 2026-11-18 con Temurin JDK 17.0.21 y Maven 3.10.0, posterior al merge `0936ad8`
+de `origin/develop` (`e92d874`), terminó en `BUILD SUCCESS`: 222 pruebas contabilizadas, 210
+aprobadas, 0 fallidas, 0 errores y 12 omitidas. Las 12 omitidas corresponden a las siete suites
+PostgreSQL (cartera 1, clientes/vendedores 1, inventario 3, workflow de ventas 1, productos 3,
+ventas 1 y movimientos 2). Las variables de conexión de prueba no estaban presentes; no se abrió
+conexión, no se ejecutaron migraciones ni se modificó base alguna. Las pruebas JavaFX se ejecutaron
+bajo Windows, por lo que Xvfb no era necesario. `git diff --check` se verificó después de los
+cambios documentales. Maven emitió las advertencias conocidas del modelo JavaFX y el aviso de
+configuración no modular; no afectaron el resultado.
+
+La inspección del flujo y los controladores no encontró un defecto reproducible dentro del alcance
+que requiriera modificar código. La transacción común, los ajustes de inventario por delta, la
+idempotencia de abonos y el uso de precios/capacidades históricos están cubiertos en código y pruebas
+simuladas. La atomicidad real de PostgreSQL, bloqueos, restricciones y carreras de inventario/pagos
+siguen pendientes de ejecutar en `la_exclusiva_test`; la aprobación de Maven no demuestra esos
+comportamientos del servidor.
+
+La autenticación y la asignación de vendedores siguen en memoria, el pago de deuda general no tiene
+flujo JDBC completo, el alta de ventas no posee clave idempotente persistida y `SaleService` continúa
+separado de `JdbcSalesWorkflow`. El modo PostgreSQL debe seguir siendo explícito hasta validar las
+integraciones contra la base aislada y revisar estos límites con el equipo.
 
 ## División de responsabilidades
 
