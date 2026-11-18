@@ -10,6 +10,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.List;
 
 /** Adaptador JDBC del repositorio de clientes que conserva sus identificadores históricos. */
@@ -134,11 +135,12 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
     }
 
     /**
-     * Reemplaza los datos del snapshot de un cliente existente; no realiza upsert.
-     * Para ajustes financieros concurrentes debe usarse {@link CustomerBalanceAdjuster}, no un snapshot.
+     * Actualiza solo los datos personales si el saldo persistido sigue coincidiendo con el snapshot.
+     * El saldo se usa como condición de concurrencia y nunca aparece en la cláusula {@code SET}.
      *
-     * @param customer snapshot con los datos actualizados
-     * @throws IllegalArgumentException si el cliente es nulo o el ID no existe
+     * @param customer snapshot cuyos datos personales se actualizarán
+     * @throws IllegalArgumentException si el cliente es nulo o ya no existe
+     * @throws ConcurrentModificationException si el saldo cambió desde la lectura del snapshot
      * @throws JdbcPersistenceException si falla la actualización
      */
     @Override
@@ -146,17 +148,22 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
         requireCustomer(customer);
         BigDecimal balance = requireBalance(customer.getBalance());
         connectionProvider.withConnection(connection -> {
-            String sql = "UPDATE customer SET name = ?, phone = ?, address = ?, balance = ? WHERE id = ?";
+            String sql = "UPDATE customer SET name = ?, phone = ?, address = ? WHERE id = ? AND balance = ?";
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, customer.getName());
                 statement.setString(2, customer.getPhone());
                 statement.setString(3, customer.getAddress());
-                statement.setBigDecimal(4, balance);
-                statement.setString(5, customer.getId());
+                statement.setString(4, customer.getId());
+                statement.setBigDecimal(5, balance);
                 int updated = statement.executeUpdate();
                 if (updated == 0) {
-                    throw new IllegalArgumentException(
-                            "No se puede actualizar: el cliente con ID " + customer.getId() + " no existe.");
+                    if (!customerExists(connection, customer.getId())) {
+                        throw new IllegalArgumentException(
+                                "No se puede actualizar: el cliente con ID " + customer.getId() + " no existe.");
+                    }
+                    throw new ConcurrentModificationException(
+                            "No se puede actualizar el cliente con ID " + customer.getId()
+                                    + ": el saldo cambió desde que se obtuvo el snapshot. Vuelva a cargarlo.");
                 }
                 if (updated != 1) {
                     throw new JdbcPersistenceException("La actualización afectó más de un cliente.");
@@ -164,6 +171,16 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
             }
             return null;
         });
+    }
+
+    private static boolean customerExists(java.sql.Connection connection, String id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM customer WHERE id = ?")) {
+            statement.setString(1, id);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        }
     }
 
     private static Customer mapCustomer(ResultSet resultSet) throws SQLException {
