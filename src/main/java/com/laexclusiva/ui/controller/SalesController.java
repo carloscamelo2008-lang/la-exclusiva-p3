@@ -2,6 +2,7 @@ package com.laexclusiva.ui.controller;
 
 import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.InsufficientStockException;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SaleLine;
 import com.laexclusiva.model.SalePresentation;
@@ -181,6 +182,7 @@ public class SalesController {
         Sale saved;
         String submittedFingerprint = null;
         boolean submitted = false;
+        boolean retryingUncertainRequest = uncertainSaleFingerprint != null;
         try {
             requirePermission(Permission.REGISTER_SALE, "No tiene permiso para registrar ventas.");
             requirePermission(Permission.VIEW_SALES, "No tiene permiso para consultar las ventas.");
@@ -205,6 +207,21 @@ public class SalesController {
                     customer == null ? null : customer.getId(), initialPayment, saleOperationKey);
         } catch (IllegalArgumentException | SecurityException rejected) {
             messageLabel.setText("Venta no registrada: " + safeMessage(rejected) + " El carrito se conserva.");
+            return;
+        } catch (InsufficientStockException rejectedForStock) {
+            if (!retryingUncertainRequest) {
+                // El flujo transaccional confirmó el rechazo; una carga corregida inicia otra solicitud.
+                saleOperationKey = UUID.randomUUID().toString();
+                refreshSaleOperationKeyLabel();
+            }
+            String message = "Venta rechazada por existencias insuficientes: " + safeMessage(rejectedForStock)
+                    + " El carrito se conserva; ajuste las cantidades y vuelva a intentarlo.";
+            if (retryingUncertainRequest) {
+                // El rechazo de este reintento no demuestra qué ocurrió con la llamada anterior.
+                message += " La solicitud anterior aún tiene resultado incierto; conserve la referencia y no cambie "
+                        + "su carga hasta resolverla.";
+            }
+            messageLabel.setText(message);
             return;
         } catch (RuntimeException failure) {
             if (submitted) uncertainSaleFingerprint = submittedFingerprint;

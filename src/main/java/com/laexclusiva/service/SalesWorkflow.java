@@ -30,6 +30,8 @@ public interface SalesWorkflow {
      * @param idempotencyKey clave estable que debe conservarse ante una respuesta incierta
      * @return la venta creada o la venta original del mismo intento
      * @throws IllegalArgumentException si la clave se usa con otra carga útil
+     * @throws com.laexclusiva.model.InsufficientStockException si no hay existencias suficientes; el
+     *         flujo debe rechazar la solicitud sin dejar efectos parciales de venta
      */
     default Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                               BigDecimal initialPayment, String idempotencyKey) {
