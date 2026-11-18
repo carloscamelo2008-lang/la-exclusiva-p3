@@ -29,6 +29,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -83,6 +84,96 @@ class FinancialControllersTest {
             assertEquals(1, services.cash().listMovements(LocalDate.now(), LocalDate.now(), null).size());
             assertNotEquals(firstKey, label(loader, "operationKeyLabel").getText());
             assertTrue(label(loader, "messageLabel").getText().contains("Movimiento registrado."));
+            return null;
+        });
+    }
+
+    @Test
+    void confirmedCashWriteSurvivesRefreshFailureAndRotatesItsKeyOnlyAfterCommit() throws Exception {
+        runOnFx(() -> {
+            ControlledCashWorkflow cash = new ControlledCashWorkflow();
+            cash.records.add(existingCashMovement());
+            FXMLLoader loader = load("cash_view.fxml");
+            ((CashController) loader.getController()).configure(cash, adminSession());
+            String originalKey = label(loader, "operationKeyLabel").getText();
+            cash.failNextSummary = true;
+            text(loader, "amountField").setText("12.50");
+            text(loader, "descriptionField").setText("Ingreso ficticio confirmado");
+
+            button(loader, "registerMovementButton").fire();
+
+            assertEquals(1, cash.writeCalls, "La confirmación debe corresponder a una sola escritura.");
+            assertEquals(1, cash.records.size() - 1, "El fixture existente no debe duplicarse.");
+            assertNotEquals(originalKey, label(loader, "operationKeyLabel").getText(),
+                    "La clave solo se renueva cuando registerMovement retorna confirmado.");
+            assertTrue(label(loader, "messageLabel").getText().contains("Movimiento registrado correctamente"));
+            assertTrue(label(loader, "messageLabel").getText().contains("no se pudo actualizar"));
+            assertTrue(((TableView<?>) loader.getNamespace().get("movementsTable")).getItems().isEmpty());
+            assertUnavailableLabels(loader);
+            return null;
+        });
+    }
+
+    @Test
+    void failedCashRefreshClearsRowsAndEveryPreviousSummaryValue() throws Exception {
+        runOnFx(() -> {
+            ControlledCashWorkflow cash = new ControlledCashWorkflow();
+            cash.records.add(existingCashMovement());
+            FXMLLoader loader = load("cash_view.fxml");
+            ((CashController) loader.getController()).configure(cash, adminSession());
+            assertTrue(label(loader, "invoicedSalesLabel").getText().contains("100"));
+            assertFalse(((TableView<?>) loader.getNamespace().get("movementsTable")).getItems().isEmpty());
+            cash.failNextSummary = true;
+
+            button(loader, "refreshButton").fire();
+
+            assertTrue(((TableView<?>) loader.getNamespace().get("movementsTable")).getItems().isEmpty());
+            assertUnavailableLabels(loader);
+            assertTrue(label(loader, "messageLabel").getText().contains("No se pudo consultar caja"));
+            return null;
+        });
+    }
+
+    @Test
+    void refreshCashButtonPerformsOnlyReadOperations() throws Exception {
+        runOnFx(() -> {
+            ControlledCashWorkflow cash = new ControlledCashWorkflow();
+            FXMLLoader loader = load("cash_view.fxml");
+            ((CashController) loader.getController()).configure(cash, adminSession());
+            cash.resetCounters();
+            String operationKey = label(loader, "operationKeyLabel").getText();
+
+            button(loader, "refreshButton").fire();
+
+            assertEquals(0, cash.writeCalls);
+            assertEquals(1, cash.listCalls);
+            assertEquals(1, cash.summaryCalls);
+            assertEquals(operationKey, label(loader, "operationKeyLabel").getText());
+            assertTrue(label(loader, "messageLabel").getText().contains("Caja actualizada"));
+            return null;
+        });
+    }
+
+    @Test
+    void cashHandlersRecheckSessionPermissionsAfterTheScreenWasConfigured() throws Exception {
+        runOnFx(() -> {
+            ControlledCashWorkflow cash = new ControlledCashWorkflow();
+            FXMLLoader loader = load("cash_view.fxml");
+            UserSession session = adminSession();
+            ((CashController) loader.getController()).configure(cash, session);
+            cash.resetCounters();
+            session.invalidate();
+            text(loader, "amountField").setText("8.00");
+            text(loader, "descriptionField").setText("Intento con sesión vencida");
+
+            button(loader, "registerMovementButton").fire();
+            assertEquals(0, cash.writeCalls);
+            assertTrue(label(loader, "messageLabel").getText().contains("permiso de caja"));
+
+            button(loader, "refreshButton").fire();
+            assertEquals(0, cash.listCalls);
+            assertEquals(0, cash.summaryCalls);
+            assertUnavailableLabels(loader);
             return null;
         });
     }
@@ -221,6 +312,19 @@ class FinancialControllersTest {
         return (Label) loader.getNamespace().get(id);
     }
 
+    private static CashMovement existingCashMovement() {
+        return new CashMovement(1, CashDirection.INCOME, CashCategory.OTHER_INCOME, new BigDecimal("7.00"),
+                LocalDate.now().atTime(8, 0), "Ingreso ficticio anterior", "existing-cash-key",
+                "MANUAL", "existing-cash-source");
+    }
+
+    private static void assertUnavailableLabels(FXMLLoader loader) {
+        for (String id : List.of("invoicedSalesLabel", "saleReceiptsLabel", "generalDebtReceiptsLabel",
+                "otherIncomeLabel", "expensesLabel", "cashInLabel", "netCashLabel")) {
+            assertTrue(label(loader, id).getText().contains("no disponible"), id);
+        }
+    }
+
     private static void runOnFx(java.util.concurrent.Callable<Void> callback) throws Exception {
         FutureTask<Void> task = new FutureTask<>(callback);
         Platform.runLater(task);
@@ -275,6 +379,54 @@ class FinancialControllersTest {
             throw new AssertionError("Un resumen no autorizado alcanzó el caso de uso de caja.");
         }
         @Override public boolean supportsDurableIdempotency() { return false; }
+    }
+
+    private static final class ControlledCashWorkflow implements CashWorkflow {
+        private final java.util.ArrayList<CashMovement> records = new java.util.ArrayList<>();
+        private int writeCalls;
+        private int listCalls;
+        private int summaryCalls;
+        private boolean failNextList;
+        private boolean failNextSummary;
+
+        @Override
+        public CashMovement registerMovement(CashDirection direction, CashCategory category, BigDecimal amount,
+                                             LocalDateTime occurredAt, String description, String key) {
+            writeCalls++;
+            CashMovement saved = new CashMovement(records.size() + 1L, direction, category, amount,
+                    occurredAt, description, key, "MANUAL", key);
+            records.add(saved);
+            return saved;
+        }
+
+        @Override
+        public List<CashMovement> listMovements(LocalDate from, LocalDate through, CashCategory category) {
+            listCalls++;
+            if (failNextList) {
+                failNextList = false;
+                throw new IllegalStateException("lectura de movimientos simulada no disponible");
+            }
+            return List.copyOf(records);
+        }
+
+        @Override
+        public CashSummary summarize(LocalDate from, LocalDate through) {
+            summaryCalls++;
+            if (failNextSummary) {
+                failNextSummary = false;
+                throw new IllegalStateException("lectura del resumen simulada no disponible");
+            }
+            return new CashSummary(new BigDecimal("100.00"), new BigDecimal("40.00"),
+                    new BigDecimal("10.00"), new BigDecimal("7.00"), new BigDecimal("2.00"));
+        }
+
+        private void resetCounters() {
+            writeCalls = 0;
+            listCalls = 0;
+            summaryCalls = 0;
+        }
+
+        @Override public boolean supportsDurableIdempotency() { return true; }
     }
 
     private static final class UncertainGeneralDebtWorkflow implements CustomerGeneralDebtWorkflow {
