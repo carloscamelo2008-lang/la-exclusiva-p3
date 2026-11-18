@@ -663,3 +663,149 @@ Una ejecución completa intermedia detectó que el fake JDBC de `SaleRepositoryJ
 las consultas nuevas; se amplió el fake y se añadió una aserción del orden de bloqueos. La suite
 dirigida y la ejecución completa final pasaron después de ese ajuste. No se hizo un recorrido manual
 adicional de escritorio en esta intervención.
+
+## Finanzas y cierre operativo (`feature/carlos-finance-close`, 2026-11-18)
+
+Esta sección registra la ampliación de la rama de Carlos posterior al merge del PR #18. Las notas
+anteriores describen el estado de aquella rama en sus respectivas fechas; para venta idempotente,
+deuda general y caja, esta sección es el contrato vigente de la nueva rama.
+
+### Creación de ventas con identidad durable
+
+`IdempotentSaleRepository` y `SaleRepositoryJdbc.saveOnce` reservan una clave de hasta 64 caracteres
+y la huella SHA-256 de la carga útil en la cabecera `sale`, dentro de la misma transacción que sus
+líneas, pago inicial, salidas y movimientos de inventario y delta del saldo. La repetición con la
+misma clave y los mismos productos, presentaciones, cantidades, vendedor, cliente y pago inicial
+devuelve la venta original sin repetir efectos. Si cambia cualquier dato de negocio, la clave se
+rechaza. La huella no contiene precios actuales: las líneas de la venta conservan el precio histórico
+tomado al primer alta.
+
+`JdbcSalesWorkflow` comprueba la clave antes de leer el estado mutable de stock/saldo y la vuelve a
+comprobar después de obtener el bloqueo del cliente. La restricción única resuelve además la carrera
+en solicitudes sin cliente. Inventario, pago inicial, cartera y recibos de caja solo se aplican cuando
+la venta se insertó realmente. `SalesController` muestra la referencia y conserva clave y carga útil
+si una excepción deja el resultado incierto; permite resolverla repitiendo exactamente esos datos.
+En modo `memory`, la deduplicación evita repeticiones concurrentes durante la vida del proceso, pero
+no sobrevive a un reinicio.
+
+La migración `V100__sale_creation_idempotency.sql` agrega `sale.idempotency_key` y
+`sale.request_fingerprint`, con unicidad y consistencia entre ambas columnas. No hay ejecución
+automática desde Maven o la aplicación. Se aplicó manualmente en el esquema ya aislado de
+`la_exclusiva_test` después de verificar que faltaban solo esas columnas; antes de desplegar la rama
+debe revisarse y aplicarse ordenadamente en el entorno destino.
+
+### Deuda general auditable, separada de ventas
+
+El puerto `CustomerGeneralDebtWorkflow` informa el saldo agregado, la deuda pendiente de ventas y la
+diferencia general según el contrato:
+
+`deuda general = saldo agregado del cliente - suma de saldos pendientes de sus ventas`.
+
+`CustomerGeneralDebtWorkflowJdbc` bloquea primero la fila del cliente y conserva el bloqueo hasta el
+fin de la transacción compartida. Comprueba que la deuda de ventas no supere el saldo agregado,
+reserva o recupera la clave idempotente y cambia `customer.balance` mediante el puerto de delta
+atómico. Un pago general se limita al importe general disponible; no inserta `sale_payment` ni
+disminuye la deuda de una venta. Si el saldo agregado y la cartera están inconsistentes, el flujo
+rechaza cambios y exige corregir los datos de origen. No trata un sobrepago como crédito transferible.
+
+`customer_general_debt_movement` conserva cliente, tipo, importe, fecha/hora, categoría, descripción,
+clave y huella. El aumento de deuda se registra junto al incremento del saldo; el pago se registra
+junto al decremento del saldo y al recibo `GENERAL_DEBT_PAYMENT` de caja. Las tres escrituras
+comparten commit/rollback. Un reintento devuelve el movimiento original y la misma clave con otros
+datos se rechaza. La pantalla de Cartera mantiene separados los abonos por venta y deuda general y
+permite consultar el historial por cliente, fechas y categoría.
+
+### Caja: facturación frente a efectivo recibido
+
+`CashWorkflow` y `CashMovementRepository` exponen movimientos fechados/categorizados y el resumen.
+`cash_movement` clasifica `SALE_INITIAL_PAYMENT`, `SALE_INSTALLMENT`, `GENERAL_DEBT_PAYMENT`, otros
+ingresos y egresos (servicios, hielo, trabajadores, retiros y otros). La restricción única del origen
+y la clave idempotente evitan contar dos veces el recibo generado por una operación comercial. El
+usuario solo puede crear `OTHER_INCOME` y categorías de egreso; recibos de ventas y cartera se insertan
+desde la operación de origen, dentro de su transacción, y no se pueden ingresar manualmente otra vez.
+
+El total facturado se calcula directamente desde `sale_line.quantity * unit_price`, con precio
+histórico y sin unir pagos a las líneas. El resumen muestra ese importe por separado y calcula el
+ingreso real solo desde recibos de ventas, pagos de deuda general y otros ingresos; resta los egresos
+para obtener el neto. Así una venta a crédito no se presenta como efectivo recaudado. La pantalla
+JavaFX de Caja permite filtrar por fechas y categoría y registrar movimientos con referencia estable;
+el administrador dispone de permisos de consulta y escritura. La configuración de caja comprueba
+`VIEW_CASH` antes de cargar tablas o resumen, y el handler vuelve a comprobar el permiso de escritura.
+
+`V101__general_debt_ledger.sql` crea el historial de deuda general. `V102__cash_ledger.sql` crea el
+libro de caja y sus reglas de clasificación/unicidad. Ambas se aplicaron manualmente, sin limpieza,
+después de comprobar que sus tablas no existían en `la_exclusiva_test`. No se ejecutan al arrancar
+Maven ni la aplicación. La ruta segura de despliegue es V001, V002, V100, V101 y V102 una sola vez,
+tras respaldar/revisar el entorno y comprobar la inexistencia de las tablas/columnas añadidas.
+
+El modo `memory` conserva ventas y permite una demostración de cartera/caja en proceso; sus claves y
+libros no son durables. La captura de caja no se conecta aún a entradas de compra/proveedores de
+Jesús, y no añade pagos de proveedores ni conciliación bancaria. Usuarios y asignación de vendedor
+siguen bajo la autenticación existente, fuera de esta rama. Antes de habilitar PostgreSQL en un
+entorno compartido deben revisarse las tres migraciones nuevas y sus permisos operativos.
+
+### Regresiones financieras añadidas
+
+`JdbcSalesWorkflowPostgresIntegrationTest` cubre replay, mismo intento concurrente y rollback de una
+venta con la misma clave. `FinancialOperationsPostgresIntegrationTest` usa fixtures `C-FIN-`,
+`S-FIN-` y `P-FIN-` propios para probar pago general idempotente, límite del saldo disponible,
+serialización concurrente con dos conexiones, reversión conjunta, caja sin doble conteo y pago de
+venta junto a recibo de caja. Su limpieza se limita a esos IDs y claves. Las pruebas no ejecutan las
+migraciones: verifican que las tablas de V101/V102 existan y omiten la suite si el entorno está sin
+configurar o no es exactamente `la_exclusiva_test`.
+
+`FinancialControllersTest` carga los FXML reales sobre JavaFX: simula respuesta perdida y verifica
+que Caja conserva clave/fecha y bloquea una carga útil diferente; comprueba que un trabajador no
+consulta ni registra caja; y confirma que un abono general cambia el saldo general sin tocar la
+venta pendiente. El modo memoria queda cubierto por `InMemoryFinanceWorkflowsTest`.
+
+### Validación completa de la rama (2026-11-18)
+
+La verificación final se ejecutó con Microsoft JDK 17.0.18, Maven 3.10.0 y PostgreSQL 18.6. La
+consulta previa de solo lectura conectó explícitamente con `la_exclusiva_test`; las tablas de los
+libros V101/V102 y las columnas de clave/huella de V100 estaban presentes. V001/V002 ya estaban
+aplicadas. `LAEXCLUSIVA_DB_URL` se mantuvo sin configurar. No se ejecutaron migraciones durante
+`mvn clean verify`, ni se accedió a `la_exclusiva`, ni se ejecutaron `DROP`, `TRUNCATE` o limpiezas
+generales.
+
+Resultado final observado: **BUILD SUCCESS, 253 pruebas, 0 fallidas, 0 errores y 0 omitidas**, con
+38 informes Surefire y JAR generado. Las **21 pruebas PostgreSQL reales** pasaron: cartera de ventas
+(1), clientes/vendedores (1), operaciones financieras (5), inventario (3), workflow de ventas (5),
+productos/precios (3), repositorio de ventas (1) y movimientos de inventario (2). Las otras 232
+pruebas fueron unitarias, simuladas o JavaFX sobre Windows. `FinancialControllersTest` cargó los FXML
+reales y aprobó 4/4; comprobó claves de reintento de caja y cartera, acceso denegado al trabajador y
+que un abono general no cambie el saldo de una venta. Xvfb no era necesario en Windows.
+
+Las pruebas de PostgreSQL verificaron repetición/concurrencia/rollback de venta, ausencia de salidas
+duplicadas, rollback de pagos/caja/cartera, abonos generales serializados con dos conexiones,
+exclusión mutua del saldo disponible y separación de la facturación respecto a recaudos efectivos.
+`FinancialOperationsPostgresIntegrationTest` creó fixtures con prefijos `C-FIN-`, `S-FIN-` y
+`P-FIN-`, y eliminó solo las filas asociadas a su cliente, vendedor, producto, venta y claves propias.
+Los otros tests también usan sus propias claves/IDs y rutinas de limpieza. No se modificaron datos de
+la base de desarrollo.
+
+Las primeras pruebas dirigidas de pantalla detectaron el atributo `wrapText` inválido en un `HBox`
+de `cash_view.fxml` y un fixture de producto sin sus tres precios obligatorios; se corrigieron y las
+pruebas posteriores pasaron. La revisión adicional encontró que el rol trabajador heredaba permiso
+para crear deuda general desde `REGISTER_CUSTOMER`, y que la fecha editada no se comparaba durante un
+reintento incierto de Caja. Se agregó `REGISTER_GENERAL_DEBT`, solo otorgado por el rol administrador
+actual, y la fecha participa en la huella de la solicitud visual; se cubren ambas reglas con pruebas.
+
+`git diff --check` pasó antes de preparar los commits documentales. Maven mostró seis advertencias
+del modelo efectivo para JavaFX Controls y FXML; JavaFX avisó que se ejecutó desde el módulo no
+nombrado. También se imprimen trazas intencionales de pruebas que simulan errores de consulta; todas
+las pruebas correspondientes aprobaron.
+
+Los once commits de código y pruebas son: `120a5b7` (contrato del libro de caja), `c0eeb09`
+(repositorio/workflow JDBC de caja), `bf7868c` (idempotencia durable de altas de venta), `b7ee846`
+(clave de reintento en la pantalla de ventas), `d1a99fc` (contrato del libro de deuda general),
+`53198ea` (delta atómico JDBC para deuda general), `84ec0b4` (composición de servicios memoria/JDBC),
+`818a3c0` (pruebas PostgreSQL financieras), `14df18e` (cartera y permisos de deuda general),
+`612f753` (pantalla JavaFX de caja) y `5ac6a18` (regresiones JavaFX de caja/cartera). El registro de
+Codex y el estado de publicación se encuentran en `docs/ai-usage/leader-ai-log.md`.
+
+Queda pendiente validar las migraciones V100–V102 en el entorno de despliegue compartido y la
+integración futura de caja con compras/proveedores de Jesús. Usuarios y asignación de vendedores
+siguen en el almacenamiento de autenticación existente. Esta validación fue automatizada con
+PostgreSQL y JavaFX/FXML; no constituye una revisión manual del equipo ni una prueba bancaria o de
+producción.
