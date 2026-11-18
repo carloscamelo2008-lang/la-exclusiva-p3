@@ -84,7 +84,7 @@ class StockMovementRepositoryJdbcPostgresIntegrationTest {
             products.save(product);
             InventoryItem item = new InventoryItem(product);
             item.add(5);
-            inventory.save(item);
+            transactions.inTransaction(() -> inventory.save(item));
             movements.save(new StockMovement(id, MovementType.ENTRY, 5, "Inicial", OCCURRED_AT));
 
             assertSame(abort, assertThrows(IllegalStateException.class, () -> transactions.inTransaction(() -> {

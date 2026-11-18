@@ -11,7 +11,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Consulta existencias y permite insertar filas; los cambios se hacen con ajustes por delta. */
+/**
+ * Consulta existencias e inserta filas iniciales dentro de una transacción activa.
+ * Los cambios posteriores se aplican mediante ajustes atómicos por delta para impedir
+ * que un snapshot antiguo sobrescriba existencias más recientes.
+ */
 public final class InventoryRepositoryJdbc implements InventoryRepository {
     private static final String INVENTORY_SELECT = """
             SELECT p.id, p.name, p.volume_ml, p.units_per_basket, p.container_type,
@@ -37,6 +41,9 @@ public final class InventoryRepositoryJdbc implements InventoryRepository {
     public void save(InventoryItem item) {
         if (item == null) {
             throw new IllegalArgumentException("El inventario es obligatorio.");
+        }
+        if (!transactionManager.isTransactionActive()) {
+            throw new IllegalStateException("Guardar inventario requiere una transacción JDBC activa.");
         }
         String sql = """
                 INSERT INTO inventory_item (product_id, total_units)

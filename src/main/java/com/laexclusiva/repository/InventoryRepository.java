@@ -8,15 +8,15 @@ import java.util.Optional;
 public interface InventoryRepository {
 
     /**
-     * Persiste una fila inicial de inventario.
-     * Las implementaciones JDBC rechazan sobrescribir filas existentes: use
-     * {@link InventoryStockAdjuster} para sumar o descontar unidades sin snapshots obsoletos.
+     * Persiste la fila inicial de inventario. En JDBC requiere una transacción activa
+     * y rechaza sobrescribir filas existentes; para cambios posteriores use
+     * {@link InventoryStockAdjuster}, que aplica deltas sin reutilizar snapshots.
      */
     void save(InventoryItem item);
 
     Optional<InventoryItem> findByProductId(String productId);
 
-    /** Los adaptadores con bloqueo deben exigir una transacción activa. */
+    /** Lee las existencias antes de modificarlas; en JDBC adquiere el bloqueo de fila. */
     default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
         return findByProductId(productId);
     }

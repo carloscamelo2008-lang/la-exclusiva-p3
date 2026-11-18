@@ -24,13 +24,11 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 /** Pruebas opcionales contra la base PostgreSQL dedicada a integración. */
 class InventoryRepositoryJdbcPostgresIntegrationTest {
     @Test
-    void insertsAndUpdatesOneRowPerProductAndReadsZeroStock() {
+    void insertsInitialRowAndRejectsStaleSnapshotWhileReadingZeroStock() {
         JdbcConnectionProvider provider = testProvider();
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         ProductRepositoryJdbc products = new ProductRepositoryJdbc(provider, transactions);
@@ -48,12 +46,16 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
             assertTrue(transactions.inTransaction(() -> inventory.findByProductIdForUpdate(id)).isEmpty());
 
             InventoryItem item = new InventoryItem(product);
-            inventory.save(item);
+            assertThrows(IllegalStateException.class, () -> inventory.save(item));
+            assertEquals(0, countRows(provider, id));
+            transactions.inTransaction(() -> inventory.save(item));
             assertEquals(0, inventory.findByProductId(id).orElseThrow().totalUnits());
             InventoryItem staleSnapshot = inventory.findByProductId(id).orElseThrow();
             adjustments.increaseStock(id, 31);
             staleSnapshot.add(100);
-            assertThrows(IllegalArgumentException.class, () -> inventory.save(staleSnapshot));
+            assertThrows(IllegalArgumentException.class,
+                    () -> transactions.inTransaction(() -> inventory.save(staleSnapshot)));
+            assertEquals(31, inventory.findByProductId(id).orElseThrow().totalUnits());
 
             assertEquals(1, countRows(provider, id));
             assertItem(product, inventory.findByProductId(id).orElseThrow(), 31);
@@ -65,9 +67,17 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    void secondTransactionWaitsUntilFirstCommitsOrRollsBack(boolean commit) throws Exception {
+    @Test
+    void concurrentDiscountsWaitAndApplyToTheLatestCommittedStock() throws Exception {
+        verifyConcurrentDiscounts(true);
+    }
+
+    @Test
+    void waitingDiscountReadsOriginalStockWhenFirstTransactionRollsBack() throws Exception {
+        verifyConcurrentDiscounts(false);
+    }
+
+    private static void verifyConcurrentDiscounts(boolean commit) throws Exception {
         JdbcConnectionProvider provider = testProvider();
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         ProductRepositoryJdbc products = new ProductRepositoryJdbc(provider, transactions);
@@ -83,11 +93,12 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
         try {
             products.save(product);
             InventoryItem initial = new InventoryItem(product);
-            initial.add(3);
-            inventory.save(initial);
+            initial.add(10);
+            transactions.inTransaction(() -> inventory.save(initial));
 
             Runnable first = () -> transactions.inTransaction(() -> {
                 InventoryItem locked = inventory.findByProductIdForUpdate(id).orElseThrow();
+                assertEquals(10, locked.totalUnits());
                 int firstPid = backendPid(provider);
                 secondResult.complete(executor.submit(() -> transactions.inTransaction(() -> {
                     try {
@@ -99,7 +110,11 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
                             return null;
                         });
                         secondPid.complete(backendPid(provider));
-                        return inventory.findByProductIdForUpdate(id).orElseThrow().totalUnits();
+                        InventoryItem waiting = inventory.findByProductIdForUpdate(id).orElseThrow();
+                        int observedStock = waiting.totalUnits();
+                        waiting.remove(2);
+                        inventory.save(waiting);
+                        return observedStock;
                     } catch (RuntimeException | Error failure) {
                         secondPid.completeExceptionally(failure);
                         throw failure;
@@ -108,7 +123,7 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
                 int waitingPid = assertDoesNotThrow(() -> secondPid.get(5, TimeUnit.SECONDS));
                 awaitBlockedBy(provider, waitingPid, firstPid);
                 assertFalse(secondResult.join().isDone());
-                adjustments.increaseStock(id, 4);
+                adjustments.decreaseStock(id, 3);
                 if (!commit) {
                     throw abort;
                 }
@@ -119,9 +134,9 @@ class InventoryRepositoryJdbcPostgresIntegrationTest {
             } else {
                 assertSame(abort, assertThrows(IllegalStateException.class, first::run));
             }
-            int expected = commit ? 7 : 3;
-            assertEquals(expected, secondResult.join().get(10, TimeUnit.SECONDS).intValue());
-            assertEquals(expected, inventory.findByProductId(id).orElseThrow().totalUnits());
+            int expectedObserved = commit ? 7 : 10;
+            assertEquals(expectedObserved, secondResult.join().get(10, TimeUnit.SECONDS).intValue());
+            assertEquals(expectedObserved - 2, inventory.findByProductId(id).orElseThrow().totalUnits());
         } finally {
             executor.shutdownNow();
             try {
