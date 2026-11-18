@@ -13,12 +13,15 @@ class DatabaseConfigTest {
     @Test
     void loadsDevelopmentConfigurationFromMap() {
         DatabaseConfig config = DatabaseConfig.fromEnvironment(Map.of(
-                DatabaseConfig.URL_ENV, URL,
+                DatabaseConfig.URL_ENV, URL + "?user=usuarioDeUrl&password=claveDeUrl",
                 DatabaseConfig.USER_ENV, "postgres",
                 DatabaseConfig.PASSWORD_ENV, "secretoLocal"));
-        assertEquals(URL, config.getUrl());
+        assertEquals(URL + "?user=usuarioDeUrl&password=claveDeUrl", config.getUrl());
         assertEquals("postgres", config.getUser());
         assertEquals("secretoLocal", config.getPassword());
+        assertFalse(config.toString().contains("postgres"));
+        assertFalse(config.toString().contains("usuarioDeUrl"));
+        assertFalse(config.toString().contains("claveDeUrl"));
         assertFalse(config.toString().contains("secretoLocal"), "No revelar la contraseña en logs.");
     }
 

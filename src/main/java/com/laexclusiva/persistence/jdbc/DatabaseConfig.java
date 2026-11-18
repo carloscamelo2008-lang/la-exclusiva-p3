@@ -107,9 +107,9 @@ public final class DatabaseConfig {
     public String getUser() { return user; }
     public String getPassword() { return password; }
 
-    /** Evita exponer la contraseña si la configuración aparece en un log. */
+    /** Oculta la URL y las credenciales al registrar la configuración. */
     @Override
     public String toString() {
-        return "DatabaseConfig{url='" + url + "', user='" + user + "', password='[PROTEGIDA]'}";
+        return "DatabaseConfig{url=[PROTEGIDA], user=[PROTEGIDO], password=[PROTEGIDA]}";
     }
 }

@@ -10,12 +10,14 @@ import java.util.function.Supplier;
  */
 public final class JdbcTransactionManager {
     private final JdbcConnectionProvider connectionProvider;
+    private final JdbcConnectionContext connectionContext;
 
     public JdbcTransactionManager(JdbcConnectionProvider connectionProvider) {
         if (connectionProvider == null) {
             throw new IllegalArgumentException("El proveedor JDBC es obligatorio.");
         }
         this.connectionProvider = connectionProvider;
+        this.connectionContext = connectionProvider.connectionContext();
     }
 
     /**
@@ -32,21 +34,21 @@ public final class JdbcTransactionManager {
             throw new IllegalArgumentException("La operación transaccional es obligatoria.");
         }
 
-        if (connectionProvider.hasActiveTransaction()) {
+        if (connectionContext.hasActiveTransaction()) {
             try {
                 return operation.get();
             } catch (RuntimeException | Error failure) {
-                connectionProvider.markRollbackOnly();
+                connectionContext.markRollbackOnly();
                 throw failure;
             }
         }
 
         try (Connection connection = connectionProvider.openConnection()) {
             connection.setAutoCommit(false);
-            connectionProvider.bindTransaction(connection);
+            connectionContext.bindTransaction(connection);
             try {
                 T result = operation.get();
-                if (connectionProvider.isRollbackOnly()) {
+                if (connectionContext.isRollbackOnly()) {
                     throw new JdbcPersistenceException(
                             "La transacción fue marcada para reversión por una operación interna.");
                 }
@@ -59,7 +61,7 @@ public final class JdbcTransactionManager {
                 rollback(connection, failure);
                 throw new JdbcPersistenceException("No se pudo confirmar la transacción PostgreSQL.", failure);
             } finally {
-                connectionProvider.clearTransaction();
+                connectionContext.clearTransaction();
             }
         } catch (SQLException failure) {
             throw new JdbcPersistenceException("No se pudo abrir o cerrar la conexión transaccional.", failure);
@@ -73,7 +75,7 @@ public final class JdbcTransactionManager {
      * @return true cuando existe una transacción activa en el hilo actual
      */
     public boolean isTransactionActive() {
-        return connectionProvider.hasActiveTransaction();
+        return connectionContext.hasActiveTransaction();
     }
 
     /** Variante para operaciones que no necesitan devolver un resultado. */
