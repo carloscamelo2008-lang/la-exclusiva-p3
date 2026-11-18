@@ -18,7 +18,7 @@
         <ComboBox fx:id="productCombo" promptText="Producto" prefWidth="240.0" />
         <ComboBox fx:id="presentationCombo" promptText="Presentación" prefWidth="150.0" />
         <TextField fx:id="quantityField" promptText="Cantidad" prefWidth="90.0" />
-        <Button text="Agregar línea" onAction="#handleAddLine" />
+        <Button fx:id="addLineButton" text="Agregar línea" onAction="#handleAddLine" />
         <Button text="Quitar seleccionada" onAction="#handleRemoveLine" />
     </HBox>
     <TableView fx:id="cartTable" prefHeight="170.0">
@@ -35,10 +35,13 @@
         <ComboBox fx:id="customerCombo" promptText="Cliente (requerido para crédito)" prefWidth="230.0" />
         <TextField fx:id="initialPaymentField" promptText="Pago inicial (COP)" prefWidth="150.0" />
         <Label fx:id="totalLabel" text="Total: $ 0,00" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
-        <Button text="Registrar venta" onAction="#handleRegisterSale" />
+        <Button fx:id="registerSaleButton" text="Registrar venta" onAction="#handleRegisterSale" />
     </HBox>
     <Label fx:id="messageLabel" wrapText="true" style="-fx-text-fill: #1f5c37;" />
-    <Label text="Ventas registradas" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
+    <HBox spacing="8.0" alignment="CENTER_LEFT">
+        <Label text="Ventas registradas" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
+        <Button fx:id="refreshHistoryButton" text="Actualizar historial" onAction="#handleRefreshHistory" />
+    </HBox>
     <TableView fx:id="historyTable" VBox.vgrow="ALWAYS">
         <columns>
             <TableColumn fx:id="historyIdColumn" text="Venta" prefWidth="330.0" />

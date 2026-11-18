@@ -6,9 +6,11 @@ import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SaleLine;
 import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
+import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.StockRequest;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.model.UserRole;
+import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
@@ -57,6 +59,8 @@ public class SalesController {
     private SalesWorkflow sales;
     private boolean canViewAllSales;
     private String assignedSellerId;
+    private UserSession session;
+    private final AuthorizationService authorizationService = new AuthorizationService();
 
     @FXML
     private void initialize() {
@@ -83,7 +87,8 @@ public class SalesController {
     }
 
     /**
-     * Carga servicios, catálogo, clientes, vendedores y sesión autenticada.
+     * Carga servicios, catálogo, clientes, vendedores y sesión autenticada. La sesión es la fuente
+     * de permisos y de la asignación de vendedor; el controlador vuelve a comprobarla al registrar.
      *
      * @param products servicio del catálogo
      * @param inventory servicio de existencias
@@ -91,41 +96,52 @@ public class SalesController {
      * @param sellers servicio de vendedores
      * @param sales flujo de venta y abono según la composición activa
      * @param session sesión autenticada que define permisos y vendedor asignado
-     * @param canViewSellers indica si el usuario puede seleccionar y consultar vendedores
      * @throws IllegalArgumentException si falta una dependencia obligatoria
      */
     public void configure(ProductService products, InventoryService inventory, CustomerService customers,
-                          SellerService sellers, SalesWorkflow sales, UserSession session,
-                          boolean canViewSellers) {
+                          SellerService sellers, SalesWorkflow sales, UserSession session) {
         this.products = require(products);
         this.inventory = require(inventory);
         this.customers = require(customers);
         this.sellers = require(sellers);
         this.sales = require(sales);
-        UserSession activeSession = require(session);
-        this.canViewAllSales = activeSession.getUserAccount().getRole() == UserRole.ADMINISTRATOR;
-        this.assignedSellerId = activeSession.getUserAccount().getSellerId();
+        this.session = require(session);
+        this.canViewAllSales = session.getUserAccount().getRole() == UserRole.ADMINISTRATOR;
+        this.assignedSellerId = session.getUserAccount().getSellerId();
         productCombo.getItems().setAll(products.listAll());
         productCombo.setConverter(converter(product -> product + " · "
                 + inventory.getStock(product.getId()).totalUnits() + " u"));
         customerCombo.getItems().setAll(customers.getAllCustomers());
         List<Seller> availableSellers = sellers.getAllSellers();
+        boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
         if (canViewSellers) {
             sellerCombo.getItems().setAll(availableSellers);
+            sellerCombo.setDisable(false);
         } else if (assignedSellerId != null) {
-            sellerCombo.getItems().setAll(availableSellers.stream()
-                    .filter(seller -> assignedSellerId.equals(seller.getId())).toList());
+            List<Seller> assigned = availableSellers.stream()
+                    .filter(seller -> assignedSellerId.equals(seller.getId())).toList();
+            sellerCombo.getItems().setAll(assigned);
             sellerCombo.setDisable(true);
+            if (assigned.isEmpty()) {
+                messageLabel.setText("El vendedor asignado a la cuenta no existe en el registro; solicite su corrección.");
+            } else {
+                sellerCombo.setValue(assigned.get(0));
+            }
         } else {
             sellerCombo.getItems().clear();
             sellerCombo.setDisable(true);
-            messageLabel.setText("La cuenta no tiene un vendedor asignado; solicite la asignación al administrador.");
+            messageLabel.setText("La cuenta no tiene vendedor asignado; solicite la asignación al administrador.");
         }
         if (canViewSellers && assignedSellerId != null) {
             sellerCombo.getItems().stream().filter(seller -> assignedSellerId.equals(seller.getId()))
                     .findFirst().ifPresent(sellerCombo::setValue);
         }
-        refreshHistory();
+        try {
+            refreshHistory();
+        } catch (RuntimeException failure) {
+            historyTable.getItems().clear();
+            messageLabel.setText("No se pudo consultar el historial de ventas. Use Actualizar historial para reintentar.");
+        }
         refreshTotal();
     }
 
@@ -156,26 +172,61 @@ public class SalesController {
 
     @FXML
     private void handleRegisterSale() {
+        Sale saved;
         try {
+            requirePermission(Permission.REGISTER_SALE, "No tiene permiso para registrar ventas.");
+            requirePermission(Permission.VIEW_SALES, "No tiene permiso para consultar las ventas.");
             if (cartTable.getItems().isEmpty()) {
                 throw new IllegalArgumentException("Agregue al menos un producto.");
             }
             Seller seller = require(sellerCombo.getValue());
+            if (!isAuthorizedSeller(seller)) {
+                throw new SecurityException("La venta debe registrarse con el vendedor asignado a la sesión.");
+            }
             Customer customer = customerCombo.getValue();
             BigDecimal initialPayment = new BigDecimal(initialPaymentField.getText().trim());
             List<StockRequest> requests = cartTable.getItems().stream().map(CartLine::request).toList();
-            Sale saved = sales.registerSale(requests, seller.getId(),
+            saved = sales.registerSale(requests, seller.getId(),
                     customer == null ? null : customer.getId(), initialPayment);
-            String persistence = sales.supportsDurableIdempotency() ? "PostgreSQL" : "memoria";
-            messageLabel.setText("Venta guardada en " + persistence + ": " + saved.getId()
-                    + " · saldo " + money(saved.calculateBalance()));
-            cartTable.getItems().clear();
-            initialPaymentField.setText("0");
-            customerCombo.getItems().setAll(customers.getAllCustomers());
-            refreshHistory();
-            refreshTotal();
+        } catch (IllegalArgumentException | SecurityException rejected) {
+            messageLabel.setText("Venta no registrada: " + safeMessage(rejected) + " El carrito se conserva.");
+            return;
         } catch (RuntimeException failure) {
-            messageLabel.setText("La venta no se registró: " + safeMessage(failure));
+            messageLabel.setText("No se pudo confirmar el resultado de la venta: " + safeMessage(failure)
+                    + " El carrito se conserva. Revise el historial antes de reintentar; la creación de ventas "
+                    + "no tiene clave de idempotencia.");
+            return;
+        }
+        String persistence = sales.supportsDurableIdempotency() ? "PostgreSQL" : "memoria";
+        messageLabel.setText("Venta registrada en " + persistence + ": " + saved.getId()
+                + " · saldo " + money(saved.calculateBalance()));
+        cartTable.getItems().clear();
+        initialPaymentField.setText("0");
+        refreshTotal();
+        try {
+            customerCombo.getItems().setAll(customers.getAllCustomers());
+        } catch (RuntimeException failure) {
+            messageLabel.setText("Venta registrada: " + saved.getId()
+                    + ". No se pudo actualizar la lista de clientes; la venta no se repetirá.");
+        }
+        try {
+            refreshHistory();
+        } catch (RuntimeException failure) {
+            historyTable.getItems().clear();
+            messageLabel.setText("Venta registrada: " + saved.getId()
+                    + ". No se pudo actualizar el historial; use Actualizar historial sin volver a registrar.");
+        }
+    }
+
+    @FXML
+    private void handleRefreshHistory() {
+        try {
+            requirePermission(Permission.VIEW_SALES, "No tiene permiso para consultar las ventas.");
+            refreshHistory();
+            messageLabel.setText("Historial actualizado.");
+        } catch (RuntimeException failure) {
+            historyTable.getItems().clear();
+            messageLabel.setText("No se pudo actualizar el historial: " + safeMessage(failure));
         }
     }
 
@@ -194,6 +245,16 @@ public class SalesController {
         BigDecimal total = cartTable.getItems().stream().map(line -> line.line().getSubtotal())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         totalLabel.setText("Total: " + money(total));
+    }
+
+    private void requirePermission(Permission permission, String message) {
+        if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
+    }
+
+    private boolean isAuthorizedSeller(Seller seller) {
+        if (session.getUserAccount().getRole() == UserRole.ADMINISTRATOR) return true;
+        if (assignedSellerId == null || !assignedSellerId.equals(seller.getId())) return false;
+        return sellers.getAllSellers().stream().anyMatch(candidate -> assignedSellerId.equals(candidate.getId()));
     }
 
     private static String money(BigDecimal amount) {

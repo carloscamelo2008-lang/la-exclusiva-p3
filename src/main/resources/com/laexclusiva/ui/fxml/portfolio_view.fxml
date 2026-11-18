@@ -33,6 +33,7 @@
     </TableView>
     <HBox spacing="12.0">
         <ComboBox fx:id="customerCombo" promptText="Cliente" prefWidth="220.0" />
+        <Button fx:id="refreshPortfolioButton" text="Actualizar cartera" onAction="#handleRefreshPortfolio" />
         <Label fx:id="salesDebtLabel" text="Deuda de ventas: —" />
         <Label fx:id="generalDebtLabel" text="Deuda general: —" />
     </HBox>
@@ -47,7 +48,7 @@
     </TableView>
     <HBox fx:id="paymentPane" spacing="8.0">
         <TextField fx:id="paymentAmountField" promptText="Abono (COP)" prefWidth="150.0" />
-        <Button text="Registrar abono" onAction="#handleRegisterPayment" />
+        <Button fx:id="registerPaymentButton" text="Registrar abono" onAction="#handleRegisterPayment" />
     </HBox>
     <Label fx:id="modeLabel" wrapText="true" />
     <Label fx:id="messageLabel" wrapText="true" />

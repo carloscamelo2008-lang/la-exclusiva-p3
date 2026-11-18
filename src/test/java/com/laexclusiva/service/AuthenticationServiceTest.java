@@ -144,7 +144,8 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
             loader.load();
             InventoryController controller = loader.getController();
-            controller.configure(services.products(), services.inventory(), true, true);
+            controller.configure(services.products(), services.inventory(),
+                    new UserSession(new UserAccount(1L, "admin", "unused", UserRole.ADMINISTRATOR, null)));
             setText(loader, "productIdField", "UI-CATALOG-TEST");
             setText(loader, "productNameField", "Producto de interfaz");
             setText(loader, "volumeField", "330");
@@ -176,7 +177,7 @@ public class AuthenticationServiceTest {
             UserSession unassignedWorker = new UserSession(
                     new UserAccount(2L, "worker", "unused", UserRole.WORKER, null));
             unassignedController.configure(services.products(), services.inventory(), services.customers(),
-                    services.sellers(), services.sales(), unassignedWorker, false);
+                    services.sellers(), services.sales(), unassignedWorker);
             ComboBox<?> unassignedSellers = (ComboBox<?>) unassignedLoader.getNamespace().get("sellerCombo");
             assertTrue(unassignedSellers.isDisabled());
             assertTrue(unassignedSellers.getItems().isEmpty());
@@ -188,11 +189,38 @@ public class AuthenticationServiceTest {
             UserSession worker = new UserSession(
                     new UserAccount(3L, "assigned-worker", "unused", UserRole.WORKER, assignedSeller.getId()));
             assignedController.configure(services.products(), services.inventory(), services.customers(),
-                    services.sellers(), services.sales(), worker, false);
+                    services.sellers(), services.sales(), worker);
             ComboBox<?> sellerOptions = (ComboBox<?>) assignedLoader.getNamespace().get("sellerCombo");
             assertTrue(sellerOptions.isDisabled());
             assertEquals(1, sellerOptions.getItems().size());
             assertEquals(assignedSeller.getId(), ((Seller) sellerOptions.getItems().get(0)).getId());
+            assertEquals(assignedSeller.getId(), ((Seller) sellerOptions.getValue()).getId(),
+                    "El vendedor asignado debe quedar seleccionado automáticamente.");
+
+            FXMLLoader unknownLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            unknownLoader.load();
+            SalesController unknownController = unknownLoader.getController();
+            UserSession unknownWorker = new UserSession(
+                    new UserAccount(4L, "unknown-worker", "unused", UserRole.WORKER, "SELLER-NOT-REGISTERED"));
+            unknownController.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), services.sales(), unknownWorker);
+            ComboBox<?> unknownSellers = (ComboBox<?>) unknownLoader.getNamespace().get("sellerCombo");
+            assertTrue(unknownSellers.isDisabled());
+            assertTrue(unknownSellers.getItems().isEmpty());
+            assertTrue(((Label) unknownLoader.getNamespace().get("messageLabel")).getText()
+                    .contains("no existe"));
+
+            FXMLLoader adminLoader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            adminLoader.load();
+            SalesController adminController = adminLoader.getController();
+            adminController.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), services.sales(),
+                    new UserSession(new UserAccount(5L, "admin", "unused", UserRole.ADMINISTRATOR, null)));
+            ComboBox<?> adminSellers = (ComboBox<?>) adminLoader.getNamespace().get("sellerCombo");
+            assertFalse(adminSellers.isDisabled());
+            assertEquals(2, adminSellers.getItems().size(), "El administrador conserva la selección de todos los vendedores.");
             return null;
         });
         Platform.runLater(checkPermissions);

@@ -5,6 +5,9 @@ import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.StockMovement;
 import com.laexclusiva.model.StockSnapshot;
 import com.laexclusiva.model.SalePresentation;
+import com.laexclusiva.model.Permission;
+import com.laexclusiva.model.UserSession;
+import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
 import java.time.format.DateTimeFormatter;
@@ -53,6 +56,8 @@ public class InventoryController {
 
     private ProductService products;
     private InventoryService inventory;
+    private UserSession session;
+    private final AuthorizationService authorizationService = new AuthorizationService();
 
     @FXML
     private void initialize() {
@@ -79,15 +84,24 @@ public class InventoryController {
         });
     }
 
-    /** Configura dependencias, permiso de catálogo y permiso de entrada de inventario. */
-    public void configure(ProductService products, InventoryService inventory,
-                          boolean canManageProducts, boolean canManageEntries) {
+    /** Configura dependencias y calcula controles visibles a partir de la sesión actual.
+     *
+     * @param products catálogo de productos
+     * @param inventory consulta y escritura de existencias
+     * @param session sesión autenticada que determina los permisos de catálogo e inventario
+     * @throws IllegalArgumentException si falta una dependencia o la sesión
+     */
+    public void configure(ProductService products, InventoryService inventory, UserSession session) {
         if (products == null || inventory == null) {
             throw new IllegalArgumentException("Los servicios de producto e inventario son obligatorios.");
         }
+        if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         this.products = products;
         this.inventory = inventory;
+        this.session = session;
         productCombo.getItems().setAll(products.listAll());
+        boolean canManageEntries = authorizationService.hasPermission(session, Permission.MANAGE_INVENTORY_ENTRIES);
+        boolean canManageProducts = authorizationService.hasPermission(session, Permission.MANAGE_PRODUCTS);
         stockEntryPane.setVisible(canManageEntries);
         stockEntryPane.setManaged(canManageEntries);
         productRegistrationPane.setVisible(canManageProducts);
@@ -99,6 +113,7 @@ public class InventoryController {
     @FXML
     private void handleRegisterProduct() {
         try {
+            requirePermission(Permission.MANAGE_PRODUCTS, "No tiene permiso para modificar el catálogo.");
             ContainerType containerType = productType();
             BeerProduct product = new BeerProduct(productIdField.getText().trim(), productNameField.getText().trim(),
                     Integer.parseInt(volumeField.getText().trim()),
@@ -128,6 +143,8 @@ public class InventoryController {
     @FXML
     private void handleAddStock() {
         try {
+            requirePermission(Permission.MANAGE_INVENTORY_ENTRIES,
+                    "No tiene permiso para registrar entradas de inventario.");
             BeerProduct product = productCombo.getValue();
             if (product == null) throw new IllegalArgumentException("Seleccione un producto.");
             int baskets = parseNonNegative(fullBasketsField.getText(), "canastas");
@@ -141,6 +158,10 @@ public class InventoryController {
         } catch (RuntimeException failure) {
             messageLabel.setText("No se registró la entrada: " + safeMessage(failure));
         }
+    }
+
+    private void requirePermission(Permission permission, String message) {
+        if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
     }
 
     private void refresh() {

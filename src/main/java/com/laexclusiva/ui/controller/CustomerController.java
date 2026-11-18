@@ -1,6 +1,9 @@
 package com.laexclusiva.ui.controller;
 
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.Permission;
+import com.laexclusiva.model.UserSession;
+import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.CustomerService;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.fxml.FXML;
@@ -28,6 +31,8 @@ public class CustomerController {
     @FXML private Label messageLabel;
 
     private CustomerService customerService;
+    private UserSession session;
+    private final AuthorizationService authorizationService = new AuthorizationService();
 
     @FXML
     private void initialize() {
@@ -42,10 +47,18 @@ public class CustomerController {
         customersTable.getItems().setAll(customers);
     }
 
-    /** Habilita el alta cuando el rol tiene permiso de registro de clientes. */
-    public void configure(CustomerService service, boolean canRegister) {
+    /** Configura el servicio y deriva la visibilidad y autorización del alta de la sesión activa.
+     *
+     * @param service servicio de clientes
+     * @param session sesión autenticada
+     * @throws IllegalArgumentException si falta el servicio o la sesión
+     */
+    public void configure(CustomerService service, UserSession session) {
         if (service == null) throw new IllegalArgumentException("El servicio de clientes es obligatorio.");
+        if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         customerService = service;
+        this.session = session;
+        boolean canRegister = authorizationService.hasPermission(session, Permission.REGISTER_CUSTOMER);
         registrationPane.setVisible(canRegister);
         registrationPane.setManaged(canRegister);
     }
@@ -53,6 +66,7 @@ public class CustomerController {
     @FXML
     private void handleRegisterCustomer() {
         try {
+            requirePermission(Permission.REGISTER_CUSTOMER, "No tiene permiso para registrar clientes.");
             customerService.registerCustomer(idField.getText(), nameField.getText(),
                     phoneField.getText(), addressField.getText());
             messageLabel.setText("Cliente registrado.");
@@ -64,6 +78,10 @@ public class CustomerController {
         } catch (RuntimeException failure) {
             messageLabel.setText("No se registró el cliente: " + safeMessage(failure));
         }
+    }
+
+    private void requirePermission(Permission permission, String message) {
+        if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
     }
 
     private static String safeMessage(Throwable failure) {

@@ -45,7 +45,7 @@
         <TextField fx:id="fullBasketsField" text="0" promptText="Canastas" prefWidth="95.0" />
         <TextField fx:id="looseUnitsField" text="0" promptText="Unidades sueltas" prefWidth="120.0" />
         <TextField fx:id="reasonField" promptText="Motivo de entrada" prefWidth="220.0" />
-        <Button text="Registrar entrada" onAction="#handleAddStock" />
+        <Button fx:id="registerStockButton" text="Registrar entrada" onAction="#handleAddStock" />
     </HBox>
     <Label fx:id="messageLabel" wrapText="true" />
     <Label text="Movimientos de inventario" style="-fx-font-size: 17px; -fx-font-weight: bold;" />

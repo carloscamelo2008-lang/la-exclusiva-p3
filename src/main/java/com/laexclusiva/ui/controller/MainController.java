@@ -104,8 +104,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/customers_view.fxml"));
             Node customerView = loader.load();
             CustomerController controller = loader.getController();
-            controller.configure(customerService,
-                    authorizationService.hasPermission(currentSession, Permission.REGISTER_CUSTOMER));
+            controller.configure(customerService, currentSession);
             controller.showCustomers(customerService.getAllCustomers());
             rootPane.setCenter(customerView);
             selectNavigation(btnCustomers);
@@ -128,8 +127,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/sellers_view.fxml"));
             Node sellerView = loader.load();
             SellerController controller = loader.getController();
-            controller.configure(sellerService,
-                    authorizationService.hasPermission(currentSession, Permission.REGISTER_SELLERS));
+            controller.configure(sellerService, currentSession);
             controller.showSellers(sellerService.getAllSellers());
             rootPane.setCenter(sellerView);
             selectNavigation(btnSellers);
@@ -152,8 +150,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/portfolio_view.fxml"));
             Node portfolioView = loader.load();
             PortfolioController controller = loader.getController();
-            controller.configure(customerService, salesWorkflow,
-                    authorizationService.hasPermission(currentSession, Permission.REGISTER_PAYMENT));
+            controller.configure(customerService, salesWorkflow, currentSession);
             controller.showPortfolio(customerService.getAllCustomers());
             rootPane.setCenter(portfolioView);
             selectNavigation(btnCredit);
@@ -178,8 +175,7 @@ public class MainController {
             Node view = loader.load();
             SalesController controller = loader.getController();
             controller.configure(productService, inventoryService, customerService,
-                    sellerService, salesWorkflow, currentSession,
-                    authorizationService.hasPermission(currentSession, Permission.VIEW_SELLERS));
+                    sellerService, salesWorkflow, currentSession);
             rootPane.setCenter(view);
             selectNavigation(btnSales);
             navigationMessage.setText("");
@@ -201,9 +197,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
             Node view = loader.load();
             InventoryController controller = loader.getController();
-            controller.configure(productService, inventoryService,
-                    authorizationService.hasPermission(currentSession, Permission.MANAGE_PRODUCTS),
-                    authorizationService.hasPermission(currentSession, Permission.MANAGE_INVENTORY_ENTRIES));
+            controller.configure(productService, inventoryService, currentSession);
             rootPane.setCenter(view);
             selectNavigation(btnInventory);
             navigationMessage.setText("");

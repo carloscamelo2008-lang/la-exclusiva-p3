@@ -1,6 +1,9 @@
 package com.laexclusiva.ui.controller;
 
 import com.laexclusiva.model.Seller;
+import com.laexclusiva.model.Permission;
+import com.laexclusiva.model.UserSession;
+import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.SellerService;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.fxml.FXML;
@@ -27,6 +30,8 @@ public class SellerController {
     @FXML private Label messageLabel;
 
     private SellerService sellerService;
+    private UserSession session;
+    private final AuthorizationService authorizationService = new AuthorizationService();
 
     @FXML
     private void initialize() {
@@ -41,10 +46,18 @@ public class SellerController {
         sellersTable.getItems().setAll(sellers);
     }
 
-    /** Habilita el alta de vendedores únicamente para roles autorizados. */
-    public void configure(SellerService service, boolean canRegister) {
+    /** Configura el servicio y deriva la visibilidad y autorización del alta de la sesión activa.
+     *
+     * @param service servicio de vendedores
+     * @param session sesión autenticada
+     * @throws IllegalArgumentException si falta el servicio o la sesión
+     */
+    public void configure(SellerService service, UserSession session) {
         if (service == null) throw new IllegalArgumentException("El servicio de vendedores es obligatorio.");
+        if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         sellerService = service;
+        this.session = session;
+        boolean canRegister = authorizationService.hasPermission(session, Permission.REGISTER_SELLERS);
         registrationPane.setVisible(canRegister);
         registrationPane.setManaged(canRegister);
     }
@@ -52,6 +65,7 @@ public class SellerController {
     @FXML
     private void handleRegisterSeller() {
         try {
+            requirePermission(Permission.REGISTER_SELLERS, "No tiene permiso para registrar vendedores.");
             sellerService.registerSeller(nameField.getText(), phoneField.getText(), addressField.getText());
             messageLabel.setText("Vendedor registrado.");
             nameField.clear();
@@ -61,6 +75,10 @@ public class SellerController {
         } catch (RuntimeException failure) {
             messageLabel.setText("No se registró el vendedor: " + safeMessage(failure));
         }
+    }
+
+    private void requirePermission(Permission permission, String message) {
+        if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
     }
 
     private static String safeMessage(Throwable failure) {
