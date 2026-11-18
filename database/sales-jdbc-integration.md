@@ -735,7 +735,7 @@ el administrador dispone de permisos de consulta y escritura. La configuración 
 `V101__general_debt_ledger.sql` crea el historial de deuda general. `V102__cash_ledger.sql` crea el
 libro de caja y sus reglas de clasificación/unicidad. Ambas se aplicaron manualmente, sin limpieza,
 después de comprobar que sus tablas no existían en `la_exclusiva_test`. No se ejecutan al arrancar
-Maven ni la aplicación. La ruta segura de despliegue es V001, V002, V100, V101 y V102 una sola vez,
+Maven ni la aplicación. La ruta segura de despliegue es V001, V002, V100, V101, V102 y V103 una sola vez,
 tras respaldar/revisar el entorno y comprobar la inexistencia de las tablas/columnas añadidas.
 
 El modo `memory` conserva ventas y permite una demostración de cartera/caja en proceso; sus claves y
@@ -846,3 +846,62 @@ Una ejecución dirigida inicial encontró únicamente una aserción que esperaba
 del mensaje de autorización; se ajustó al texto español real y la suite dirigida y completa pasaron.
 Persisten las advertencias conocidas de Maven/JavaFX. Los commits de corrección y regresiones son
 `299c0fe` y `8b76009`; el nuevo HEAD se publicó en el PR #20 y se solicitó revisión a Daniel y Jesús.
+
+## Observaciones de revisión de ventas, cartera y V100 (2026-11-18)
+
+`SalesController.handleRegisterSale()` trata `InsufficientStockException` como rechazo definitivo:
+conserva el carrito y, si no había un intento incierto previo, renueva la clave antes de permitir una
+carga corregida. `SaleService` deja que `InventoryService.discountSale()` realice la comprobación
+completa previa a cualquier descuento y propague esa excepción tipada. Los fallos técnicos siguen
+conservando clave/huella para reintentar exactamente la misma solicitud. Si ya existía una solicitud
+incierta, un rechazo de stock en el reintento no libera ni renueva su clave: no prueba por sí solo qué
+ocurrió con la llamada original.
+
+En `PortfolioController`, el alta y el abono a deuda general conservan el mensaje de escritura
+confirmada aun cuando `showPortfolio()` informe el fallo mediante `lastQuerySucceeded=false`. Si falla
+una lectura, se vacían tablas y saldos como no disponibles y se muestra aparte la advertencia con la
+acción «Actualizar cartera». Esa acción sigue siendo solo de lectura; las claves se renuevan después
+de la confirmación, nunca se vuelve a aplicar la escritura durante un refresco.
+
+La inspección de solo lectura de PostgreSQL encontró una necesidad concreta en V100: el `CHECK`
+anterior omitía `request_fingerprint IS NOT NULL`. En PostgreSQL una expresión de `CHECK` que resulta
+`NULL` no rechaza la fila, por lo que esa versión permitía clave no nula con huella nula. El archivo
+V100 ahora exige ambas columnas conjuntamente. V103 vuelve a definir y validar el `CHECK` para bases
+donde V100 ya se aplicó; no transforma filas y falla de forma transaccional si encuentra identidades
+incompletas. El catálogo local confirmó una fila histórica con ambas columnas nulas y cero filas con
+identidad parcial o huella inválida.
+
+**V103 no se ejecutó.** El esquema persistente de `la_exclusiva_test` aún conserva la definición
+anterior de V100, porque Carlos indicó que no se ejecuten migraciones nuevas sin autorización. Para
+evitar alterar el esquema, `SaleRequestIdentityPostgresIntegrationTest` comprobó restricciones SQL
+en una tabla temporal de PostgreSQL dentro de una transacción revertida: acepta varias filas
+históricas con ambas columnas nulas; rechaza claves repetidas (SQLSTATE `23505`), pares incompletos
+y huellas inválidas (SQLSTATE `23514`). La prueba también verifica el texto de V100/V103. Las pruebas
+de workflow existentes cubren replay exacto, rechazo de la misma clave con solicitud distinta y
+recuperación de la venta original.
+
+`FinancialOperationsPostgresIntegrationTest` agrega un fallo después de guardar el recibo inicial y
+aplicar el delta de stock. PostgreSQL confirma rollback de venta/clave, línea, pago inicial, salida de
+inventario, saldo y caja; el reintento posterior crea exactamente un conjunto de efectos. Los
+fixtures usan el vendedor/producto/cliente exclusivos de cada prueba y la limpieza sigue limitada a
+ellos.
+
+Validación final de esta revisión: Microsoft JDK **17.0.18**, Maven **3.10.0**, PostgreSQL **18.6**,
+`mvn clean verify`: **BUILD SUCCESS, 263 pruebas, 0 fallidas, 0 errores y 0 omitidas**. Se ejecutaron
+**23 pruebas PostgreSQL reales**: cartera (1), clientes/vendedores (1), operaciones financieras (6),
+inventario (3), workflow de ventas (5), productos (3), repositorio de ventas (1), identidad de V100
+(1) y movimientos de inventario (2). Las 240 restantes fueron pruebas simuladas, JavaFX o unitarias.
+Las suites dirigidas de `ControllerReviewRegressionTest` (9), `FinancialControllersTest` (10),
+`FinancialOperationsPostgresIntegrationTest` (6) y `SaleRequestIdentityPostgresIntegrationTest` (1)
+sumaron 26/26; `SaleServiceTest` pasó 16/16 tras actualizar la expectativa al rechazo tipado.
+
+La primera ejecución completa encontró solo esa expectativa obsoleta de `IllegalStateException`; se
+actualizó al contrato `InsufficientStockException` y la ejecución completa posterior terminó sin
+omisiones. `git diff --check` pasó. No se ejecutaron migraciones, `DROP`, `TRUNCATE`, ni se usó
+`la_exclusiva`; no se imprimieron credenciales. Maven conserva advertencias conocidas del modelo
+JavaFX y JavaFX avisa que las clases corren en un módulo no nombrado. La validación de SQL corregido
+usa una tabla temporal: aplicar V103 al esquema persistente requiere autorización explícita.
+
+Commits asociados: `2e21a3f` (rechazo de stock definitivo y contrato), `8a7a4a0` (confirmación de
+cartera tras error de consulta), `a2772ee` (corrección V100 y upgrade V103), `dd678fa` (regresiones
+JavaFX/PostgreSQL y rollback integral) y `818831f` (expectativa del rechazo tipado en `SaleServiceTest`).

@@ -513,9 +513,14 @@ sumar pagos por joins, y se presenta como métrica distinta al efectivo recibido
 ingresos y no interpreta ventas pendientes como recaudo.
 
 Migraciones nuevas y exclusivas de la rama: V100 (clave/huella de venta), V101 (libro auditable de
-deuda general) y V102 (libro de caja). Se aplicaron manualmente solo en `la_exclusiva_test` luego de
-verificar columnas/tablas ausentes. Ninguna se ejecuta automáticamente. El entorno destino debe
-revisar el SQL y aplicar cada versión una sola vez después de V001/V002.
+deuda general), V102 (libro de caja) y V103 (refuerzo del `CHECK` de identidad de venta para bases
+donde V100 ya se aplicó). V100/V101/V102 se aplicaron manualmente solo en `la_exclusiva_test` luego
+de verificar columnas/tablas ausentes. V103 está creada, pero no se ha ejecutado; la definición ya
+aplicada en esa base todavía permite una clave no nula con huella nula por la semántica `CHECK` de
+PostgreSQL. La comprobación SQL corregida se ejecuta sobre una tabla temporal y se revierte. Ninguna
+migración se ejecuta automáticamente. El entorno destino debe revisar el SQL y aplicar cada versión
+una sola vez después de V001/V002, con autorización para V103 y tras confirmar que no haya
+identidades parciales existentes.
 
 La pantalla de Caja requiere `VIEW_CASH` y `REGISTER_CASH_MOVEMENT`; el rol trabajador vigente no
 incluye esos permisos. Crear deuda general requiere el permiso específico `REGISTER_GENERAL_DEBT`
