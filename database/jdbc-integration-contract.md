@@ -167,6 +167,88 @@ default Optional<InventoryItem> findByProductIdForUpdate(String productId) {
 
 Los snapshots de líneas de venta deben conservar `unit_price` y `units_per_basket_snapshot` leídos de la fila histórica; nunca se reconstruyen con los precios ni la capacidad actuales del catálogo.
 
+### Consulta de cartera de ventas
+
+```java
+BigDecimal findOutstandingSalesDebt(String customerId);
+```
+
+El puerto `CustomerDebtQuery` y el adaptador `CustomerDebtQueryJdbc` calculan la deuda pendiente
+asociada a ventas. Las líneas y los pagos se agregan por separado por `sale_id` antes de combinarse;
+así, varias líneas y varios pagos no producen un producto cartesiano ni inflan los importes. El
+resultado suma por venta `GREATEST(SUM(quantity * unit_price) - SUM(amount), 0)` y devuelve cero si
+el cliente no tiene ventas. El límite se aplica a cada venta antes de sumar por cliente. Un pago
+histórico superior al total de su venta es una inconsistencia que debe detectarse y corregirse; no
+se transfiere como crédito para cubrir otras ventas. El flujo normal de `SalePaymentAppender` rechaza
+abonos superiores al saldo pendiente. No lee `customer.balance`, porque ese campo también incluye
+deuda general.
+El adaptador usa el `JdbcConnectionProvider` compartido y, por tanto, reutiliza la conexión de una
+transacción exterior. Solo consulta: no cambia saldo, ventas ni pagos.
+
+La futura integración debe usar esta consulta para separar `deuda general = customer.balance -
+deuda pendiente de ventas`. La sustitución del mapa en memoria `CustomerService.saleDebts` requiere
+coordinar inserción de ventas/abonos y ajustes de `customer.balance` en una unidad de trabajo
+compartida; el puerto de consulta no reemplaza esas escrituras. `CustomerService`, `SaleService` y
+`Main` todavía no están conectados a este adaptador.
+
+### Repositorios JDBC de clientes y vendedores
+
+`CustomerRepositoryJdbc` implementa `CustomerRepositoryInterface` y `SellerRepositoryJdbc`
+implementa `SellerRepositoryInterface`. Ambos leen y escriben las columnas de V001 con sentencias
+preparadas y conservan los IDs proporcionados por los modelos históricos. Los límites son los del
+esquema: cliente `VARCHAR(64)`, vendedor `VARCHAR(32)` y saldo de cliente `NUMERIC(19,2)` no
+negativo. Los importes se validan con `BigDecimal`; no se redondean valores con más de dos decimales.
+
+`save` es siempre una inserción: los IDs duplicados se rechazan y nunca se convierten en upsert.
+La búsqueda/listado devuelve entidades reconstituidas, y el repositorio de vendedores no añade una
+operación de actualización que su interfaz no define. El contrato compartido tiene una diferencia
+intencional entre adaptadores: el repositorio en memoria sigue reemplazando el snapshot completo,
+incluido `balance`, mientras que `CustomerRepositoryJdbc.update` solo escribe nombre, teléfono y
+dirección. El adaptador JDBC añade `WHERE id = ? AND balance = ?`; el saldo del snapshot funciona
+como control optimista, nunca aparece en `SET`. Si el cliente no existe lanza
+`IllegalArgumentException`; si existe pero el saldo ya cambió lanza
+`ConcurrentModificationException` y solicita recargarlo. Así, una instantánea antigua no puede
+restaurar un saldo anterior. `CustomerBalanceAdjusterJdbc` se mantiene como única vía JDBC para
+escribir `customer.balance`.
+
+`CustomerService` todavía aplica operaciones de deuda mediante snapshots y usa actualizaciones de
+repositorio para compensar fallos. Por tanto, no se debe conectar todavía a `CustomerRepositoryJdbc`.
+Antes de habilitar JDBC, el servicio debe separar las modificaciones personales de los ajustes
+financieros, usar exclusivamente `CustomerBalanceAdjuster` para estos últimos y ejecutar los cambios
+relacionados bajo el mismo `JdbcTransactionManager`; las compensaciones por snapshots deben
+reemplazarse por rollback transaccional. La implementación en memoria conserva su semántica actual.
+
+Para operaciones financieras se añade el puerto `CustomerBalanceAdjuster` y su adaptador
+`CustomerBalanceAdjusterJdbc`:
+
+```java
+BigDecimal increaseBalance(String customerId, BigDecimal amount);
+BigDecimal decreaseBalance(String customerId, BigDecimal amount);
+```
+
+El adaptador suma en SQL y aplica los abonos mediante una única sentencia condicional:
+`UPDATE customer SET balance = balance - ? WHERE id = ? AND balance >= ? RETURNING balance`.
+PostgreSQL serializa las actualizaciones de la fila y vuelve a comprobar la condición tras esperar
+por otra escritura; así, dos abonos concurrentes no pueden producir un saldo negativo. El puerto
+usa el mismo `JdbcConnectionProvider`: si existe una transacción exterior, los ajustes comparten su
+conexión y se confirman o revierten junto con las demás escrituras. Fuera de ella, cada ajuste es una
+sentencia atómica independiente.
+
+La futura integración debe envolver el registro de venta/abono y el ajuste correspondiente en
+`JdbcTransactionManager.inTransaction(...)`, inyectando repositorios y adaptadores construidos con
+el mismo proveedor. El pago de una venta debe persistirse y reducir el saldo agregado dentro de esa
+misma unidad; el registro de una venta a crédito debe insertar la venta y aumentar ese saldo dentro
+de la misma unidad. Las lecturas de cartera siguen derivándose del historial de líneas y pagos. No
+se cambia todavía `CustomerService`, `SaleService`, `Main` ni la composición JavaFX; la ruta en
+memoria continúa activa.
+
+La validación definitiva informada por Carlos el 2026-11-16 a las 22:45 (Colombia) ejecutó
+`mvn clean verify` con Java 17 y PostgreSQL en `la_exclusiva_test`: 190 pruebas aprobadas, sin
+fallos, errores ni omisiones. Los reportes Surefire locales registran aprobadas las pruebas reales
+`CustomerSellerJdbcPostgresIntegrationTest`, `CustomerDebtQueryJdbcPostgresIntegrationTest` y
+`SaleRepositoryJdbcPostgresIntegrationTest` (una prueba cada una). Codex verificó las 22 suites XML
+y sus marcas de tiempo, sin repetir Maven ni conectarse a la base. No se registraron credenciales.
+
 ## Nombres de columnas acordados
 
 Se evitan nombres genéricos para que los DAO lean el esquema sin ambigüedad:
@@ -187,7 +269,22 @@ El esquema ejecutable está en:
 
 `database/migrations/V001__initial_schema.sql`
 
-Ejecutarlo una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea las diez tablas, restricciones e índices. No inserta productos ni existencias iniciales: esa responsabilidad corresponde al inicializador Java idempotente. La migración falla si se intenta ejecutar por segunda vez sobre la misma base.
+`database/migrations/V002__payment_idempotency.sql` se aplica después de V001. Añade
+`sale_payment.idempotency_key VARCHAR(64)` y la unicidad `(sale_id, idempotency_key)`; PostgreSQL
+permite varias filas con `NULL`, por lo que conserva pagos anteriores y pagos iniciales sin clave,
+pero impide repetir una clave no nula dentro de la misma venta. No ejecutar migraciones desde Maven
+ni contra una base de desarrollo. Antes de cualquier prueba que escriba, confirmar que la URL es
+exclusivamente `la_exclusiva_test`.
+
+Los abonos JDBC deben usar el puerto `SalePaymentAppender.appendPayment(saleId, amount,
+idempotencyKey)`. La operación se une a la transacción exterior o abre una propia, bloquea la venta,
+consulta primero la clave y luego valida el saldo calculado desde las filas persistidas. Repetir
+clave e importe devuelve el pago existente con su fecha original; reutilizar la clave con otro
+importe se rechaza. `SaleRepositoryJdbc.update(Sale)` rechaza instantáneas, porque `SalePayment` no
+lleva la clave persistida y una instantánea obsoleta no permite distinguir de forma segura un
+reintento de un pago nuevo. La restricción única de PostgreSQL respalda el bloqueo ante carreras.
+
+Ejecutar V001 una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea las diez tablas, restricciones e índices. No inserta productos ni existencias iniciales: esa responsabilidad corresponde al inicializador Java idempotente. La migración falla si se intenta ejecutar por segunda vez sobre la misma base.
 
 ## Pruebas y seguridad de los datos
 

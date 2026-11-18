@@ -19,22 +19,22 @@
                   <Insets bottom="20.0" left="20.0" top="25.0" />
                </VBox.margin>
             </Label>
-            <Button fx:id="btnDashboard" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  📊 Resumen / Inicio">
+            <Button fx:id="btnDashboard" onAction="#handleShowDashboard" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  📊 Resumen / Inicio">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnCustomers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  👥 Clientes">
+            <Button fx:id="btnCustomers" onAction="#handleShowCustomers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  👥 Clientes">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnSellers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  🤝 Vendedores">
+            <Button fx:id="btnSellers" onAction="#handleShowSellers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  🤝 Vendedores">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnCredit" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  💰 Cartera y Abonos">
+            <Button fx:id="btnCredit" onAction="#handleShowPortfolio" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" style="-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: POS_TOP_LEFT;" text="  💰 Cartera y Abonos">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
@@ -48,7 +48,7 @@
       </VBox>
    </left>
    <center>
-      <VBox alignment="CENTER" prefHeight="200.0" prefWidth="100.0" style="-fx-background-color: #ecf0f1;" BorderPane.alignment="CENTER">
+      <VBox fx:id="dashboard" alignment="CENTER" prefHeight="200.0" prefWidth="100.0" style="-fx-background-color: #ecf0f1;" BorderPane.alignment="CENTER">
          <children>
             <Label fx:id="welcomeLabel" text="Bienvenido al Sistema">
                <font>
@@ -66,4 +66,7 @@
          </children>
       </VBox>
    </center>
+   <bottom>
+      <Label fx:id="navigationMessage" style="-fx-text-fill: #a01818;" />
+   </bottom>
 </BorderPane>
