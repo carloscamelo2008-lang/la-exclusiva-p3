@@ -2,6 +2,7 @@ package com.laexclusiva.persistence.jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.ContainerType;
@@ -14,6 +15,7 @@ import com.laexclusiva.model.Seller;
 import com.laexclusiva.model.StockMovement;
 import com.laexclusiva.model.StockRequest;
 import com.laexclusiva.repository.SaleRepository;
+import com.laexclusiva.repository.CustomerRepositoryInterface;
 import com.laexclusiva.repository.jdbc.CustomerBalanceAdjusterJdbc;
 import com.laexclusiva.repository.jdbc.CustomerDebtQueryJdbc;
 import com.laexclusiva.repository.jdbc.CustomerRepositoryJdbc;
@@ -26,6 +28,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,6 +36,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -41,6 +46,7 @@ import org.junit.jupiter.api.Test;
 
 /** Valida en PostgreSQL la unidad transaccional de ventas, inventario, movimientos y cartera. */
 class JdbcSalesWorkflowPostgresIntegrationTest {
+    private final List<String> extraCustomerIds = new ArrayList<>();
     private JdbcConnectionProvider provider;
     private JdbcTransactionManager transactions;
     private ProductRepositoryJdbc products;
@@ -126,6 +132,9 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
                 delete(connection, "DELETE FROM beer_product WHERE id = ?", productId);
             }
             if (customerCreated) delete(connection, "DELETE FROM customer WHERE id = ?", customerId);
+            for (String extraCustomerId : extraCustomerIds) {
+                delete(connection, "DELETE FROM customer WHERE id = ?", extraCustomerId);
+            }
             if (sellerCreated) delete(connection, "DELETE FROM seller WHERE id = ?", sellerId);
             return null;
         }));
@@ -200,6 +209,164 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
                 productId));
     }
 
+    @Test
+    void creditSaleAndPaymentSerializeOnCustomerInBothTransactionOrders() throws Exception {
+        balanceAdjuster.decreaseBalance(customerId, new BigDecimal("50.00"));
+        String paymentFirstCustomerId = customerId + "-PAYFIRST";
+        assertEquals(0, count("SELECT COUNT(*) FROM customer WHERE id = ?", paymentFirstCustomerId));
+        customers.save(new Customer(paymentFirstCustomerId, "Cliente concurrente ficticio", "3000000103",
+                "Dirección ficticia", BigDecimal.ZERO));
+        extraCustomerIds.add(paymentFirstCustomerId);
+        transactions.inTransaction(() -> {
+            stockAdjuster.increaseStock(productId, 1);
+            movements.save(new StockMovement(productId, MovementType.ENTRY, 1,
+                    "Fixture de concurrencia aislado", java.time.LocalDateTime.now()));
+        });
+
+        verifyCreditSaleAndPaymentOrder(customerId, true, "race-sale-first-");
+        verifyCreditSaleAndPaymentOrder(paymentFirstCustomerId, false, "race-payment-first-");
+    }
+
+    private void verifyCreditSaleAndPaymentOrder(String targetCustomerId, boolean creditSaleFirst,
+                                                 String idempotencyPrefix) throws Exception {
+        Sale existingSale = workflow.registerSale(
+                List.of(new StockRequest(productId, SalePresentation.UNIT, 1)),
+                sellerId, targetCustomerId, BigDecimal.ZERO);
+        assertEquals(new BigDecimal("100.00"), customers.findById(targetCustomerId).getBalance());
+        assertEquals(new BigDecimal("100.00"), debtQuery.findOutstandingSalesDebt(targetCustomerId));
+
+        CountDownLatch firstOperationStaged = new CountDownLatch(1);
+        CountDownLatch waiterReachedCustomerLock = new CountDownLatch(1);
+        AtomicInteger waiterBackendPid = new AtomicInteger(-1);
+        CustomerRepositoryInterface observedCustomers = observingCustomerLock(
+                targetCustomerId, waiterReachedCustomerLock, waiterBackendPid);
+        SalesWorkflow waitingWorkflow = workflow(saleRepository, observedCustomers);
+        String idempotencyKey = idempotencyPrefix + targetCustomerId;
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Sale> firstOperation = pool.submit(() -> transactions.inTransaction(() -> {
+                Customer locked = customers.findByIdForUpdate(targetCustomerId);
+                if (locked == null) throw new IllegalStateException("No existe el cliente del fixture.");
+                Sale result = creditSaleFirst
+                        ? workflow.registerSale(List.of(new StockRequest(productId, SalePresentation.UNIT, 1)),
+                                sellerId, targetCustomerId, new BigDecimal("80.00"))
+                        : workflow.registerPayment(existingSale.getId(), new BigDecimal("25.00"), idempotencyKey);
+                firstOperationStaged.countDown();
+                await(waiterReachedCustomerLock, "La segunda operación no intentó bloquear el cliente.");
+                int blockedPid = waiterBackendPid.get();
+                if (blockedPid < 0 || !awaitPostgresBlock(blockedPid, 10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("PostgreSQL no observó la espera por el bloqueo del cliente.");
+                }
+                return result;
+            }));
+
+            await(firstOperationStaged, "La primera operación financiera no llegó al punto de coordinación.");
+            Future<Sale> secondOperation = pool.submit(() -> creditSaleFirst
+                    ? waitingWorkflow.registerPayment(existingSale.getId(), new BigDecimal("25.00"), idempotencyKey)
+                    : waitingWorkflow.registerSale(List.of(new StockRequest(productId, SalePresentation.UNIT, 1)),
+                            sellerId, targetCustomerId, new BigDecimal("80.00")));
+
+            firstOperation.get(15, TimeUnit.SECONDS);
+            secondOperation.get(15, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS), "Las transacciones concurrentes deben terminar.");
+        }
+
+        assertEquals(new BigDecimal("95.00"), customers.findById(targetCustomerId).getBalance());
+        assertEquals(new BigDecimal("95.00"), debtQuery.findOutstandingSalesDebt(targetCustomerId));
+        assertEquals(2, count("SELECT COUNT(*) FROM sale WHERE customer_id = ?", targetCustomerId));
+        assertEquals(2, count("""
+                SELECT COUNT(*) FROM sale_payment payment JOIN sale ON sale.id = payment.sale_id
+                WHERE sale.customer_id = ?
+                """, targetCustomerId));
+        assertEquals(new BigDecimal("105.00"), decimal("""
+                SELECT COALESCE(SUM(payment.amount), 0)
+                FROM sale_payment payment JOIN sale ON sale.id = payment.sale_id
+                WHERE sale.customer_id = ?
+                """, targetCustomerId));
+        assertEquals(1, count("SELECT COUNT(*) FROM sale_payment WHERE idempotency_key = ?", idempotencyKey));
+
+        Sale replay = workflow.registerPayment(existingSale.getId(), new BigDecimal("25.00"), idempotencyKey);
+        assertEquals(1, replay.getPayments().size());
+        assertEquals(new BigDecimal("95.00"), customers.findById(targetCustomerId).getBalance());
+        assertEquals(new BigDecimal("95.00"), debtQuery.findOutstandingSalesDebt(targetCustomerId));
+        assertEquals(2, count("""
+                SELECT COUNT(*) FROM sale_payment payment JOIN sale ON sale.id = payment.sale_id
+                WHERE sale.customer_id = ?
+                """, targetCustomerId));
+    }
+
+    private CustomerRepositoryInterface observingCustomerLock(String targetCustomerId,
+                                                               CountDownLatch lockAttempted,
+                                                               AtomicInteger backendPid) {
+        return new CustomerRepositoryInterface() {
+            @Override public void save(Customer customer) { customers.save(customer); }
+            @Override public Customer findById(String id) { return customers.findById(id); }
+            @Override public Customer findByIdForUpdate(String id) {
+                if (targetCustomerId.equals(id)) {
+                    backendPid.set(currentBackendPid());
+                    lockAttempted.countDown();
+                }
+                return customers.findByIdForUpdate(id);
+            }
+            @Override public List<Customer> findAll() { return customers.findAll(); }
+            @Override public boolean existsById(String id) { return customers.existsById(id); }
+            @Override public void update(Customer customer) { customers.update(customer); }
+        };
+    }
+
+    private int currentBackendPid() {
+        return provider.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("SELECT pg_backend_pid()")) {
+                try (ResultSet result = statement.executeQuery()) {
+                    if (!result.next()) throw new SQLException("No se obtuvo el PID de PostgreSQL.");
+                    return result.getInt(1);
+                }
+            }
+        });
+    }
+
+    private boolean awaitPostgresBlock(int blockedPid, long timeout, TimeUnit unit) {
+        long deadline = System.nanoTime() + unit.toNanos(timeout);
+        do {
+            boolean blocked = provider.withConnection(connection -> {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT cardinality(pg_blocking_pids(?)) > 0")) {
+                    statement.setInt(1, blockedPid);
+                    try (ResultSet result = statement.executeQuery()) {
+                        if (!result.next()) throw new SQLException("No se consultaron bloqueos PostgreSQL.");
+                        return result.getBoolean(1);
+                    }
+                }
+            });
+            if (blocked) return true;
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+        } while (System.nanoTime() < deadline);
+        return false;
+    }
+
+    private static void await(CountDownLatch latch, String message) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) throw new IllegalStateException(message);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(message, interrupted);
+        }
+    }
+
+    private BigDecimal decimal(String sql, String parameter) {
+        return provider.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, parameter);
+                try (ResultSet result = statement.executeQuery()) {
+                    if (!result.next()) throw new SQLException("No se obtuvo el total monetario del fixture.");
+                    return result.getBigDecimal(1);
+                }
+            }
+        });
+    }
+
     private boolean attemptPayment(String saleId, String key, CountDownLatch start) throws Exception {
         start.await();
         try {
@@ -222,7 +389,11 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
     }
 
     private SalesWorkflow workflow(SaleRepository repository) {
-        return new JdbcSalesWorkflow(products, customers, sellers, repository, saleRepository,
+        return workflow(repository, customers);
+    }
+
+    private SalesWorkflow workflow(SaleRepository repository, CustomerRepositoryInterface customerRepository) {
+        return new JdbcSalesWorkflow(products, customerRepository, sellers, repository, saleRepository,
                 debtQuery, balanceAdjuster, stockAdjuster, movements, transactions);
     }
 
