@@ -191,6 +191,64 @@ coordinar inserción de ventas/abonos y ajustes de `customer.balance` en una uni
 compartida; el puerto de consulta no reemplaza esas escrituras. `CustomerService`, `SaleService` y
 `Main` todavía no están conectados a este adaptador.
 
+### Repositorios JDBC de clientes y vendedores
+
+`CustomerRepositoryJdbc` implementa `CustomerRepositoryInterface` y `SellerRepositoryJdbc`
+implementa `SellerRepositoryInterface`. Ambos leen y escriben las columnas de V001 con sentencias
+preparadas y conservan los IDs proporcionados por los modelos históricos. Los límites son los del
+esquema: cliente `VARCHAR(64)`, vendedor `VARCHAR(32)` y saldo de cliente `NUMERIC(19,2)` no
+negativo. Los importes se validan con `BigDecimal`; no se redondean valores con más de dos decimales.
+
+`save` es siempre una inserción: los IDs duplicados se rechazan y nunca se convierten en upsert.
+La búsqueda/listado devuelve entidades reconstituidas, y el repositorio de vendedores no añade una
+operación de actualización que su interfaz no define. El contrato compartido tiene una diferencia
+intencional entre adaptadores: el repositorio en memoria sigue reemplazando el snapshot completo,
+incluido `balance`, mientras que `CustomerRepositoryJdbc.update` solo escribe nombre, teléfono y
+dirección. El adaptador JDBC añade `WHERE id = ? AND balance = ?`; el saldo del snapshot funciona
+como control optimista, nunca aparece en `SET`. Si el cliente no existe lanza
+`IllegalArgumentException`; si existe pero el saldo ya cambió lanza
+`ConcurrentModificationException` y solicita recargarlo. Así, una instantánea antigua no puede
+restaurar un saldo anterior. `CustomerBalanceAdjusterJdbc` se mantiene como única vía JDBC para
+escribir `customer.balance`.
+
+`CustomerService` todavía aplica operaciones de deuda mediante snapshots y usa actualizaciones de
+repositorio para compensar fallos. Por tanto, no se debe conectar todavía a `CustomerRepositoryJdbc`.
+Antes de habilitar JDBC, el servicio debe separar las modificaciones personales de los ajustes
+financieros, usar exclusivamente `CustomerBalanceAdjuster` para estos últimos y ejecutar los cambios
+relacionados bajo el mismo `JdbcTransactionManager`; las compensaciones por snapshots deben
+reemplazarse por rollback transaccional. La implementación en memoria conserva su semántica actual.
+
+Para operaciones financieras se añade el puerto `CustomerBalanceAdjuster` y su adaptador
+`CustomerBalanceAdjusterJdbc`:
+
+```java
+BigDecimal increaseBalance(String customerId, BigDecimal amount);
+BigDecimal decreaseBalance(String customerId, BigDecimal amount);
+```
+
+El adaptador suma en SQL y aplica los abonos mediante una única sentencia condicional:
+`UPDATE customer SET balance = balance - ? WHERE id = ? AND balance >= ? RETURNING balance`.
+PostgreSQL serializa las actualizaciones de la fila y vuelve a comprobar la condición tras esperar
+por otra escritura; así, dos abonos concurrentes no pueden producir un saldo negativo. El puerto
+usa el mismo `JdbcConnectionProvider`: si existe una transacción exterior, los ajustes comparten su
+conexión y se confirman o revierten junto con las demás escrituras. Fuera de ella, cada ajuste es una
+sentencia atómica independiente.
+
+La futura integración debe envolver el registro de venta/abono y el ajuste correspondiente en
+`JdbcTransactionManager.inTransaction(...)`, inyectando repositorios y adaptadores construidos con
+el mismo proveedor. El pago de una venta debe persistirse y reducir el saldo agregado dentro de esa
+misma unidad; el registro de una venta a crédito debe insertar la venta y aumentar ese saldo dentro
+de la misma unidad. Las lecturas de cartera siguen derivándose del historial de líneas y pagos. No
+se cambia todavía `CustomerService`, `SaleService`, `Main` ni la composición JavaFX; la ruta en
+memoria continúa activa.
+
+La validación definitiva informada por Carlos el 2026-11-16 a las 22:45 (Colombia) ejecutó
+`mvn clean verify` con Java 17 y PostgreSQL en `la_exclusiva_test`: 190 pruebas aprobadas, sin
+fallos, errores ni omisiones. Los reportes Surefire locales registran aprobadas las pruebas reales
+`CustomerSellerJdbcPostgresIntegrationTest`, `CustomerDebtQueryJdbcPostgresIntegrationTest` y
+`SaleRepositoryJdbcPostgresIntegrationTest` (una prueba cada una). Codex verificó las 22 suites XML
+y sus marcas de tiempo, sin repetir Maven ni conectarse a la base. No se registraron credenciales.
+
 ## Nombres de columnas acordados
 
 Se evitan nombres genéricos para que los DAO lean el esquema sin ambigüedad:
