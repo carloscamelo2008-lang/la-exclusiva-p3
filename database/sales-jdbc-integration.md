@@ -577,3 +577,25 @@ refresh-safe`) y `5ed54e6` (`test(ui): cover controller write and refresh regres
 esta intervención también en `docs/ai-usage/leader-ai-log.md`. Sigue pendiente la revisión humana de
 Daniel y Jesús. La alta de ventas aún no es idempotente; ante una respuesta incierta, el usuario debe
 consultar el historial antes de volver a iniciar una alta.
+
+### Revalidación después de integrar el PR #19 (2026-11-18)
+
+La rama `feature/full-jdbc-integration` incorporó `origin/develop` en
+`be9ebda27ce6327fb3374f865eaaffc40d206d08` mediante el merge normal
+`4a8b4ad83313b5561342f509e045c504cc542a17`. El merge no tuvo conflictos y conservó el registro de
+actividad de Daniel integrado desde `develop`, junto con las correcciones JavaFX/JDBC de esta rama.
+Los commits `f96747d`, `5ed54e6` y `3adf6f9` siguen siendo ancestros de HEAD.
+
+Tras el merge, Microsoft JDK 17.0.18 y Maven 3.10.0 ejecutaron nuevamente `mvn clean verify` el
+2026-11-18. Resultado observado: `BUILD SUCCESS`, 229 pruebas, 0 fallidas, 0 errores y 0 omitidas;
+Surefire generó 30 reportes. Las 12 pruebas PostgreSQL reales pasaron en `la_exclusiva_test`:
+cartera (1), clientes/vendedores (1), inventario (3), flujo de ventas (1), productos (3),
+ventas/pagos (1) y movimientos (2). La consulta de solo lectura previa confirmó PostgreSQL 18.6,
+las diez tablas de V001 y la columna/restricción idempotente de V002. No se ejecutaron migraciones,
+cambios de esquema ni operaciones destructivas y no se usó `la_exclusiva`. La contraseña se obtuvo
+con DPAPI solo dentro del proceso local y no se imprimió ni se escribió en el repositorio.
+
+`git diff --check` pasó. Maven mostró advertencias del modelo efectivo de JavaFX; JavaFX avisó que
+las clases se cargaron desde un módulo no nombrado. Las trazas de errores simulados en pruebas de
+controladores fueron esperadas y esas pruebas aprobaron. El PR #18 permanece sin fusionar y queda
+pendiente que Daniel y Jesús completen su segunda revisión.
