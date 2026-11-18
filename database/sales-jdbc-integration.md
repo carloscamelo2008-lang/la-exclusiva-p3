@@ -476,3 +476,55 @@ por lo que Xvfb no fue necesario. `git diff --check` se ejecutó después de act
 Queda pendiente el recorrido manual autenticado completo y la revisión humana del PR; también siguen
 los límites de autenticación/asignación en memoria, pago JDBC de deuda general, idempotencia de alta
 de ventas y separación del `SaleService` tradicional.
+
+### Validación funcional final JavaFX + PostgreSQL (2026-11-18)
+
+La ejecución manual se realizó en Windows con Microsoft JDK 17.0.18, Maven 3.10.0 y PostgreSQL 18.6.
+`LAEXCLUSIVA_PERSISTENCE_MODE=postgres` y `LAEXCLUSIVA_DB_URL` apuntaron exclusivamente a
+`jdbc:postgresql://localhost:5432/la_exclusiva_test`. La contraseña se recuperó con DPAPI dentro
+del proceso PowerShell y nunca se imprimió ni se escribió en el repositorio. La comprobación de solo
+lectura confirmó `current_database() = la_exclusiva_test`, las diez tablas de V001 y la columna y
+restricción de clave idempotente de V002. No se ejecutaron migraciones ni se conectó a
+`la_exclusiva`.
+
+Con el administrador de demostración se completaron en la interfaz el alta del vendedor
+`SEL-45E73A06`, cliente `E2E-CLI-PR18-20261118-01` y producto
+`E2E-PR18-PROD-20261118-01` (unidad $2.500, media canasta $14.000, canasta $26.000; 12 unidades
+por canasta). Se registró una entrada ficticia de 24 unidades. Una media canasta descontó 6,
+dejando 18; el inventario mostró la entrada `ENTRY 24` y la salida `EXIT 6` asociada a la venta.
+La venta `SALE-74106632-192E-4583-B1A8-E5C86EAC16C3` quedó por $14.000, con pago inicial de
+$4.000. Un abono posterior de $3.000 dejó dos pagos persistidos por $7.000 y saldo de venta y
+cartera de $7.000; la deuda general del cliente permaneció en $0.
+
+Se rechazó un intento de venta por 24 unidades cuando quedaban 18, sin generar otra venta, pago ni
+movimiento y conservando el stock de 18. También se rechazó un pago de $10.001 cuando el saldo era
+$10.000; el rechazo no generó un pago adicional. Se rechazaron un producto con precio unitario cero
+y una entrada de inventario de -1 canastas. El estado final de PostgreSQL confirma solo los registros
+válidos descritos arriba. Estos fixtures ficticios permanecen en `la_exclusiva_test` y no se
+eliminaron.
+
+Después de cerrar sesión, cerrar el proceso y reiniciar la aplicación, el administrador volvió a
+iniciar sesión y las pantallas de clientes, vendedores, catálogo/inventario, ventas y cartera
+mostraron la información persistida. El administrador vio las secciones de administración; el
+trabajador no vio vendedores ni gestión de usuarios. La cuenta de demostración del trabajador no
+tiene vendedor asignado: la pantalla de ventas lo informó y no permitió registrar una venta. Las
+cuentas de demostración y su asignación se inicializan en memoria al arrancar; no son parte de la
+persistencia PostgreSQL. Gestión de usuarios continúa deshabilitada.
+
+La prueba visual detectó y corrigió dos textos: el selector de presentaciones mostraba el nombre
+interno de la clase Java en lugar de una etiqueta española, y el subtítulo de cartera decía que el
+registro de abonos estaba pendiente aunque ya estaba disponible. Se añadió una regresión JavaFX
+para Unidad, Media canasta, Canasta completa y el texto de cartera.
+
+Con JDK 17.0.18, `mvn clean verify` terminó en `BUILD SUCCESS`: 223 pruebas, 0 fallidas, 0 errores y
+0 omitidas. Surefire confirma 12 pruebas PostgreSQL reales aprobadas en
+`CustomerDebtQueryJdbcPostgresIntegrationTest` (1), `CustomerSellerJdbcPostgresIntegrationTest`
+(1), `InventoryRepositoryJdbcPostgresIntegrationTest` (3), `JdbcSalesWorkflowPostgresIntegrationTest`
+(1), `ProductRepositoryJdbcPostgresIntegrationTest` (3), `SaleRepositoryJdbcPostgresIntegrationTest`
+(1) y `StockMovementRepositoryJdbcPostgresIntegrationTest` (2). La regresión dirigida de las
+etiquetas JavaFX pasó 1/1. `git diff --check` pasó antes de registrar el cambio.
+
+Advertencias observadas: Maven mostró avisos existentes del modelo efectivo para JavaFX y JavaFX
+registró su aviso de clases en un módulo no nombrado. Las trazas de errores simulados de consultas
+en `AuthenticationServiceTest` pertenecen a casos que aprobaron. No se ejecutaron operaciones
+destructivas, no se usó la base de desarrollo y no se modificó el esquema.
