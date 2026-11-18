@@ -449,3 +449,38 @@ Estas reglas de presentación no amplían los contratos JDBC ni cambian el almac
 regresiones dirigidas se ejecutaron con JavaFX/FXML sobre Windows; `mvn clean verify` aprobó 229/229,
 incluidas las 12 integraciones PostgreSQL reales en `la_exclusiva_test`. Los detalles verificables y
 límites están en `database/sales-jdbc-integration.md` y en el Registro 25 de la bitácora IA.
+
+## Serialización financiera por cliente
+
+Las operaciones JDBC que modifican la deuda asociada a ventas adquieren primero el bloqueo de fila
+del cliente y lo conservan en la transacción compartida hasta el commit o rollback. El puerto
+`CustomerRepositoryInterface.findByIdForUpdate` expresa este contrato; `CustomerRepositoryJdbc` lo
+implementa con `SELECT ... FOR UPDATE` y exige una conexión transaccional (`autoCommit=false`). La
+implementación en memoria conserva el método predeterminado de lectura y no altera su contrato.
+
+`JdbcSalesWorkflow.registerSale` bloquea al cliente antes de consultar la cartera histórica, validar
+la consistencia del saldo o ajustar inventario y saldo. Los bloqueos posteriores de inventario siguen
+el orden ascendente de ID de producto. Para un abono, el flujo obtiene primero solo el `customer_id`
+de la venta, sin tomar decisiones sobre datos financieros; después bloquea al cliente. Solo entonces
+lee el snapshot del saldo y llama a `SaleRepositoryJdbc.appendPaymentOnce`. El adaptador de pagos
+vuelve a resolver la clave foránea y también respeta el orden cliente→venta antes de comprobar la
+clave idempotente, bloquear la venta, calcular el saldo pendiente e insertar el pago.
+
+Las lecturas de cartera, la inserción idempotente y el ajuste atómico del saldo siguen participando
+en la misma unidad de trabajo de `JdbcTransactionManager`. Se conserva la comprobación de que la deuda
+por ventas posterior al abono más el importe abonado no exceda el saldo agregado bloqueado; no se
+elimina la validación ni se agrega una transferencia de crédito. Ventas a crédito y abonos del mismo
+cliente quedan serializados y observan el saldo/deuda confirmados por la operación anterior. Un
+abono excesivo se rechaza antes del ajuste; cualquier excepción revierte inserción y saldo juntos.
+
+Las escrituras financieras deben pasar por `JdbcSalesWorkflow` y utilizar los adaptadores que
+comparten proveedor y coordinador transaccional. No se debe bloquear primero la venta en un flujo
+externo y después intentar bloquear al cliente, porque invertiría el orden común. El orden fijo
+cliente→venta/inventario evita el ciclo de espera entre los flujos soportados; para productos con
+varias existencias, `JdbcSalesWorkflow` conserva además el orden ascendente de ID.
+
+La prueba PostgreSQL `creditSaleAndPaymentSerializeOnCustomerInBothTransactionOrders` observa con
+`pg_blocking_pids` la espera real de la segunda transacción y utiliza latches y límites de tiempo.
+Ejecuta los órdenes venta a crédito→abono y abono→venta, y valida saldo agregado, deuda histórica,
+ventas, pagos, importe total, reintento idempotente y terminación de los hilos. La solución no cambia
+V001/V002 ni introduce migraciones.

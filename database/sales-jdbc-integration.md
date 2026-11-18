@@ -599,3 +599,67 @@ con DPAPI solo dentro del proceso local y no se imprimió ni se escribió en el 
 las clases se cargaron desde un módulo no nombrado. Las trazas de errores simulados en pruebas de
 controladores fueron esperadas y esas pruebas aprobaron. El PR #18 permanece sin fusionar y queda
 pendiente que Daniel y Jesús completen su segunda revisión.
+
+## Correcciones finales de revisión de Jesús (2026-11-18)
+
+### Entrada de inventario y refresco JavaFX
+
+`InventoryController.handleAddStock` ahora separa validación local, llamada de escritura confirmada
+y consulta visual. Cuando `addStock` retorna, el controlador limpia los campos de entrada y conserva
+el mensaje de éxito; un fallo posterior de `refresh()` se muestra como advertencia aparte. El botón
+«Actualizar inventario» vuelve a consultar catálogo, existencias y movimientos y no invoca ninguna
+escritura. Ante una excepción durante la llamada de escritura, la interfaz indica que el resultado no
+se pudo confirmar y pide verificar los datos con esa consulta antes de intentar otra entrada; no
+afirma que la operación haya fallado.
+
+Se aplicó la misma separación a `handleRegisterProduct`: tras un retorno normal se limpian los
+campos y se conserva el éxito, aunque falle el refresco. Si la llamada de registro termina con una
+excepción, se recomienda comprobar el catálogo antes de intentar repetirla. Ambos handlers siguen
+consultando `AuthorizationService` con la sesión vigente al momento de ejecutar la escritura.
+
+Las pruebas JavaFX `InventoryControllerReviewRegressionTest` simulan entrada de stock confirmada y
+error de consulta: el saldo y movimiento se guardan una vez; el mensaje sigue siendo exitoso y un
+refresco manual solo lee. Otra regresión cubre el alta de producto confirmada con fallo de consulta,
+y la tercera invalida la sesión antes de invocar ambos handlers y confirma que no llegan a los
+servicios de escritura.
+
+### Venta a crédito concurrente con abono
+
+Antes de modificar el flujo, una prueba diagnóstica temporal en PostgreSQL reprodujo la observación:
+el cliente tenía saldo y deuda de ventas de $100; el abono capturó el snapshot de $100, una venta a
+crédito concurrente añadió $20 y confirmó saldo/deuda de $120, y el abono válido de $10 fue rechazado
+por comparar la cartera actualizada con el snapshot antiguo. El pago no quedó insertado.
+
+La corrección serializa las operaciones financieras por fila de cliente. `registerSale` bloquea al
+cliente (`SELECT ... FOR UPDATE`) antes de consultar la deuda o modificar el saldo. `registerPayment`
+obtiene únicamente la clave foránea del cliente de la venta, bloquea esa fila y luego lee el saldo y
+anexa el pago. `SaleRepositoryJdbc.appendPaymentOnce` también aplica cliente→venta antes de tomar el
+bloqueo de la venta, incluso cuando se invoca dentro de una transacción compartida. Las dos rutas
+conservan la comprobación de consistencia, el límite de abonos, la clave idempotente y el rollback de
+`JdbcTransactionManager`. Los bloqueos de inventario en ventas siguen ordenados por ID de producto;
+no se cambiaron los contratos del modo `memory` ni las migraciones.
+
+La regresión `JdbcSalesWorkflowPostgresIntegrationTest.creditSaleAndPaymentSerializeOnCustomerInBothTransactionOrders`
+utiliza dos transacciones reales. Sin depender solo de temporizadores, coordina los hilos con latches,
+espera limitada y observación PostgreSQL de `pg_blocking_pids`. Prueba venta primero y abono primero.
+En ambos órdenes quedan dos ventas, pagos por $105, deuda de ventas de $95 y saldo agregado de $95;
+repetir la misma clave no inserta otro pago. Las pruebas existentes siguen cubriendo abonos excesivos,
+reintentos y rollback.
+
+### Validación definitiva
+
+La ejecución final fue el 2026-11-18 con Microsoft JDK 17.0.18, Maven 3.10.0 y PostgreSQL 18.6 en
+`la_exclusiva_test`. La inspección de solo lectura confirmó las diez tablas de V001, la columna
+`sale_payment.idempotency_key` y la restricción única de V002. `mvn clean verify` terminó en
+`BUILD SUCCESS`: **233 pruebas, 0 fallidas, 0 errores y 0 omitidas**. Surefire generó 31 reportes.
+Las **13 pruebas PostgreSQL reales** aprobaron en siete clases: cartera (1), clientes/vendedores (1),
+inventario (3), workflow de ventas (2), productos (3), repositorio de ventas (1) y movimientos (2).
+Las tres pruebas JavaFX nuevas aprobaron; la suite dirigida combinada aprobó 27/27.
+
+No se ejecutaron migraciones, cambios de esquema, `DROP`, `TRUNCATE` ni limpiezas generales. Cada
+prueba PostgreSQL generó IDs propios y limpió solo sus fixtures. No se usó la base `la_exclusiva`.
+Maven mostró los avisos conocidos del modelo de JavaFX; JavaFX emitió el aviso de módulo no nombrado.
+Una ejecución completa intermedia detectó que el fake JDBC de `SaleRepositoryJdbcTest` no reconocía
+las consultas nuevas; se amplió el fake y se añadió una aserción del orden de bloqueos. La suite
+dirigida y la ejecución completa final pasaron después de ese ajuste. No se hizo un recorrido manual
+adicional de escritorio en esta intervención.
