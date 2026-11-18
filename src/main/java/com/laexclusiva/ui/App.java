@@ -79,6 +79,8 @@ public class App extends Application {
             }
         });
 
+        // Libera la ventana nativa y sus cambios de maximización pendientes antes de mostrar el Login.
+        primaryStage.hide();
         primaryStage.setTitle("La Exclusiva - Iniciar Sesión");
         primaryStage.setMaximized(false);
         primaryStage.setMinWidth(400);
