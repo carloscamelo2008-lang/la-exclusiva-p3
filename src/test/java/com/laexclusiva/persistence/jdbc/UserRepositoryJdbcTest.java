@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -48,15 +49,18 @@ class UserRepositoryJdbcTest {
 
     @Test
     void generatesIdAndBindsEveryFieldWithoutInterpolatingCredentials() {
-        jdbc.query(row("id", 7L));
+        jdbc.query(inserted(7L));
         UserAccount user = account(null);
+        user.setSecurityVersion(19);
         user.setUsername("  Daniel  ");
         user.setActive(false);
         users.save(user);
         assertEquals(7L, user.getId());
+        assertEquals(0, user.getSecurityVersion());
         Call call = jdbc.calls.get(0);
         assertFalse(call.sql.contains(HASH));
         assertTrue(call.sql.contains("RETURNING id"));
+        assertFalse(call.sql.substring(0, call.sql.indexOf("RETURNING")).contains("security_version"));
         assertEquals("Daniel", call.values.get(1));
         assertEquals(HASH, call.values.get(2));
         assertEquals("WORKER", call.values.get(3));
@@ -68,21 +72,23 @@ class UserRepositoryJdbcTest {
 
     @Test
     void preservesExplicitHistoricalIdAndNullableSeller() {
-        jdbc.update(1);
+        jdbc.query(inserted(930L));
         UserAccount user = account(930L);
+        user.setSecurityVersion(19);
         user.setSellerId("SEL-HISTORY");
         users.save(user);
         assertEquals(930L, user.getId());
+        assertEquals(0, user.getSecurityVersion());
         assertEquals(930L, jdbc.calls.get(0).values.get(1));
         assertEquals("SEL-HISTORY", jdbc.calls.get(0).values.get(6));
         assertEquals(CREATED, jdbc.calls.get(0).values.get(7));
-        assertResourcesClosed(1, 0);
+        assertResourcesClosed(1, 1);
     }
 
     @Test
     void skipsGeneratedIdAlreadyUsedByAHistoricalAccountWithoutReplacingIt() {
         jdbc.query();
-        jdbc.query(row("id", 2L));
+        jdbc.query(inserted(2L));
         UserAccount user = account(null);
         users.save(user);
         assertEquals(2L, user.getId());
@@ -150,7 +156,7 @@ class UserRepositoryJdbcTest {
         jdbc.query(stored(1L, "\tDaniel\t", true));
         assertEquals("\tDaniel\t", users.findByUsername("  \tDaniel\t  ").orElseThrow().getUsername());
         assertEquals("\tDaniel\t", jdbc.calls.get(0).values.get(1));
-        jdbc.query(row("id", 2L));
+        jdbc.query(inserted(2L));
         UserAccount user = account(null);
         user.setUsername("  \tDaniel\t  ");
         users.save(user);
@@ -183,8 +189,9 @@ class UserRepositoryJdbcTest {
 
     @Test
     void updateBindsSecurityFieldsButCannotChangeIdOrCreationTime() {
-        jdbc.update(1);
+        jdbc.query(row("security_version", 8L));
         UserAccount user = account(9L);
+        user.setSecurityVersion(7);
         user.setRole(UserRole.ADMINISTRATOR);
         user.setActive(false);
         users.update(user);
@@ -194,15 +201,19 @@ class UserRepositoryJdbcTest {
         assertEquals(false, call.values.get(4));
         assertNull(call.values.get(5));
         assertEquals(9L, call.values.get(6));
-        assertResourcesClosed(1, 0);
+        assertEquals(7L, call.values.get(7));
+        assertEquals(8, user.getSecurityVersion());
+        assertFalse(call.sql.substring(call.sql.indexOf("SET"), call.sql.indexOf("WHERE")).contains("security_version"));
+        assertTrue(call.sql.contains("WHERE id = ? AND security_version = ? RETURNING security_version"));
+        assertResourcesClosed(1, 1);
     }
 
     @Test
-    void updateRequiresAnExistingIdAndExactlyOneAffectedRow() {
+    void updateRequiresAnIdAndExactlyOneReturnedRow() {
         assertThrows(IllegalArgumentException.class, () -> users.update(account(null)));
-        jdbc.update(0);
-        assertThrows(IllegalArgumentException.class, () -> users.update(account(1L)));
-        jdbc.update(2);
+        jdbc.query();
+        assertThrows(java.util.ConcurrentModificationException.class, () -> users.update(account(1L)));
+        jdbc.query(row("security_version", 1L), row("security_version", 1L));
         assertThrows(JdbcPersistenceException.class, () -> users.update(account(1L)));
     }
 
@@ -276,7 +287,7 @@ class UserRepositoryJdbcTest {
 
     @Test
     void suppressedCloseFailureIsSanitizedWithoutLosingItsSqlState() {
-        jdbc.update(2);
+        jdbc.query(row("security_version", 1L), row("security_version", 1L));
         jdbc.statementCloseFailure = new SQLException("Detalle privado: " + HASH, "08006");
         JdbcPersistenceException failure = assertThrows(JdbcPersistenceException.class, () -> users.update(account(1L)));
         assertTrue(failure.getMessage().contains("operación=UPDATE_USER"));
@@ -284,14 +295,14 @@ class UserRepositoryJdbcTest {
         assertFalse(failure.getMessage().contains(HASH));
         assertNull(failure.getCause());
         assertEquals(0, failure.getSuppressed().length);
-        assertResourcesClosed(1, 0);
+        assertResourcesClosed(1, 1);
     }
 
     @Test
-    void manualInsertionRejectsAnUnexpectedAffectedRowCount() {
-        jdbc.update(0);
+    void manualInsertionRejectsAnEmptyReturningResult() {
+        jdbc.query();
         assertThrows(JdbcPersistenceException.class, () -> users.save(account(8L)));
-        assertResourcesClosed(1, 0);
+        assertResourcesClosed(1, 1);
     }
 
     @Test
@@ -344,7 +355,7 @@ class UserRepositoryJdbcTest {
 
     @Test
     void joinsTheOuterTransactionWithoutCommittingOrClosingItsConnection() {
-        jdbc.query(row("id", 1L));
+        jdbc.query(inserted(1L));
         jdbc.query(stored(1L, "Name", true));
         IllegalStateException abort = new IllegalStateException("Abortar prueba");
         assertSame(abort, assertThrows(IllegalStateException.class,
@@ -374,8 +385,8 @@ class UserRepositoryJdbcTest {
 
     @Test
     void successfulOuterTransactionCommitsOnceForSeveralRepositoryOperations() {
-        jdbc.query(row("id", 1L));
-        jdbc.update(1);
+        jdbc.query(inserted(1L));
+        jdbc.query(row("security_version", 0L));
         new JdbcTransactionManager(connections).inTransaction(() -> {
             UserAccount user = account(null);
             users.save(user);
@@ -386,13 +397,14 @@ class UserRepositoryJdbcTest {
         assertEquals(1, jdbc.opened);
         assertEquals(1, jdbc.commits);
         assertEquals(0, jdbc.rollbacks);
-        assertResourcesClosed(2, 1);
+        assertResourcesClosed(2, 2);
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"update", "delete"})
     void updateAndDeleteJoinAnOuterRollbackWithoutClosingOrCommitting(String operation) {
-        jdbc.update(1);
+        if (operation.equals("update")) jdbc.query(row("security_version", 1L));
+        else jdbc.update(1);
         IllegalStateException abort = new IllegalStateException("Abortar operación del fixture");
         assertSame(abort, assertThrows(IllegalStateException.class,
                 () -> new JdbcTransactionManager(connections).inTransaction(() -> {
@@ -405,7 +417,7 @@ class UserRepositoryJdbcTest {
         assertEquals(1, jdbc.opened);
         assertEquals(1, jdbc.rollbacks);
         assertEquals(0, jdbc.commits);
-        assertResourcesClosed(1, 0);
+        assertResourcesClosed(1, operation.equals("update") ? 1 : 0);
     }
 
     @Test
@@ -443,7 +455,7 @@ class UserRepositoryJdbcTest {
         UserAccount user = fixture.account("uncertain");
         jdbc.query();
         fixture.rememberName(user.getUsername());
-        jdbc.query(row("id", 9L));
+        jdbc.query(inserted(9L));
         jdbc.connectionCloseFailure = new SQLException("Respuesta perdida", "08006");
         assertThrows(JdbcPersistenceException.class, () -> fixture.persist(user));
         assertNull(user.getId(), "El retorno no confirmó el ID, pero el nombre ya debe estar registrado para limpiar.");
@@ -497,6 +509,219 @@ class UserRepositoryJdbcTest {
         assertTrue(failure.getMessage().contains("se omite la limpieza"));
     }
 
+    @ParameterizedTest
+    @ValueSource(longs = {0, 7, Long.MAX_VALUE})
+    void mapsTheVersionThroughEveryAccountLookup(long version) {
+        Map<String, Object> row = stored(1L, "Name", true);
+        row.put("security_version", version);
+        jdbc.query(row);
+        jdbc.query(row);
+        jdbc.query(row);
+        assertEquals(version, users.findById("1").orElseThrow().getSecurityVersion());
+        assertEquals(version, users.findByUsername("Name").orElseThrow().getSecurityVersion());
+        assertEquals(version, users.findAll().get(0).getSecurityVersion());
+        assertTrue(jdbc.calls.stream().allMatch(call -> call.sql.contains("security_version")));
+        assertResourcesClosed(3, 3);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {-1, Long.MIN_VALUE})
+    void rejectsNullOrNegativePersistedVersions(Long version) {
+        Map<String, Object> row = stored(1L, "Name", true);
+        row.put("security_version", version);
+        jdbc.query(row);
+        JdbcPersistenceException failure = assertThrows(JdbcPersistenceException.class, users::findAll);
+        assertFalse(failure.getMessage().contains(HASH));
+        assertResourcesClosed(1, 1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void invalidInsertMetadataNeverChangesTheInputIdOrVersion(boolean explicitId) {
+        List<Map<String, Object>> invalid = List.of(
+                row("id", null, "security_version", 0L),
+                row("id", -1L, "security_version", 0L),
+                row("id", 8L, "security_version", null),
+                row("id", 8L, "security_version", -1L),
+                row("id", 8L, "security_version", 1L));
+        for (Map<String, Object> reply : invalid) {
+            jdbc.query(reply);
+            UserAccount user = account(explicitId ? 8L : null);
+            user.setSecurityVersion(19);
+            assertThrows(JdbcPersistenceException.class, () -> users.save(user));
+            assertEquals(explicitId ? 8L : null, user.getId());
+            assertEquals(19, user.getSecurityVersion());
+        }
+        jdbc.query(inserted(8L), inserted(8L));
+        UserAccount user = account(explicitId ? 8L : null);
+        user.setSecurityVersion(19);
+        assertThrows(JdbcPersistenceException.class, () -> users.save(user));
+        assertEquals(explicitId ? 8L : null, user.getId());
+        assertEquals(19, user.getSecurityVersion());
+        assertResourcesClosed(6, 6);
+    }
+
+    @Test
+    void explicitInsertionRejectsADifferentReturnedId() {
+        jdbc.query(inserted(9L));
+        UserAccount user = account(8L);
+        user.setSecurityVersion(19);
+        assertThrows(JdbcPersistenceException.class, () -> users.save(user));
+        assertEquals(8L, user.getId());
+        assertEquals(19, user.getSecurityVersion());
+        assertResourcesClosed(1, 1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0, 7, Long.MAX_VALUE})
+    void updateUsesTheReturnedVersionWithoutIncrementingItInJava(long version) {
+        jdbc.query(row("security_version", version));
+        UserAccount user = account(8L);
+        user.setSecurityVersion(version);
+        users.update(user);
+        assertEquals(version, user.getSecurityVersion());
+        assertEquals(CREATED, user.getCreatedAt());
+        assertEquals(version, jdbc.calls.get(0).values.get(7));
+        assertResourcesClosed(1, 1);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {-1, Long.MIN_VALUE})
+    void updateRejectsInvalidReturnedVersionsWithoutMutatingTheInput(Long version) {
+        jdbc.query(row("security_version", version));
+        UserAccount user = account(8L);
+        user.setSecurityVersion(7);
+        assertThrows(JdbcPersistenceException.class, () -> users.update(user));
+        assertEquals(7, user.getSecurityVersion());
+        assertEquals(8L, user.getId());
+        assertResourcesClosed(1, 1);
+    }
+
+    @Test
+    void zeroRowsAreAnAmbiguousConflictAndNeverTriggerARetry() {
+        jdbc.query();
+        UserAccount user = account(8L);
+        user.setSecurityVersion(7);
+        var failure = assertThrows(java.util.ConcurrentModificationException.class, () -> users.update(user));
+        assertTrue(failure.getMessage().contains("no existe o fue modificada"));
+        assertEquals(7, user.getSecurityVersion());
+        assertEquals(8L, user.getId());
+        assertResourcesClosed(1, 1);
+        assertEquals(1, jdbc.calls.size());
+    }
+
+    @Test
+    void multipleUpdateRowsLeaveTheInputMetadataUntouched() {
+        jdbc.query(row("security_version", 8L), row("security_version", 8L));
+        UserAccount user = account(8L);
+        user.setSecurityVersion(7);
+        assertThrows(JdbcPersistenceException.class, () -> users.update(user));
+        assertEquals(7, user.getSecurityVersion());
+        assertResourcesClosed(1, 1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"rows", "statement", "connection"})
+    void closeFailuresDoNotPublishInsertOrUpdateMetadata(String resource) {
+        for (boolean insert : List.of(true, false)) {
+            jdbc.query(insert ? inserted(8L) : row("security_version", 8L));
+            configureCloseFailure(resource);
+            UserAccount user = account(insert ? null : 8L);
+            user.setSecurityVersion(7);
+            JdbcPersistenceException failure = assertThrows(JdbcPersistenceException.class, () -> {
+                if (insert) users.save(user);
+                else users.update(user);
+            });
+            assertEquals(insert ? null : 8L, user.getId());
+            assertEquals(7, user.getSecurityVersion());
+            assertTrue(failure.getMessage().contains("SQLSTATE=08006"));
+            assertFalse(failure.getMessage().contains(HASH));
+            assertNull(failure.getCause());
+            assertEquals(0, failure.getSuppressed().length);
+        }
+        assertResourcesClosed(2, 2);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"rows", "statement", "connection"})
+    void conflictNeverLeaksASuppressedSqlCloseFailure(String resource) {
+        jdbc.query();
+        configureCloseFailure(resource);
+        UserAccount user = account(8L);
+        user.setSecurityVersion(7);
+        var failure = assertThrows(java.util.ConcurrentModificationException.class, () -> users.update(user));
+        assertFalse(failure.getMessage().contains(HASH));
+        assertNull(failure.getCause());
+        assertEquals(0, failure.getSuppressed().length);
+        assertEquals(7, user.getSecurityVersion());
+        assertResourcesClosed(1, 1);
+    }
+
+    @Test
+    void caughtVersionConflictStillMarksTheOuterTransactionForRollback() {
+        jdbc.query();
+        UserAccount user = account(8L);
+        user.setSecurityVersion(7);
+        assertThrows(JdbcPersistenceException.class,
+                () -> new JdbcTransactionManager(connections).inTransaction(() -> {
+                    assertThrows(java.util.ConcurrentModificationException.class, () -> users.update(user));
+                    assertEquals(0, jdbc.commits);
+                    assertEquals(0, jdbc.closedConnections);
+                }));
+        assertEquals(1, jdbc.rollbacks);
+        assertEquals(0, jdbc.commits);
+        assertEquals(7, user.getSecurityVersion());
+        assertResourcesClosed(1, 1);
+    }
+
+    @Test
+    void returnedVersionInsideAnOuterTransactionRemainsProvisionalAfterRollback() {
+        jdbc.query(row("security_version", 8L));
+        UserAccount user = account(8L);
+        user.setSecurityVersion(7);
+        IllegalStateException abort = new IllegalStateException("Abortar tras actualizar");
+        assertSame(abort, assertThrows(IllegalStateException.class,
+                () -> new JdbcTransactionManager(connections).inTransaction(() -> {
+                    users.update(user);
+                    assertEquals(8, user.getSecurityVersion());
+                    assertEquals(0, jdbc.commits);
+                    throw abort;
+                })));
+        assertEquals(8, user.getSecurityVersion(), "El objeto debe descartarse o recargarse tras rollback.");
+        assertEquals(1, jdbc.rollbacks);
+        assertEquals(0, jdbc.commits);
+        assertResourcesClosed(1, 1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"23505", "23503", "08006"})
+    void updateSqlErrorsPreserveMetadataAndSafeDiagnostics(String state) {
+        jdbc.fail(state, HASH);
+        UserAccount user = account(8L);
+        user.setSecurityVersion(7);
+        RuntimeException failure;
+        if (state.equals("08006")) {
+            failure = assertThrows(JdbcPersistenceException.class, () -> users.update(user));
+            assertTrue(failure.getMessage().contains("SQLSTATE=" + state));
+        } else {
+            failure = assertThrows(IllegalArgumentException.class, () -> users.update(user));
+        }
+        assertEquals(7, user.getSecurityVersion());
+        assertFalse(failure.getMessage().contains(HASH));
+        assertResourcesClosed(1, 0);
+    }
+
+    private void configureCloseFailure(String resource) {
+        SQLException failure = new SQLException("Detalle privado: " + HASH, "08006");
+        switch (resource) {
+            case "rows" -> jdbc.rowsCloseFailure = failure;
+            case "statement" -> jdbc.statementCloseFailure = failure;
+            default -> jdbc.connectionCloseFailure = failure;
+        }
+    }
+
     private void assertResourcesClosed(int statements, int resultSets) {
         assertEquals(jdbc.opened, jdbc.closedConnections);
         assertEquals(statements, jdbc.closedStatements);
@@ -512,7 +737,11 @@ class UserRepositoryJdbcTest {
 
     private static Map<String, Object> stored(long id, String name, boolean active) {
         return row("id", id, "username", name, "password_hash", HASH, "role", "WORKER",
-                "active", active, "seller_id", "SEL-1", "created_at", CREATED);
+                "active", active, "seller_id", "SEL-1", "created_at", CREATED, "security_version", 0L);
+    }
+
+    private static Map<String, Object> inserted(long id) {
+        return row("id", id, "security_version", 0L);
     }
 
     private static Map<String, Object> row(Object... values) {
@@ -532,6 +761,7 @@ class UserRepositoryJdbcTest {
         private SQLException openFailure;
         private SQLException statementCloseFailure;
         private SQLException connectionCloseFailure;
+        private SQLException rowsCloseFailure;
 
         @SafeVarargs
         final void query(Map<String, Object>... rows) { replies.add(new Reply(List.of(rows), 0, null)); }
@@ -567,7 +797,9 @@ class UserRepositoryJdbcTest {
                 }
                 if (name.equals("close")) {
                     closedStatements++;
-                    if (statementCloseFailure != null) throw statementCloseFailure;
+                    SQLException failure = statementCloseFailure;
+                    statementCloseFailure = null;
+                    if (failure != null) throw failure;
                     return null;
                 }
                 if (!name.equals("executeQuery") && !name.equals("executeUpdate")) {
@@ -586,7 +818,13 @@ class UserRepositoryJdbcTest {
                 case "next" -> ++index[0] < rows.size();
                 case "getString", "getBoolean", "getLong", "getObject" -> args[0] instanceof Integer
                         ? rows.get(index[0]).values().iterator().next() : rows.get(index[0]).get(args[0]);
-                case "close" -> { closedRows++; yield null; }
+                case "close" -> {
+                    closedRows++;
+                    SQLException failure = rowsCloseFailure;
+                    rowsCloseFailure = null;
+                    if (failure != null) throw failure;
+                    yield null;
+                }
                 default -> throw new UnsupportedOperationException(method.getName());
             });
         }

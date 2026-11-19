@@ -14,16 +14,18 @@ import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Persiste cuentas sobre V001 sin autenticar ni administrar permisos.
+ * Persiste cuentas sobre V001 y V104 sin autenticar ni administrar permisos.
  * Reutiliza la conexión transaccional del proveedor; no confirma ni cierra conexiones exteriores.
  * Devuelve cuentas independientes y nunca incluye hashes ni detalles del servidor en sus errores.
  */
 public final class UserRepositoryJdbc implements UserRepository {
-    private static final String COLUMNS = "id, username, password_hash, role, active, seller_id, created_at";
+    private static final String INSERT_COLUMNS = "id, username, password_hash, role, active, seller_id, created_at";
+    private static final String COLUMNS = INSERT_COLUMNS + ", security_version";
     // Límite defensivo: no repara secuencias atrasadas. Su comportamiento real sigue pendiente de validar.
     private static final int GENERATED_ID_ATTEMPTS = 64;
     private final JdbcConnectionProvider connections;
@@ -40,7 +42,8 @@ public final class UserRepositoryJdbc implements UserRepository {
 
     /**
      * Inserta una cuenta sin reemplazar otra; conserva un ID explícito o recupera el generado por SQL.
-     * Un ID asignado al objeto no demuestra el commit de una transacción exterior.
+     * ID y versión se asignan después de cerrar los recursos propios; no demuestran el commit exterior.
+     * Un fallo de comunicación tras escribir puede dejar un resultado incierto; no reintentar automáticamente.
      * Si la secuencia encuentra 64 IDs históricos ocupados, falla sin reemplazarlos ni ajustar la secuencia.
      * @param user cuenta con hash PBKDF2, rol y fecha de creación
      * @throws IllegalArgumentException por datos inválidos, duplicados o vendedor inexistente
@@ -49,20 +52,28 @@ public final class UserRepositoryJdbc implements UserRepository {
     @Override
     public void save(UserAccount user) {
         validate(user);
-        Long savedId = execute("INSERT_USER", connection -> {
+        SavedAccount saved = execute("INSERT_USER", connection -> {
             if (user.getId() != null) {
-                String sql = "INSERT INTO user_account (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?)";
+                String sql = "INSERT INTO user_account (" + INSERT_COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        + "RETURNING id, security_version";
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
                     statement.setLong(1, user.getId());
                     bindAccount(statement, user, 2);
                     statement.setObject(7, normalize(user.getCreatedAt()));
-                    requireOne(statement.executeUpdate());
+                    try (ResultSet rows = statement.executeQuery()) {
+                        if (!rows.next()) throw new JdbcPersistenceException("La inserción no devolvió una cuenta.");
+                        SavedAccount result = readInserted(rows);
+                        if (result.id() != user.getId()) {
+                            throw new JdbcPersistenceException("La inserción devolvió un ID inesperado.");
+                        }
+                        return result;
+                    }
                 }
-                return user.getId();
             }
             return insertGenerated(connection, user);
         });
-        user.setId(savedId);
+        user.setId(saved.id());
+        user.setSecurityVersion(saved.version());
     }
 
     /**
@@ -123,25 +134,36 @@ public final class UserRepositoryJdbc implements UserRepository {
     /**
      * Actualiza credenciales, rol, estado y vendedor sin reemplazar el ID ni la fecha histórica.
      * La autorización y las reglas del último administrador corresponden al futuro servicio de gestión.
+     * La versión recibida es la esperada; PostgreSQL calcula la resultante mediante V104.
+     * Dentro de una transacción exterior, la versión asignada es provisional hasta el commit.
+     * Tras rollback se debe descartar o recargar la cuenta; no se restaura automáticamente el objeto.
      * @param user cuenta existente que se actualizará
-     * @throws IllegalArgumentException por datos inválidos, cuenta ausente, duplicados o FK inválida
+     * @throws IllegalArgumentException por datos inválidos, duplicados o FK inválida
+     * @throws ConcurrentModificationException si la cuenta no existe o su versión no coincide
      * @throws JdbcPersistenceException si falla SQL
      */
     @Override
     public void update(UserAccount user) {
         validate(user);
         if (user.getId() == null) throw new IllegalArgumentException("El ID del usuario es obligatorio.");
-        execute("UPDATE_USER", connection -> {
+        long version = execute("UPDATE_USER", connection -> {
             try (PreparedStatement statement = connection.prepareStatement("UPDATE user_account SET username = ?, "
-                    + "password_hash = ?, role = ?, active = ?, seller_id = ? WHERE id = ?")) {
+                    + "password_hash = ?, role = ?, active = ?, seller_id = ? "
+                    + "WHERE id = ? AND security_version = ? RETURNING security_version")) {
                 bindAccount(statement, user, 1);
                 statement.setLong(6, user.getId());
-                int changed = statement.executeUpdate();
-                if (changed == 0) throw new IllegalArgumentException("No existe el usuario que se desea actualizar.");
-                requireOne(changed);
+                statement.setLong(7, user.getSecurityVersion());
+                try (ResultSet rows = statement.executeQuery()) {
+                    if (!rows.next()) {
+                        throw new ConcurrentModificationException("La cuenta no existe o fue modificada; vuelva a cargarla.");
+                    }
+                    long result = readSecurityVersion(rows);
+                    if (rows.next()) throw new JdbcPersistenceException("La actualización devolvió varias cuentas.");
+                    return result;
+                }
             }
-            return null;
         });
+        user.setSecurityVersion(version);
     }
 
     /**
@@ -164,9 +186,9 @@ public final class UserRepositoryJdbc implements UserRepository {
         });
     }
 
-    private static long insertGenerated(Connection connection, UserAccount user) throws SQLException {
+    private static SavedAccount insertGenerated(Connection connection, UserAccount user) throws SQLException {
         String sql = "INSERT INTO user_account (username, password_hash, role, active, seller_id, created_at) "
-                + "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING RETURNING id";
+                + "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING RETURNING id, security_version";
         // V001 permite IDs históricos explícitos que no adelantan la secuencia. Saltarlos no reemplaza cuentas.
         for (int attempt = 0; attempt < GENERATED_ID_ATTEMPTS; attempt++) {
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -174,14 +196,31 @@ public final class UserRepositoryJdbc implements UserRepository {
                 statement.setObject(6, normalize(user.getCreatedAt()));
                 try (ResultSet rows = statement.executeQuery()) {
                     if (rows.next()) {
-                        long id = rows.getLong("id");
-                        if (id <= 0 || rows.next()) throw new JdbcPersistenceException("ID generado inválido.");
-                        return id;
+                        return readInserted(rows);
                     }
                 }
             }
         }
         throw new JdbcPersistenceException("No se pudo asignar un ID libre; revise la secuencia de usuarios.");
+    }
+
+    private record SavedAccount(long id, long version) { }
+
+    private static SavedAccount readInserted(ResultSet rows) throws SQLException {
+        Long id = rows.getObject("id", Long.class);
+        long version = readSecurityVersion(rows);
+        if (id == null || id <= 0 || version != 0 || rows.next()) {
+            throw new JdbcPersistenceException("La inserción devolvió metadatos de cuenta inesperados.");
+        }
+        return new SavedAccount(id, version);
+    }
+
+    private static long readSecurityVersion(ResultSet rows) throws SQLException {
+        Long version = rows.getObject("security_version", Long.class);
+        if (version == null || version < 0) {
+            throw new JdbcPersistenceException("La versión de seguridad persistida es inválida.");
+        }
+        return version;
     }
 
     private static void bindAccount(PreparedStatement statement, UserAccount user, int start) throws SQLException {
@@ -206,6 +245,7 @@ public final class UserRepositoryJdbc implements UserRepository {
                     rows.getString("seller_id"));
             user.setActive(rows.getBoolean("active"));
             user.setCreatedAt(rows.getObject("created_at", LocalDateTime.class));
+            user.setSecurityVersion(readSecurityVersion(rows));
             // Leer no aplica la política de hashes nuevos: conserva el valor histórico opaco.
             // AuthenticationService/PasswordHasher deciden si ese valor permite autenticar.
             validateFields(user);
@@ -233,6 +273,12 @@ public final class UserRepositoryJdbc implements UserRepository {
         } catch (JdbcPersistenceException failure) {
             if (failure.getCause() != null || failure.getSuppressed().length > 0) {
                 throw sqlFailure(operationName, findSqlCause(failure));
+            }
+            throw failure;
+        } catch (ConcurrentModificationException failure) {
+            // El cierre también puede adjuntar un SQLException sensible al conflicto de versión.
+            if (failure.getSuppressed().length > 0) {
+                throw new ConcurrentModificationException("La cuenta no existe o fue modificada; vuelva a cargarla.");
             }
             throw failure;
         } catch (IllegalArgumentException failure) {
@@ -326,7 +372,4 @@ public final class UserRepositoryJdbc implements UserRepository {
         return timestamp.withNano(timestamp.getNano() / 1_000 * 1_000);
     }
 
-    private static void requireOne(int changed) {
-        if (changed != 1) throw new JdbcPersistenceException("La escritura no afectó exactamente una cuenta.");
-    }
 }

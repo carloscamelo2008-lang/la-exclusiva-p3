@@ -191,3 +191,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé limitar el cambio al repositorio memory y sus pruebas. Dejé pendientes la revocación de sesiones, el último administrador y la revisión de Jesús; la versión no detecta conflictos entre cambios exclusivos de username.
 * **Verificación realizada:** Codex ejecutó 79 pruebas requeridas y 15 regresiones de consola con Temurin 17.0.21: 94 aprobadas, sin fallos, errores ni omisiones. Incluyó 25 casos nuevos de copias, versiones y concurrencia con barreras. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 16 – Versionado de usuarios JDBC
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Versión esperada en JDBC (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para adaptar el repositorio JDBC a la versión de seguridad sin aplicar V104.
+* **Resumen de la respuesta recibida:** Codex añadió el mapeo de versión, INSERT con metadatos devueltos y UPDATE condicionado por versión esperada. Reforzó conflictos, errores de cierre y pruebas simuladas.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé el adaptador y sus pruebas sin cambiar contratos ni otros módulos. Dejé el incremento a cargo del trigger y documenté resultados inciertos y versiones provisionales tras rollback. V104 y la revisión de Jesús siguen pendientes.
+* **Verificación realizada:** Codex ejecutó 70 pruebas del adaptador y 97 regresiones con Temurin 17.0.21: 167 aprobadas, sin fallos, errores ni omisiones. Usó JDBC simulado y comprobó rollback-only. `git diff --check` pasó. No ejecutó PostgreSQL, migraciones ni la suite completa; el trigger no fue validado realmente.
+* **Commit o Pull Request relacionado:** Pendiente de creación.

@@ -30,7 +30,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Integraciones opcionales de usuarios, sin migraciones y con limpieza de fixtures propios.
  * Requieren autorización para escribir, {@code -Dlaexclusiva.test.postgres.users=true}
- * y variables JDBC dirigidas exclusivamente a {@code la_exclusiva_test} con V001 preparada.
+ * y variables JDBC dirigidas exclusivamente a {@code la_exclusiva_test} con V001 y V104 preparadas.
+ * No aplican migraciones. La prueba temporal de IDs no copia el trigger ni valida sus incrementos.
  */
 class UserRepositoryJdbcPostgresIntegrationTest {
     private static final LocalDateTime CREATED = LocalDateTime.of(2024, 1, 2, 3, 4, 5, 123456000);
