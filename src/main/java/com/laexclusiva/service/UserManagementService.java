@@ -4,11 +4,12 @@ import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.UserRepository;
+import com.laexclusiva.security.PasswordHasher;
 import java.util.ConcurrentModificationException;
 import java.util.function.Consumer;
 
 /**
- * Cambia exclusivamente rol y actividad dentro del protocolo administrativo cooperativo.
+ * Crea cuentas y cambia rol y actividad dentro del protocolo administrativo cooperativo.
  * Repositorio, revalidador y frontera deben compartir almacenamiento: en memoria el mismo
  * repositorio monitorizado y en JDBC el mismo proveedor. El constructor no puede verificar
  * ese emparejamiento. No protege escrituras directas ni SQL externo ni integra la aplicación.
@@ -77,6 +78,36 @@ public final class UserManagementService {
         });
     }
 
+    /**
+     * Crea una cuenta sin vendedor, con ID asignado por el repositorio y versión inicial cero.
+     * Revalida antes de procesar credenciales. PBKDF2 se ejecuta dentro de la frontera y puede
+     * prolongar el bloqueo; no se promete borrar de memoria las contraseñas almacenadas en String.
+     * No comprueba duplicados previamente, no relee tras guardar ni reintenta resultados inciertos.
+     * @param actor sesión administrativa vigente; no permite bootstrap sin administrador
+     * @param request datos de creación, sin metadatos persistentes controlados por el cliente
+     * @return resultado sin credenciales; provisional si participa en una transacción exterior
+     * @throws SecurityException si el actor no está autorizado
+     * @throws IllegalArgumentException por datos inválidos o duplicados informados por el repositorio
+     */
+    public UserChangeResult createUser(UserSession actor, CreateUserRequest request) {
+        return boundary.execute(() -> {
+            sessions.validate(actor);
+            if (request == null) throw new IllegalArgumentException("Los datos de creación son obligatorios.");
+            String username = request.username();
+            if (username == null || username.isBlank() || username.length() > 100 || username.indexOf('\0') >= 0) {
+                throw new IllegalArgumentException("El nombre de usuario debe tener entre 1 y 100 caracteres válidos.");
+            }
+            if (request.password() == null || request.password().isEmpty()) {
+                throw new IllegalArgumentException("La contraseña no puede ser nula o vacía.");
+            }
+            if (request.role() == null) throw new IllegalArgumentException("El rol es obligatorio.");
+            UserAccount user = new UserAccount(null, username, PasswordHasher.hash(request.password()), request.role(), null);
+            user.setActive(request.active());
+            users.save(user);
+            return new UserChangeResult(user.getId(), user.getRole(), user.isActive(), user.getSecurityVersion());
+        });
+    }
+
     private UserChangeResult update(String userId, long expectedVersion, Consumer<UserAccount> change) {
         Long id;
         try {
@@ -112,4 +143,12 @@ public final class UserManagementService {
 
     /** Resultado inmutable sin cuenta mutable, contraseña ni hash. */
     public record UserChangeResult(Long id, UserRole role, boolean active, long securityVersion) {}
+
+    /** Entrada inmutable de creación. No registrar el request ni sus accesores de credenciales. */
+    public record CreateUserRequest(String username, String password, UserRole role, boolean active) {
+        /** Omite todos los datos de entrada para evitar exposición accidental de credenciales. */
+        @Override public String toString() {
+            return "CreateUserRequest[datos protegidos]";
+        }
+    }
 }

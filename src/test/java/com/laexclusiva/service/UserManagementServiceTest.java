@@ -5,6 +5,7 @@ import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.InMemoryUserRepository;
 import com.laexclusiva.repository.UserRepository;
+import com.laexclusiva.security.PasswordHasher;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,6 +17,7 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -292,6 +294,229 @@ class UserManagementServiceTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource({"ADMINISTRATOR,true", "ADMINISTRATOR,false", "WORKER,true", "WORKER,false"})
+    void createsAccountsWithGeneratedMetadataAndVerifiableHash(UserRole role, boolean active) {
+        users.allowCreate = true;
+        users.forbidPostWriteReads = true;
+        UserSession actor = session("1");
+        LocalDateTime before = LocalDateTime.now();
+        var request = new UserManagementService.CreateUserRequest("new-member", "Temporary-Creation-Test", role, active);
+        var result = service.createUser(actor, request);
+        assertEquals(List.of("enter", "find:1", "save", "exit"), users.events);
+        assertEquals(1, users.saves);
+        assertEquals(0, users.updates);
+        assertEquals(4L, result.id());
+        assertEquals(role, result.role());
+        assertEquals(active, result.active());
+        assertEquals(0, result.securityVersion());
+        assertTrue(users.generatedIdRequested);
+        UserAccount created = stored(result.id().toString());
+        assertEquals("new-member", created.getUsername());
+        assertEquals(role, created.getRole());
+        assertEquals(active, created.isActive());
+        assertNull(created.getSellerId());
+        assertEquals(0, created.getSecurityVersion());
+        assertFalse(created.getCreatedAt().isBefore(before));
+        assertFalse(created.getCreatedAt().isAfter(LocalDateTime.now()));
+        assertFalse(request.password().equals(created.getPasswordHash()));
+        assertTrue(created.getPasswordHash().startsWith("$pbkdf2-sha256$i=210000$"));
+        assertTrue(PasswordHasher.verify(request.password(), created.getPasswordHash()));
+        assertFalse(result.toString().contains(request.password()));
+        assertFalse(result.toString().contains(created.getPasswordHash()));
+        assertEquals(0, actor.getAuthenticatedSecurityVersion());
+        assertTrue(actor.isValid());
+    }
+
+    @Test
+    void creationRejectsNullOrInvalidatedSessionBeforeProcessingRequest() {
+        assertThrows(SecurityException.class, () -> service.createUser(null, null));
+        UserSession actor = session("1");
+        actor.invalidate();
+        assertThrows(SecurityException.class, () -> service.createUser(actor, request("new-member")));
+        assertEquals(0, users.saves);
+        assertFalse(users.events.stream().anyMatch(event -> event.startsWith("find:")));
+    }
+
+    @Test
+    void creationRejectsWorkerBeforeProcessingInvalidCredentials() {
+        assertThrows(SecurityException.class, () -> service.createUser(session("3"), null));
+        assertEquals(0, users.saves);
+        assertEquals(3, storage.findAll().size());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"deleted", "inactive", "obsolete"})
+    void creationRejectsAnActorNoLongerAuthorized(String state) {
+        UserSession actor = session("1");
+        if (state.equals("deleted")) storage.delete("1");
+        else {
+            UserAccount current = stored("1");
+            if (state.equals("inactive")) current.setActive(false);
+            else current.setSellerId("CHANGED-SELLER");
+            storage.update(current);
+        }
+        assertThrows(SecurityException.class, () -> service.createUser(actor, request("new-member")));
+        assertEquals(0, users.saves);
+        assertTrue(storage.findByUsername("new-member").isEmpty());
+        assertEquals(0, actor.getAuthenticatedSecurityVersion());
+    }
+
+    @Test
+    void creationCannotBootstrapAnEmptyRepositoryUsingAStaleSession() {
+        UserSession actor = session("1");
+        storage.delete("1");
+        storage.delete("2");
+        storage.delete("3");
+        assertThrows(SecurityException.class, () -> service.createUser(actor,
+                new UserManagementService.CreateUserRequest("initial-admin", "Temporary-Creation-Test", UserRole.ADMINISTRATOR, true)));
+        assertTrue(storage.findAll().isEmpty());
+        assertEquals(0, users.saves);
+    }
+
+    @Test
+    void rejectsNullCreationRequestAfterAuthorization() {
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(session("1"), null));
+        assertEquals(List.of("enter", "find:1", "exit"), users.events);
+        assertEquals(0, users.saves);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t", "invalid\u0000name"})
+    void rejectsInvalidCreationUsername(String username) {
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(session("1"), request(username)));
+        assertEquals(0, users.saves);
+    }
+
+    @Test
+    void rejectsCreationUsernameLongerThanSchemaLimit() {
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(session("1"), request("x".repeat(101))));
+        assertEquals(0, users.saves);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void rejectsNullOrEmptyCreationPassword(String password) {
+        var request = new UserManagementService.CreateUserRequest("new-member", password, UserRole.WORKER, true);
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(session("1"), request));
+        assertEquals(0, users.saves);
+    }
+
+    @Test
+    void rejectsNullCreationRole() {
+        var request = new UserManagementService.CreateUserRequest("new-member", "Temporary-Creation-Test", null, true);
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(session("1"), request));
+        assertEquals(0, users.saves);
+    }
+
+    @Test
+    void preservesExistingPasswordContractWithoutAddingComplexityRules() {
+        users.allowCreate = true;
+        var request = new UserManagementService.CreateUserRequest("new-member", " ", UserRole.WORKER, true);
+        var result = service.createUser(session("1"), request);
+        assertTrue(PasswordHasher.verify(" ", stored(result.id().toString()).getPasswordHash()));
+        assertEquals(1, users.saves);
+    }
+
+    @Test
+    void creationRequestHasOnlyPermittedComponentsAndRedactsItsText() {
+        var request = request("new-member");
+        assertTrue(request.getClass().isRecord());
+        assertEquals(List.of("username", "password", "role", "active"),
+                Arrays.stream(request.getClass().getRecordComponents()).map(component -> component.getName()).toList());
+        assertFalse(request.toString().contains(request.password()));
+        assertFalse(request.toString().contains(request.username()));
+    }
+
+    @Test
+    void creationDuplicateUsesRepositoryUniquenessWithoutOverwritingOrRetrying() {
+        users.allowCreate = true;
+        UserAccount before = stored("3");
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(session("1"), request("  FIXTURE-3  ")));
+        assertEquals(1, users.saves);
+        assertEquals(List.of("enter", "find:1", "save", "exit"), users.events);
+        assertEquals(3, storage.findAll().size());
+        assertUnchangedExceptSecurity(before, stored("3"));
+        assertEquals(before.getRole(), stored("3").getRole());
+        assertEquals(before.isActive(), stored("3").isActive());
+        assertEquals(0, stored("3").getSecurityVersion());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"find:1", "save"})
+    void creationPersistenceFailureDoesNotRetryOrCreateAnAccount(String stage) {
+        users.allowCreate = true;
+        users.failureStage = stage;
+        UserSession actor = session("1");
+        assertSame(users.failure, assertThrows(IllegalStateException.class,
+                () -> service.createUser(actor, request("new-member"))));
+        assertEquals(stage.equals("save") ? 1 : 0, users.saves);
+        assertEquals(1, users.events.stream().filter(stage::equals).count());
+        assertTrue(storage.findByUsername("new-member").isEmpty());
+        assertEquals(0, actor.getAuthenticatedSecurityVersion());
+        assertTrue(actor.isValid());
+    }
+
+    @Test
+    void samePasswordReceivesIndependentRandomSalts() {
+        users.allowCreate = true;
+        service.createUser(session("1"), request("first-created"));
+        service.createUser(session("1"), request("second-created"));
+        assertFalse(storage.findByUsername("first-created").orElseThrow().getPasswordHash()
+                .equals(storage.findByUsername("second-created").orElseThrow().getPasswordHash()));
+        assertEquals(2, users.saves);
+    }
+
+    @Test
+    void twoServicesCreatingTheSameUsernameLeaveExactlyOneNewAccount() throws Exception {
+        users.allowCreate = true;
+        UserManagementService first = new UserManagementService(users,
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+        UserManagementService second = new UserManagementService(users,
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+        UserSession actor = session("1");
+        CyclicBarrier start = new CyclicBarrier(3);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> one = executor.submit(() -> createAfterBarrier(first, actor, " Concurrent-Member ", start));
+            Future<Boolean> two = executor.submit(() -> createAfterBarrier(second, actor, "concurrent-member", start));
+            start.await(5, TimeUnit.SECONDS);
+            boolean firstWon = one.get(10, TimeUnit.SECONDS);
+            boolean secondWon = two.get(10, TimeUnit.SECONDS);
+            assertNotEquals(firstWon, secondWon);
+            assertEquals(2, users.saves);
+            assertEquals(4, storage.findAll().size());
+            assertEquals(1, storage.findAll().stream().filter(user -> user.getUsername().trim()
+                    .equalsIgnoreCase("concurrent-member")).count());
+            UserAccount created = storage.findByUsername("concurrent-member").orElseThrow();
+            assertTrue(created.isActive());
+            assertEquals(UserRole.WORKER, created.getRole());
+            assertEquals(0, created.getSecurityVersion());
+            assertNull(created.getSellerId());
+            assertTrue(PasswordHasher.verify(request("unused").password(), created.getPasswordHash()));
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    private boolean createAfterBarrier(UserManagementService operation, UserSession actor, String username,
+                                       CyclicBarrier start) throws Exception {
+        start.await(5, TimeUnit.SECONDS);
+        try {
+            operation.createUser(actor, request(username));
+            return true;
+        } catch (IllegalArgumentException duplicate) {
+            assertTrue(duplicate.getMessage().contains("registrado"));
+            return false;
+        }
+    }
+
+    private static UserManagementService.CreateUserRequest request(String username) {
+        return new UserManagementService.CreateUserRequest(username, "Temporary-Creation-Test", UserRole.WORKER, true);
+    }
+
     private boolean compete(UserManagementService operation, UserSession actor, String id,
                             boolean roleChange, CyclicBarrier start) throws Exception {
         start.await(5, TimeUnit.SECONDS);
@@ -334,15 +559,17 @@ class UserManagementServiceTest {
     /** Exige el monitor durante cada acceso: no basta la sincronización individual del delegado. */
     private final class RecordingUsers implements UserRepository {
         final List<String> events = new ArrayList<>();
-        int updates;
+        int updates, saves;
         UserAccount loadedTarget, submitted;
         boolean forbidPostWriteReads;
+        boolean allowCreate, generatedIdRequested;
         String failureStage;
         RuntimeException failure = new IllegalStateException("simulated repository failure");
 
         private void enter(String event) {
             assertTrue(Thread.holdsLock(storage), "Todos los accesos deben ocurrir dentro de la frontera.");
-            if (forbidPostWriteReads && updates > 0 && !event.equals("update")) fail("No consultar tras escribir.");
+            if (forbidPostWriteReads && (updates > 0 || saves > 0)
+                    && !event.equals("update") && !event.equals("save")) fail("No consultar tras escribir.");
             events.add(event);
             if (event.equals(failureStage)) throw failure;
         }
@@ -359,7 +586,14 @@ class UserManagementServiceTest {
             enter("update");
             storage.update(user);
         }
-        @Override public void save(UserAccount user) { throw new AssertionError("No crear cuentas."); }
+        @Override public void save(UserAccount user) {
+            if (!allowCreate) throw new AssertionError("No crear cuentas en operaciones de rol o estado.");
+            saves++;
+            enter("save");
+            generatedIdRequested = user.getId() == null;
+            assertEquals(0, user.getSecurityVersion());
+            storage.save(user);
+        }
         @Override public void delete(String id) { throw new AssertionError("No eliminar cuentas."); }
         @Override public Optional<UserAccount> findByUsername(String name) { throw new AssertionError("No usar username para autorizar."); }
     }

@@ -282,3 +282,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé solo estas dos operaciones y sus pruebas, sin integración en la aplicación. La protección exige emparejar repositorio y frontera; las escrituras directas siguen fuera del protocolo. Dejé pendientes PostgreSQL y la revisión de Jesús.
 * **Verificación realizada:** Codex ejecutó 211 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 39 nuevas y 172 regresiones, sin fallos, errores ni omisiones. Incluyó competencia en memoria con barreras entre dos servicios. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+#### Continuación de la Interacción 18 – Creación administrativa (microcommit 3D)
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Alta protegida de cuentas (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para permitir que un administrador vigente cree cuentas mediante el servicio protegido.
+* **Resumen de la respuesta recibida:** Codex añadió un request inmutable que oculta sus datos al imprimirse y reutilizó PBKDF2. La creación revalida al actor dentro de la frontera, guarda una vez y devuelve un resultado sin credenciales.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé cuentas de ambos roles, activas o inactivas, sin vendedor. Conservé el contrato actual de contraseñas y dejé pendientes la política de Jesús, la integración y PostgreSQL. No se añadió bootstrap ni reintentos.
+* **Verificación realizada:** Codex ejecutó 308 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 27 nuevas y 281 regresiones, sin fallos, errores ni omisiones. Dos creaciones concurrentes dejaron una sola cuenta nueva. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
