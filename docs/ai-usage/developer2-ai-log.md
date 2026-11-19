@@ -256,3 +256,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé solo la sesión y sus pruebas, conservando el constructor y logout. Dejé pendiente comparar la captura con el repositorio; esto todavía no revoca sesiones por cambios administrativos.
 * **Verificación realizada:** Codex ejecutó 108 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 17 nuevas y 91 regresiones de modelo, usuarios, autenticación, memoria, composición y consola; sin fallos, errores ni omisiones. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+#### Continuación de la Interacción 18 – Revalidación administrativa (microcommit 3B)
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Vigencia administrativa (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para comprobar la sesión administrativa contra la cuenta actual del repositorio.
+* **Resumen de la respuesta recibida:** Codex detectó que faltaba distinguir invalidación y actividad del snapshot. Tras mi autorización añadió `isValid()` y un revalidador que usa el ID y la versión capturados y exige `MANAGE_USERS` en la cuenta recargada.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé esa ampliación sin cambiar autenticación ni fronteras. El futuro servicio deberá revalidar dentro de la frontera; todavía no hay operaciones administrativas ni integración automática.
+* **Verificación realizada:** Codex ejecutó 172 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 20 nuevas y 152 regresiones, sin fallos, errores ni omisiones. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.

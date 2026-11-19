@@ -57,6 +57,11 @@ public class UserSession {
         return authenticatedSecurityVersion;
     }
 
+    /** Indica únicamente si la sesión no ha sido invalidada; no valida la cuenta persistida. */
+    public boolean isValid() {
+        return valid;
+    }
+
     /** Indica si la sesión sigue vigente y su cuenta está activa. */
     public boolean isActive() {
         return valid && userAccount.isActive();

@@ -120,6 +120,36 @@ class UserSessionTest {
         assertEquals(1, next.getAuthenticatedSecurityVersion());
     }
 
+    @Test
+    void validityDoesNotDependOnTheMutableSnapshotActivity() {
+        UserAccount account = account();
+        UserSession session = new UserSession(account);
+        assertTrue(session.isValid());
+        assertTrue(session.isActive());
+        account.setActive(false);
+        assertTrue(session.isValid());
+        assertFalse(session.isActive());
+        account.setActive(true);
+        assertTrue(session.isValid());
+        assertTrue(session.isActive());
+    }
+
+    @Test
+    void invalidatedSessionCannotBecomeValidThroughAccountChanges() {
+        UserAccount account = account();
+        UserSession session = new UserSession(account);
+        session.invalidate();
+        assertFalse(session.isValid());
+        account.setId(20L);
+        account.setSecurityVersion(1);
+        account.setActive(false);
+        account.setActive(true);
+        assertFalse(session.isValid());
+        assertFalse(session.isActive());
+        assertEquals(1L, session.getAuthenticatedUserId());
+        assertEquals(0, session.getAuthenticatedSecurityVersion());
+    }
+
     private static UserAccount account() {
         return new UserAccount(1L, "fixture", "opaque-test-hash", UserRole.ADMINISTRATOR, null);
     }
