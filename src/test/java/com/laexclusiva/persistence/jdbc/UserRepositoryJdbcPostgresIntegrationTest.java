@@ -6,6 +6,8 @@ import com.laexclusiva.model.UserRole;
 import com.laexclusiva.repository.jdbc.SellerRepositoryJdbc;
 import com.laexclusiva.repository.jdbc.UserRepositoryJdbc;
 import com.laexclusiva.security.PasswordHasher;
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.LocalDateTime;
@@ -143,19 +145,50 @@ class UserRepositoryJdbcPostgresIntegrationTest {
     @Test
     void generatedIdsSkipHistoricalIdsUsingAnIsolatedTemporaryIdentitySequence() {
         DatabaseConfig config = authorizedConfig();
-        JdbcConnectionProvider connections = new JdbcConnectionProvider(config);
-        verifyDatabase(connections);
+        Connection[] physicalConnection = new Connection[1];
+        JdbcConnectionProvider connections = new JdbcConnectionProvider(config, () -> {
+            // Una segunda apertura indicaría que se perdió la conexión transaccional.
+            assertNull(physicalConnection[0], "La prueba debe usar una única conexión física.");
+            physicalConnection[0] = DriverManager.getConnection(
+                    config.getUrl(), config.getUser(), config.getPassword());
+            return physicalConnection[0];
+        });
         UserRepositoryJdbc users = new UserRepositoryJdbc(connections);
         String hash = PasswordHasher.hash("Temporary-Sequence-Test-Only");
-        new JdbcTransactionManager(connections).inTransaction(() -> {
-            connections.withConnection(connection -> {
-                // La tabla temporal oculta la real solo en esta conexión y tiene su propia identidad.
-                // No se altera la secuencia persistente ni se aplica una migración.
+        long temporaryTableOid = new JdbcTransactionManager(connections).inTransaction(() -> {
+            // Se valida la base en la misma conexión que ejecutará todas las operaciones.
+            verifyDatabase(connections);
+            long tableOid = connections.withConnection(connection -> {
+                assertSame(physicalConnection[0], connection);
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SET LOCAL search_path = pg_temp, public")) {
+                    statement.execute();
+                }
                 try (PreparedStatement statement = connection.prepareStatement(
                         "CREATE TEMPORARY TABLE user_account (LIKE public.user_account INCLUDING ALL)")) {
                     statement.execute();
                 }
-                return null;
+                // También se exige una identidad temporal para no consumir una secuencia persistente
+                // si el esquema instalado difiere del previsto por V001.
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT t.oid, t.relpersistence = 't' AND t.relnamespace = pg_my_temp_schema() "
+                        + "AND to_regclass('user_account') = t.oid "
+                        + "AND t.oid <> 'public.user_account'::regclass AS isolated_table, "
+                        + "a.attidentity IN ('a', 'd') AND s.relpersistence = 't' "
+                        + "AND s.relnamespace = pg_my_temp_schema() AS isolated_identity "
+                        + "FROM pg_catalog.pg_class t "
+                        + "JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attname = 'id' "
+                        + "LEFT JOIN pg_catalog.pg_class s ON s.oid = "
+                        + "pg_get_serial_sequence('pg_temp.user_account', 'id')::regclass "
+                        + "WHERE t.oid = to_regclass('pg_temp.user_account')");
+                     ResultSet rows = statement.executeQuery()) {
+                    assertTrue(rows.next(), "Debe existir la tabla temporal esperada.");
+                    assertTrue(rows.getBoolean("isolated_table"),
+                            "Se aborta: user_account no resuelve exclusivamente a la tabla temporal.");
+                    assertTrue(rows.getBoolean("isolated_identity"),
+                            "Se aborta: la identidad no pertenece al esquema temporal.");
+                    return rows.getLong("oid");
+                }
             });
             for (long id = 1; id <= 3; id++) {
                 users.save(new UserAccount(id, "historical-" + id, hash, UserRole.WORKER, null));
@@ -165,8 +198,22 @@ class UserRepositoryJdbcPostgresIntegrationTest {
             assertEquals(4L, generated.getId());
             assertEquals(List.of(1L, 2L, 3L, 4L), users.findAll().stream().map(UserAccount::getId).toList());
             assertEquals("historical-1", users.findById("1").orElseThrow().getUsername());
+            return tableOid;
         });
-        // El cierre de la conexión elimina sus objetos temporales; no se ejecuta limpieza global.
+        assertDoesNotThrow(() -> assertTrue(physicalConnection[0].isClosed(),
+                "La conexión propietaria de la tabla temporal debe estar cerrada."));
+        // Otra sesión comprueba el catálogo: no basta con que la tabla deje de ser visible.
+        new JdbcConnectionProvider(config).withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE oid = ?::oid)")) {
+                statement.setLong(1, temporaryTableOid);
+                try (ResultSet rows = statement.executeQuery()) {
+                    assertTrue(rows.next());
+                    assertFalse(rows.getBoolean(1), "La tabla temporal debe desaparecer al cerrar su sesión.");
+                }
+            }
+            return null;
+        });
     }
 
     @Test
