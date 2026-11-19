@@ -159,7 +159,20 @@ class UserRepositoryJdbcPostgresIntegrationTest {
             // Se valida la base en la misma conexión que ejecutará todas las operaciones.
             verifyDatabase(connections);
             long tableOid = connections.withConnection(connection -> {
-                assertSame(physicalConnection[0], connection);
+                // El coordinador entrega un proxy protector, no la referencia física original.
+                // Ambas referencias deben consultar el mismo proceso servidor durante esta transacción.
+                int physicalBackendPid;
+                try (PreparedStatement statement = physicalConnection[0].prepareStatement("SELECT pg_backend_pid()");
+                     ResultSet rows = statement.executeQuery()) {
+                    assertTrue(rows.next());
+                    physicalBackendPid = rows.getInt(1);
+                }
+                try (PreparedStatement statement = connection.prepareStatement("SELECT pg_backend_pid()");
+                     ResultSet rows = statement.executeQuery()) {
+                    assertTrue(rows.next());
+                    assertEquals(physicalBackendPid, rows.getInt(1),
+                            "El wrapper debe utilizar la misma sesión PostgreSQL que la conexión física.");
+                }
                 try (PreparedStatement statement = connection.prepareStatement(
                         "SET LOCAL search_path = pg_temp, public")) {
                     statement.execute();
