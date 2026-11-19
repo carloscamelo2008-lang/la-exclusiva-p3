@@ -178,3 +178,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé únicamente el modelo y sus pruebas. La versión es un metadato de persistencia, no un campo de formulario ni un permiso; dejé el incremento y el mapeo de repositorios para otra actividad.
 * **Verificación realizada:** Codex ejecutó 101 pruebas con Temurin 17.0.21: 8 nuevas del modelo y 93 existentes de usuarios, autenticación, repositorio JDBC simulado y composición; todas aprobaron sin fallos, errores ni omisiones. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 15 – Versionado y aislamiento en memoria
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Repositorio de usuarios en memoria (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para proteger las cuentas en memoria frente a cambios accidentales y actualizaciones con versiones antiguas.
+* **Resumen de la respuesta recibida:** Codex implementó copias defensivas, sincronización por repositorio y control de versión esperada. Añadió incrementos por cambios de seguridad, conservación de la fecha histórica y protección de IDs y desbordamientos.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé limitar el cambio al repositorio memory y sus pruebas. Dejé pendientes la revocación de sesiones, el último administrador y la revisión de Jesús; la versión no detecta conflictos entre cambios exclusivos de username.
+* **Verificación realizada:** Codex ejecutó 79 pruebas requeridas y 15 regresiones de consola con Temurin 17.0.21: 94 aprobadas, sin fallos, errores ni omisiones. Incluyó 25 casos nuevos de copias, versiones y concurrencia con barreras. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
