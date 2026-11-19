@@ -16,6 +16,7 @@ import com.laexclusiva.model.StockMovement;
 import com.laexclusiva.model.StockRequest;
 import com.laexclusiva.repository.SaleRepository;
 import com.laexclusiva.repository.CustomerRepositoryInterface;
+import com.laexclusiva.repository.InventoryStockAdjuster;
 import com.laexclusiva.repository.jdbc.CustomerBalanceAdjusterJdbc;
 import com.laexclusiva.repository.jdbc.CustomerDebtQueryJdbc;
 import com.laexclusiva.repository.jdbc.CustomerRepositoryJdbc;
@@ -207,6 +208,88 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
         assertEquals(0, inventories.findByProductId(productId).orElseThrow().totalUnits());
         assertEquals(2, count("SELECT COUNT(*) FROM stock_movement WHERE product_id = ? AND movement_type = 'EXIT'",
                 productId));
+    }
+
+    @Test
+    void saleCreationRetryWithSameKeyDoesNotRepeatAnyFinancialOrInventoryEffect() {
+        String key = "sale-retry-" + UUID.randomUUID();
+        List<StockRequest> request = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
+
+        Sale first = workflow.registerSale(request, sellerId, customerId, new BigDecimal("25.00"), key);
+        Sale replay = workflow.registerSale(request, sellerId, customerId, new BigDecimal("25.00"), key);
+
+        assertEquals(first.getId(), replay.getId());
+        assertEquals(1, count("SELECT COUNT(*) FROM sale WHERE idempotency_key = ?", key));
+        assertEquals(1, count("SELECT COUNT(*) FROM sale_line WHERE sale_id = ?", first.getId()));
+        assertEquals(1, count("SELECT COUNT(*) FROM sale_payment WHERE sale_id = ?", first.getId()));
+        assertEquals(1, count("SELECT COUNT(*) FROM stock_movement WHERE product_id = ? AND movement_type = 'EXIT'",
+                productId));
+        assertEquals(2, inventories.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(new BigDecimal("125.00"), customers.findById(customerId).getBalance());
+        assertEquals(new BigDecimal("75.00"), debtQuery.findOutstandingSalesDebt(customerId));
+        assertThrows(IllegalArgumentException.class, () -> workflow.registerSale(
+                List.of(new StockRequest(productId, SalePresentation.UNIT, 2)), sellerId, customerId,
+                new BigDecimal("25.00"), key));
+        assertEquals(1, count("SELECT COUNT(*) FROM sale WHERE idempotency_key = ?", key));
+        assertEquals(2, inventories.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(new BigDecimal("125.00"), customers.findById(customerId).getBalance());
+    }
+
+    @Test
+    void concurrentSaleRequestWithSameKeyCommitsOnlyOneSale() throws Exception {
+        String key = "sale-concurrent-" + UUID.randomUUID();
+        List<StockRequest> request = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Sale> first = pool.submit(() -> {
+                start.await();
+                return workflow.registerSale(request, sellerId, customerId, new BigDecimal("25.00"), key);
+            });
+            Future<Sale> second = pool.submit(() -> {
+                start.await();
+                return workflow.registerSale(request, sellerId, customerId, new BigDecimal("25.00"), key);
+            });
+            start.countDown();
+            assertEquals(first.get(15, TimeUnit.SECONDS).getId(), second.get(15, TimeUnit.SECONDS).getId());
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS), "Los reintentos concurrentes deben terminar.");
+        }
+        assertEquals(1, count("SELECT COUNT(*) FROM sale WHERE idempotency_key = ?", key));
+        assertEquals(1, count("SELECT COUNT(*) FROM stock_movement WHERE product_id = ? AND movement_type = 'EXIT'",
+                productId));
+        assertEquals(2, inventories.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(new BigDecimal("125.00"), customers.findById(customerId).getBalance());
+    }
+
+    @Test
+    void rollbackRemovesSaleKeyAndAllowsSafeRetryOfSameRequest() {
+        String key = "sale-rollback-" + UUID.randomUUID();
+        List<StockRequest> request = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
+        InventoryStockAdjuster failAfterStockChange = new InventoryStockAdjuster() {
+            @Override public int increaseStock(String id, int units) { return stockAdjuster.increaseStock(id, units); }
+            @Override public int decreaseStock(String id, int units) {
+                stockAdjuster.decreaseStock(id, units);
+                throw new IllegalStateException("Fallo de regresión después del delta de existencias.");
+            }
+        };
+        SalesWorkflow failingWorkflow = new JdbcSalesWorkflow(products, customers, sellers, saleRepository,
+                saleRepository, debtQuery, balanceAdjuster, failAfterStockChange, movements, transactions);
+
+        assertThrows(IllegalStateException.class, () -> failingWorkflow.registerSale(
+                request, sellerId, customerId, new BigDecimal("25.00"), key));
+        assertEquals(0, count("SELECT COUNT(*) FROM sale WHERE idempotency_key = ?", key));
+        assertEquals(3, inventories.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(0, count("SELECT COUNT(*) FROM stock_movement WHERE product_id = ? AND movement_type = 'EXIT'",
+                productId));
+        assertEquals(new BigDecimal("50.00"), customers.findById(customerId).getBalance());
+
+        Sale retried = workflow.registerSale(request, sellerId, customerId, new BigDecimal("25.00"), key);
+        assertEquals(1, count("SELECT COUNT(*) FROM sale WHERE idempotency_key = ?", key));
+        assertEquals(2, inventories.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(new BigDecimal("125.00"), customers.findById(customerId).getBalance());
+        assertEquals(new BigDecimal("75.00"), retried.calculateBalance());
     }
 
     @Test

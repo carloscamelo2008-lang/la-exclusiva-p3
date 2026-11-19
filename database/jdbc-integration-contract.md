@@ -484,3 +484,65 @@ La prueba PostgreSQL `creditSaleAndPaymentSerializeOnCustomerInBothTransactionOr
 Ejecuta los órdenes venta a crédito→abono y abono→venta, y valida saldo agregado, deuda histórica,
 ventas, pagos, importe total, reintento idempotente y terminación de los hilos. La solución no cambia
 V001/V002 ni introduce migraciones.
+
+## Finanzas y caja (`feature/carlos-finance-close`, 2026-11-18)
+
+Esta rama agrega contratos propios en `CustomerGeneralDebtWorkflow`, `CashWorkflow`,
+`CustomerGeneralDebtMovementRepository`, `CashMovementRepository` e `IdempotentSaleRepository`.
+Los adaptadores usan el proveedor y el coordinador JDBC ya existentes; no sustituyen ni editan los
+DAO de inventario de Jesús ni la autenticación de Daniel.
+
+`SaleRepositoryJdbc.saveOnce` asigna a la solicitud de venta una clave durable y una huella de carga
+útil. El flujo JDBC confirma la cabecera, precios históricos de líneas, pago inicial, ajustes de stock,
+movimientos, saldo y recibo inicial en una sola transacción. El replay exacto devuelve la venta
+original y no aplica esos efectos de nuevo. Reutilizar la clave con datos distintos falla. El
+controlador conserva clave/carga ante error incierto, y el modo memoria solo puede deduplicar durante
+la vida del proceso.
+
+La cartera de deuda general se calcula como saldo agregado menos deuda pendiente por venta. Las
+operaciones que la cambian bloquean la fila del cliente, comprueban consistencia y aplican un delta
+SQL atómico sobre el saldo. El registro auditable del cargo/pago, el delta y, para un pago, su recibo
+de caja, usan la misma transacción. Un abono general se limita a la diferencia disponible y no puede
+reducir `sale_payment`; una inconsistencia de sobrepago requiere corrección explícita, nunca una
+transferencia implícita a crédito del cliente.
+
+El libro de caja acepta entradas manuales de otros ingresos y categorías de egresos. Los recibos por
+venta inicial, abono de venta y pago de deuda general son derivados e idempotentes y se insertan en la
+transacción de origen. La facturación se suma desde `sale_line` usando sus precios históricos, sin
+sumar pagos por joins, y se presenta como métrica distinta al efectivo recibido. Esto evita duplicar
+ingresos y no interpreta ventas pendientes como recaudo.
+
+La pantalla actualiza tabla e indicadores mediante `CashWorkflow.loadSnapshot(...)`, cuyo resultado
+`CashSnapshot` agrupa ambos. `CashWorkflowJdbc` ejecuta sus consultas con el `TransactionBoundary`
+compartido mediante `inReadOnlyRepeatableRead`: el `JdbcTransactionManager` configura la misma
+conexión de lectura en `REPEATABLE_READ`, y `JdbcConnectionProvider` la reutiliza para movimientos,
+resumen y facturación. Así un commit concurrente entre las consultas queda fuera de toda esa
+instantánea y aparece completo en la siguiente actualización. Una transacción exterior incompatible
+se rechaza explícitamente; no se presenta `READ_COMMITTED` como una lectura consistente. El
+workflow en memoria conserva la implementación predeterminada del puerto.
+
+V102 crea `cash_movement` vacío y no guarda la fecha de activación/cobertura del libro. Por ello no
+se puede afirmar qué cobros históricos contiene ni se reconstruyen recibos automáticamente. Caja
+advierte que los cobros anteriores a la activación podrían faltar, indica que no existe una fecha
+verificable y mantiene la facturación histórica separada del efectivo registrado.
+
+Migraciones nuevas y exclusivas de la rama: V100 (clave/huella de venta), V101 (libro auditable de
+deuda general), V102 (libro de caja) y V103 (refuerzo del `CHECK` de identidad de venta para bases
+donde V100 ya se aplicó). V100/V101/V102 se aplicaron manualmente solo en `la_exclusiva_test` luego
+de verificar columnas/tablas ausentes. V103 se aplicó después, también exclusivamente en
+`la_exclusiva_test`, tras comprobar que no había identidades parciales ni claves duplicadas; su
+transacción reemplaza y valida el `CHECK` sin transformar filas. La base conservó la fila histórica
+con ambas columnas nulas. Ninguna migración se ejecuta automáticamente. Cada entorno destino debe
+revisar y aplicar cada versión una sola vez después de V001/V002; antes de V103 debe confirmar que
+no hay identidades parciales, pues la validación falla de forma transaccional si las encuentra.
+
+La pantalla de Caja requiere `VIEW_CASH` y `REGISTER_CASH_MOVEMENT`; el rol trabajador vigente no
+incluye esos permisos. Crear deuda general requiere el permiso específico `REGISTER_GENERAL_DEBT`
+(incluido en el rol administrador, no en trabajador), en vez de inferirlo desde el permiso de alta de
+clientes. Abonar deuda general utiliza `REGISTER_PAYMENT`, el mismo permiso de abonos financieros,
+y el handler lo vuelve a comprobar al momento de escribir.
+
+La evidencia específica de transacciones, consultas, FXML, límites del modo memoria y suites
+PostgreSQL se mantiene en [sales-jdbc-integration.md](sales-jdbc-integration.md). Las pruebas
+permanecen restringidas a fixtures ficticios propios de `la_exclusiva_test`; ninguna limpieza de
+estas suites afecta filas ajenas.

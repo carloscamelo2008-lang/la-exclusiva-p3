@@ -31,12 +31,39 @@ public final class JdbcTransactionManager implements TransactionBoundary {
      */
     @Override
     public <T> T inTransaction(Supplier<T> operation) {
+        return inTransaction(operation, null);
+    }
+
+    /**
+     * Ejecuta varias lecturas en una transacción PostgreSQL con una instantánea repetible.
+     * Si la llamada está anidada, solo se une cuando la transacción exterior ya usa el mismo
+     * aislamiento; nunca afirma consistencia bajo una transacción {@code READ COMMITTED}.
+     *
+     * @param operation lecturas que deben observar el mismo estado confirmado
+     * @param <T> tipo del resultado
+     * @return resultado leído
+     * @throws IllegalStateException si una transacción exterior usa otro aislamiento
+     * @throws JdbcPersistenceException si no se puede abrir, leer, confirmar o cerrar la transacción
+     */
+    @Override
+    public <T> T inReadOnlyRepeatableRead(Supplier<T> operation) {
+        return inTransaction(operation, Connection.TRANSACTION_REPEATABLE_READ);
+    }
+
+    private <T> T inTransaction(Supplier<T> operation, Integer requiredIsolation) {
         if (operation == null) {
             throw new IllegalArgumentException("La operación transaccional es obligatoria.");
         }
 
         if (connectionContext.hasActiveTransaction()) {
             try {
+                if (requiredIsolation != null) {
+                    int activeIsolation = connectionProvider.withConnection(Connection::getTransactionIsolation);
+                    if (activeIsolation != requiredIsolation) {
+                        throw new IllegalStateException("La lectura consistente requiere una transacción "
+                                + "REPEATABLE_READ; no puede unirse a la transacción actual.");
+                    }
+                }
                 return operation.get();
             } catch (RuntimeException | Error failure) {
                 connectionContext.markRollbackOnly();
@@ -45,6 +72,10 @@ public final class JdbcTransactionManager implements TransactionBoundary {
         }
 
         try (Connection connection = connectionProvider.openConnection()) {
+            if (requiredIsolation != null) {
+                connection.setReadOnly(true);
+                connection.setTransactionIsolation(requiredIsolation);
+            }
             connection.setAutoCommit(false);
             connectionContext.bindTransaction(connection);
             try {

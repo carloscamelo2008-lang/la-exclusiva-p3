@@ -21,6 +21,24 @@ public interface SalesWorkflow {
     Sale registerSale(List<StockRequest> lines, String sellerId, String customerId, BigDecimal initialPayment);
 
     /**
+     * Registra una venta usando la clave persistente del formulario para recuperar reintentos inciertos.
+     *
+     * @param lines líneas solicitadas
+     * @param sellerId vendedor responsable
+     * @param customerId cliente asociado o {@code null} para contado
+     * @param initialPayment efectivo recibido al crear la venta
+     * @param idempotencyKey clave estable que debe conservarse ante una respuesta incierta
+     * @return la venta creada o la venta original del mismo intento
+     * @throws IllegalArgumentException si la clave se usa con otra carga útil
+     * @throws com.laexclusiva.model.InsufficientStockException si no hay existencias suficientes; el
+     *         flujo debe rechazar la solicitud sin dejar efectos parciales de venta
+     */
+    default Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                              BigDecimal initialPayment, String idempotencyKey) {
+        return registerSale(lines, sellerId, customerId, initialPayment);
+    }
+
+    /**
      * Registra un abono identificado para que los reintentos no lo apliquen dos veces.
      * En el adaptador JDBC, el pago y el ajuste del saldo del cliente son una sola transacción.
      *

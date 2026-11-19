@@ -12,6 +12,7 @@ public final class InMemorySalesWorkflow implements SalesWorkflow {
     private final SaleService saleService;
     private final CustomerService customerService;
     private final Map<PaymentKey, BigDecimal> paymentsByKey = new HashMap<>();
+    private final Map<String, SaleRequestRecord> salesByKey = new HashMap<>();
 
     /** Crea el adaptador con los servicios en memoria ya existentes. */
     public InMemorySalesWorkflow(SaleService saleService, CustomerService customerService) {
@@ -26,6 +27,35 @@ public final class InMemorySalesWorkflow implements SalesWorkflow {
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                             BigDecimal initialPayment) {
         return saleService.registerSale(lines, sellerId, customerId, initialPayment);
+    }
+
+    /**
+     * Deduplica reintentos de creación durante la vida del proceso en modo memoria.
+     *
+     * @param lines líneas solicitadas
+     * @param sellerId vendedor
+     * @param customerId cliente o {@code null}
+     * @param initialPayment pago inicial
+     * @param idempotencyKey clave estable de la pantalla
+     * @return venta creada o recuperada de esta sesión del proceso
+     */
+    @Override
+    public synchronized Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                          BigDecimal initialPayment, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 64) {
+            throw new IllegalArgumentException("La clave de la venta debe tener entre 1 y 64 caracteres.");
+        }
+        String fingerprint = SaleRequestFingerprint.calculate(lines, sellerId, customerId, initialPayment);
+        SaleRequestRecord existing = salesByKey.get(idempotencyKey);
+        if (existing != null) {
+            if (!existing.fingerprint().equals(fingerprint)) {
+                throw new IllegalArgumentException("La clave de venta ya se usó con datos diferentes.");
+            }
+            return saleService.findById(existing.saleId());
+        }
+        Sale created = saleService.registerSale(lines, sellerId, customerId, initialPayment);
+        salesByKey.put(idempotencyKey, new SaleRequestRecord(fingerprint, created.getId()));
+        return created;
     }
 
     /**
@@ -85,5 +115,6 @@ public final class InMemorySalesWorkflow implements SalesWorkflow {
     }
 
     private record PaymentKey(String saleId, String idempotencyKey) { }
+    private record SaleRequestRecord(String fingerprint, String saleId) { }
 
 }

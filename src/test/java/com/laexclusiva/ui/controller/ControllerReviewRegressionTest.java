@@ -3,6 +3,7 @@ package com.laexclusiva.ui.controller;
 import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.InsufficientStockException;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SaleLine;
 import com.laexclusiva.model.SalePayment;
@@ -186,6 +187,148 @@ class ControllerReviewRegressionTest {
     }
 
     @Test
+    void insufficientStockKeepsCartAllowsCorrectionAndUsesANewOperationKey() throws Exception {
+        runOnFx(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            Seller seller = services.sellers().registerSeller("Vendedor de stock", "3000000211", "Calle 11");
+            String customerId = "CUS-STOCK-RETRY";
+            services.customers().registerCustomer(customerId,
+                    "Cliente de stock", "3000000212", "Dirección 11");
+            Customer customer = services.customers().getCustomerById(customerId);
+            BeerProduct product = services.products().listAll().get(0);
+            services.inventory().addStock(product.getId(), 0, 1, "Fixture de stock insuficiente");
+            StockRejectedOnceWorkflow sales = new StockRejectedOnceWorkflow(services.sales(), product.getId());
+            FXMLLoader loader = load("sales_view.fxml");
+            ((SalesController) loader.getController()).configure(services.products(), services.inventory(),
+                    services.customers(), services.sellers(), sales, adminSession());
+            ((ComboBox<BeerProduct>) loader.getNamespace().get("productCombo")).setValue(product);
+            ((ComboBox<SalePresentation>) loader.getNamespace().get("presentationCombo"))
+                    .setValue(SalePresentation.UNIT);
+            ((ComboBox<Seller>) loader.getNamespace().get("sellerCombo")).setValue(seller);
+            ((ComboBox<Customer>) loader.getNamespace().get("customerCombo")).setValue(customer);
+            text(loader, "initialPaymentField").setText("0");
+            text(loader, "quantityField").setText("2");
+            button(loader, "Agregar línea").fire();
+            String rejectedKey = label(loader, "saleOperationKeyLabel").getText();
+
+            button(loader, "Registrar venta").fire();
+
+            String rejection = label(loader, "messageLabel").getText();
+            assertTrue(rejection.contains("existencias insuficientes"), rejection);
+            assertTrue(rejection.contains("carrito se conserva"), rejection);
+            assertEquals(1, table(loader, "cartTable").getItems().size());
+            assertEquals(0, services.sales().listAll().size());
+            assertEquals(1, services.inventory().getStock(product.getId()).totalUnits());
+            assertEquals(0, services.customers().getCustomerById(customer.getId()).getBalance()
+                    .compareTo(BigDecimal.ZERO));
+            assertEquals(0, services.inventory().movementsOf(product.getId()).stream()
+                    .filter(movement -> movement.type() == com.laexclusiva.model.MovementType.EXIT).count());
+            String correctedKey = label(loader, "saleOperationKeyLabel").getText();
+            assertNotEquals(rejectedKey, correctedKey, "Una nueva carga debe tener otra referencia idempotente.");
+
+            table(loader, "cartTable").getSelectionModel().selectFirst();
+            button(loader, "Quitar seleccionada").fire();
+            text(loader, "quantityField").setText("1");
+            button(loader, "Agregar línea").fire();
+            button(loader, "Registrar venta").fire();
+
+            assertEquals(2, sales.keys.size());
+            assertNotEquals(sales.keys.get(0), sales.keys.get(1));
+            assertEquals(1, services.sales().listAll().size());
+            assertEquals(0, services.inventory().getStock(product.getId()).totalUnits());
+            assertEquals(0, services.customers().getCustomerById(customer.getId()).getBalance()
+                    .compareTo(product.priceFor(SalePresentation.UNIT)));
+            assertTrue(label(loader, "messageLabel").getText().contains("Venta registrada"));
+            assertEquals(0, table(loader, "cartTable").getItems().size());
+            return null;
+        });
+    }
+
+    @Test
+    void stockRejectionOnRetryDoesNotReleaseAnEarlierUncertainSaleKey() throws Exception {
+        runOnFx(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            Seller seller = services.sellers().registerSeller("Vendedor incierto", "3000000213", "Calle 13");
+            BeerProduct product = services.products().listAll().get(0);
+            services.inventory().addStock(product.getId(), 0, 1, "Fixture de respuesta incierta");
+            UncertainSaleWorkflow sales = new UncertainSaleWorkflow(services.sales());
+            FXMLLoader loader = load("sales_view.fxml");
+            ((SalesController) loader.getController()).configure(services.products(), services.inventory(),
+                    services.customers(), services.sellers(), sales, adminSession());
+            ((ComboBox<BeerProduct>) loader.getNamespace().get("productCombo")).setValue(product);
+            ((ComboBox<SalePresentation>) loader.getNamespace().get("presentationCombo"))
+                    .setValue(SalePresentation.UNIT);
+            ((ComboBox<Seller>) loader.getNamespace().get("sellerCombo")).setValue(seller);
+            text(loader, "initialPaymentField").setText(product.priceFor(SalePresentation.UNIT).toPlainString());
+            button(loader, "Agregar línea").fire();
+            String originalReference = label(loader, "saleOperationKeyLabel").getText();
+            sales.throwAfterNextSale = true;
+
+            button(loader, "Registrar venta").fire();
+            assertTrue(label(loader, "messageLabel").getText().contains("resultado de la venta"));
+            sales.throwStockOnNextSale = true;
+            button(loader, "Registrar venta").fire();
+
+            String message = label(loader, "messageLabel").getText();
+            assertTrue(message.contains("existencias insuficientes"), message);
+            assertTrue(message.contains("solicitud anterior aún tiene resultado incierto"), message);
+            assertEquals(originalReference, label(loader, "saleOperationKeyLabel").getText());
+            assertEquals(2, sales.keys.size());
+            assertEquals(sales.keys.get(0), sales.keys.get(1));
+
+            text(loader, "initialPaymentField").setText("0");
+            button(loader, "Registrar venta").fire();
+            assertEquals(2, sales.keys.size(), "Una carga distinta no se envía mientras la anterior sea incierta.");
+            assertEquals(originalReference, label(loader, "saleOperationKeyLabel").getText());
+            return null;
+        });
+    }
+
+    @Test
+    void uncertainSaleKeepsVisibleKeyAndRequiresTheSamePayloadForRetry() throws Exception {
+        runOnFx(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            Seller seller = services.sellers().registerSeller("Vendedor de reintento", "3000000202", "Calle 2");
+            BeerProduct product = services.products().listAll().get(0);
+            services.inventory().addStock(product.getId(), 0, 2, "Fixture de idempotencia JavaFX");
+            UncertainSaleWorkflow sales = new UncertainSaleWorkflow(services.sales());
+            FXMLLoader loader = load("sales_view.fxml");
+            SalesController controller = loader.getController();
+            controller.configure(services.products(), services.inventory(), services.customers(),
+                    services.sellers(), sales, adminSession());
+            ((ComboBox<BeerProduct>) loader.getNamespace().get("productCombo")).setValue(product);
+            ((ComboBox<SalePresentation>) loader.getNamespace().get("presentationCombo"))
+                    .setValue(SalePresentation.UNIT);
+            ((ComboBox<Seller>) loader.getNamespace().get("sellerCombo")).setValue(seller);
+            text(loader, "initialPaymentField").setText(product.priceFor(SalePresentation.UNIT).toPlainString());
+            button(loader, "Agregar línea").fire();
+            String operationReference = label(loader, "saleOperationKeyLabel").getText();
+            sales.throwAfterNextSale = true;
+
+            button(loader, "Registrar venta").fire();
+            assertEquals(1, services.sales().listAll().size(), "El primer intento pudo confirmarse en memoria.");
+            assertEquals(1, services.inventory().getStock(product.getId()).totalUnits());
+            assertEquals(1, sales.keys.size());
+            assertTrue(label(loader, "messageLabel").getText().contains("referencia se conservan"));
+            assertEquals(operationReference, label(loader, "saleOperationKeyLabel").getText());
+
+            text(loader, "initialPaymentField").setText("0");
+            button(loader, "Registrar venta").fire();
+            assertEquals(1, sales.keys.size(), "No se envía una solicitud distinta con la clave incierta.");
+
+            text(loader, "initialPaymentField").setText(product.priceFor(SalePresentation.UNIT).toPlainString());
+            button(loader, "Registrar venta").fire();
+            assertEquals(2, sales.keys.size());
+            assertEquals(sales.keys.get(0), sales.keys.get(1));
+            assertEquals(1, services.sales().listAll().size());
+            assertEquals(1, services.inventory().getStock(product.getId()).totalUnits());
+            assertTrue(label(loader, "messageLabel").getText().contains("Venta registrada"));
+            assertNotEquals(operationReference, label(loader, "saleOperationKeyLabel").getText());
+            return null;
+        });
+    }
+
+    @Test
     void writeHandlersRecheckSessionAndPermissionsBeforeCallingServices() throws Exception {
         runOnFx(() -> {
             CountingCustomerService customers = new CountingCustomerService();
@@ -305,6 +448,7 @@ class ControllerReviewRegressionTest {
             case "Registrar abono" -> "registerPaymentButton";
             case "Actualizar cartera" -> "refreshPortfolioButton";
             case "Agregar línea" -> "addLineButton";
+            case "Quitar seleccionada" -> "removeLineButton";
             case "Registrar venta" -> "registerSaleButton";
             case "Actualizar historial" -> "refreshHistoryButton";
             case "Registrar cliente" -> "registerCustomerButton";
@@ -410,6 +554,11 @@ class ControllerReviewRegressionTest {
             saleRegistrations++;
             return delegate.registerSale(lines, sellerId, customerId, initialPayment);
         }
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key) {
+            saleRegistrations++;
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment, key);
+        }
         @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
             return delegate.registerPayment(saleId, amount, key);
         }
@@ -421,6 +570,78 @@ class ControllerReviewRegressionTest {
             }
             return delegate.listAll();
         }
+        @Override public BigDecimal outstandingSalesDebt(String customerId) {
+            return delegate.outstandingSalesDebt(customerId);
+        }
+        @Override public boolean supportsDurableIdempotency() { return delegate.supportsDurableIdempotency(); }
+    }
+
+    private static final class UncertainSaleWorkflow implements SalesWorkflow {
+        private final SalesWorkflow delegate;
+        private final List<String> keys = new ArrayList<>();
+        private boolean throwAfterNextSale;
+        private boolean throwStockOnNextSale;
+
+        private UncertainSaleWorkflow(SalesWorkflow delegate) { this.delegate = delegate; }
+
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment) {
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment);
+        }
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key) {
+            keys.add(key);
+            if (throwStockOnNextSale) {
+                throwStockOnNextSale = false;
+                throw new InsufficientStockException("P-UNCERTAIN", 2, 1);
+            }
+            Sale saved = delegate.registerSale(lines, sellerId, customerId, initialPayment, key);
+            if (throwAfterNextSale) {
+                throwAfterNextSale = false;
+                throw new IllegalStateException("Respuesta perdida después del commit.");
+            }
+            return saved;
+        }
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
+            return delegate.registerPayment(saleId, amount, key);
+        }
+        @Override public Sale findById(String saleId) { return delegate.findById(saleId); }
+        @Override public List<Sale> listAll() { return delegate.listAll(); }
+        @Override public BigDecimal outstandingSalesDebt(String customerId) {
+            return delegate.outstandingSalesDebt(customerId);
+        }
+        @Override public boolean supportsDurableIdempotency() { return delegate.supportsDurableIdempotency(); }
+    }
+
+    private static final class StockRejectedOnceWorkflow implements SalesWorkflow {
+        private final SalesWorkflow delegate;
+        private final String productId;
+        private final List<String> keys = new ArrayList<>();
+        private boolean rejectFirst = true;
+
+        private StockRejectedOnceWorkflow(SalesWorkflow delegate, String productId) {
+            this.delegate = delegate;
+            this.productId = productId;
+        }
+
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment) {
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment);
+        }
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key) {
+            keys.add(key);
+            if (rejectFirst) {
+                rejectFirst = false;
+                throw new InsufficientStockException(productId, 2, 1);
+            }
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment, key);
+        }
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
+            return delegate.registerPayment(saleId, amount, key);
+        }
+        @Override public Sale findById(String saleId) { return delegate.findById(saleId); }
+        @Override public List<Sale> listAll() { return delegate.listAll(); }
         @Override public BigDecimal outstandingSalesDebt(String customerId) {
             return delegate.outstandingSalesDebt(customerId);
         }

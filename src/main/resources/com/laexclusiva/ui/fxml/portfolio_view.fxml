@@ -7,6 +7,7 @@
 <?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.Button?>
+<?import javafx.scene.control.DatePicker?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
 
@@ -50,6 +51,31 @@
         <TextField fx:id="paymentAmountField" promptText="Abono (COP)" prefWidth="150.0" />
         <Button fx:id="registerPaymentButton" text="Registrar abono" onAction="#handleRegisterPayment" />
     </HBox>
+    <Label text="Deuda general (no asociada a ventas)" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
+    <HBox fx:id="generalDebtPane" spacing="8.0">
+        <TextField fx:id="generalDebtAmountField" promptText="Importe (COP)" prefWidth="135.0" />
+        <TextField fx:id="generalDebtCategoryField" promptText="Categoría" prefWidth="150.0" />
+        <TextField fx:id="generalDebtDescriptionField" promptText="Descripción auditable" HBox.hgrow="ALWAYS" />
+        <Button fx:id="registerGeneralDebtButton" text="Registrar deuda" onAction="#handleRegisterGeneralDebt" />
+        <Button fx:id="payGeneralDebtButton" text="Abonar deuda general" onAction="#handlePayGeneralDebt" />
+    </HBox>
+    <Label fx:id="generalDebtOperationKeyLabel" wrapText="true" />
+    <HBox spacing="8.0">
+        <DatePicker fx:id="movementFromDatePicker" promptText="Desde" />
+        <DatePicker fx:id="movementThroughDatePicker" promptText="Hasta" />
+        <TextField fx:id="movementCategoryFilterField" promptText="Filtrar categoría" />
+        <Button fx:id="refreshGeneralDebtMovementsButton" text="Consultar movimientos"
+                onAction="#handleRefreshGeneralDebtMovements" />
+    </HBox>
+    <TableView fx:id="generalDebtMovementsTable" prefHeight="120.0">
+        <columns>
+            <TableColumn fx:id="generalDebtDateColumn" text="Fecha y hora" prefWidth="150.0" />
+            <TableColumn fx:id="generalDebtTypeColumn" text="Movimiento" prefWidth="120.0" />
+            <TableColumn fx:id="generalDebtCategoryColumn" text="Categoría" prefWidth="120.0" />
+            <TableColumn fx:id="generalDebtAmountColumn" text="Importe" prefWidth="110.0" />
+            <TableColumn fx:id="generalDebtDescriptionColumn" text="Descripción" prefWidth="250.0" />
+        </columns>
+    </TableView>
     <Label fx:id="modeLabel" wrapText="true" />
     <Label fx:id="messageLabel" wrapText="true" />
 </VBox>

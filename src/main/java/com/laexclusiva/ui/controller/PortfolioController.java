@@ -1,12 +1,16 @@
 package com.laexclusiva.ui.controller;
 
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.CustomerDebtBreakdown;
+import com.laexclusiva.model.GeneralDebtMovement;
+import com.laexclusiva.model.GeneralDebtMovementType;
 import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.SalesWorkflow;
+import com.laexclusiva.service.CustomerGeneralDebtWorkflow;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.fxml.FXML;
@@ -16,6 +20,8 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Label;
+import javafx.scene.control.Button;
+import javafx.scene.control.DatePicker;
 import javafx.scene.layout.HBox;
 import javafx.util.StringConverter;
 import java.util.UUID;
@@ -43,9 +49,26 @@ public class PortfolioController {
     @FXML private Label messageLabel;
     @FXML private Label modeLabel;
     @FXML private HBox paymentPane;
+    @FXML private HBox generalDebtPane;
+    @FXML private Button registerGeneralDebtButton;
+    @FXML private Button payGeneralDebtButton;
+    @FXML private TextField generalDebtAmountField;
+    @FXML private TextField generalDebtCategoryField;
+    @FXML private TextField generalDebtDescriptionField;
+    @FXML private Label generalDebtOperationKeyLabel;
+    @FXML private DatePicker movementFromDatePicker;
+    @FXML private DatePicker movementThroughDatePicker;
+    @FXML private TextField movementCategoryFilterField;
+    @FXML private TableView<GeneralDebtMovement> generalDebtMovementsTable;
+    @FXML private TableColumn<GeneralDebtMovement, String> generalDebtDateColumn;
+    @FXML private TableColumn<GeneralDebtMovement, String> generalDebtTypeColumn;
+    @FXML private TableColumn<GeneralDebtMovement, String> generalDebtCategoryColumn;
+    @FXML private TableColumn<GeneralDebtMovement, BigDecimal> generalDebtAmountColumn;
+    @FXML private TableColumn<GeneralDebtMovement, String> generalDebtDescriptionColumn;
 
     private CustomerService customerService;
     private SalesWorkflow salesWorkflow;
+    private CustomerGeneralDebtWorkflow generalDebtWorkflow;
     private boolean canRegisterPayment;
     private UserSession session;
     private final AuthorizationService authorizationService = new AuthorizationService();
@@ -54,6 +77,8 @@ public class PortfolioController {
     private String pendingKey;
     private boolean updatingView;
     private boolean lastQuerySucceeded = true;
+    private String pendingGeneralKey;
+    private String pendingGeneralFingerprint;
 
     @FXML
     private void initialize() {
@@ -83,8 +108,16 @@ public class PortfolioController {
         saleTotalColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().calculateTotal()));
         salePaidColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().calculateTotalPaid()));
         saleBalanceColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().calculateBalance()));
+        generalDebtDateColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().occurredAt().toString()));
+        generalDebtTypeColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(
+                cell.getValue().type() == GeneralDebtMovementType.PAYMENT ? "Abono general" : "Deuda general"));
+        generalDebtCategoryColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().category()));
+        generalDebtAmountColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().amount()));
+        generalDebtDescriptionColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().description()));
         customerCombo.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) ->
                 refreshSelectedCustomer());
+        if (movementFromDatePicker != null) movementFromDatePicker.setValue(java.time.LocalDate.now().minusDays(30));
+        if (movementThroughDatePicker != null) movementThroughDatePicker.setValue(java.time.LocalDate.now());
         salesTable.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
             if (newValue != null) {
                 paymentAmountField.setText(newValue.calculateBalance().toPlainString());
@@ -100,17 +133,35 @@ public class PortfolioController {
      * @throws IllegalArgumentException si faltan los clientes o la sesión
      */
     public void configure(CustomerService customerService, SalesWorkflow salesWorkflow, UserSession session) {
+        configure(customerService, salesWorkflow, null, session);
+    }
+
+    /** Variante que habilita los movimientos auditables de deuda general al activar persistencia JDBC. */
+    public void configure(CustomerService customerService, SalesWorkflow salesWorkflow,
+                          CustomerGeneralDebtWorkflow generalDebtWorkflow, UserSession session) {
         if (customerService == null) throw new IllegalArgumentException("El servicio de clientes es obligatorio.");
         if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         this.customerService = customerService;
         this.salesWorkflow = salesWorkflow;
+        this.generalDebtWorkflow = generalDebtWorkflow;
         this.session = session;
         this.canRegisterPayment = authorizationService.hasPermission(session, Permission.REGISTER_PAYMENT);
+        boolean canRegisterGeneralDebt = authorizationService.hasPermission(session, Permission.REGISTER_GENERAL_DEBT);
         paymentPane.setVisible(canRegisterPayment && salesWorkflow != null);
         paymentPane.setManaged(canRegisterPayment && salesWorkflow != null);
+        generalDebtPane.setVisible(generalDebtWorkflow != null && (canRegisterPayment || canRegisterGeneralDebt));
+        generalDebtPane.setManaged(generalDebtWorkflow != null && (canRegisterPayment || canRegisterGeneralDebt));
+        registerGeneralDebtButton.setVisible(canRegisterGeneralDebt);
+        registerGeneralDebtButton.setManaged(canRegisterGeneralDebt);
+        payGeneralDebtButton.setVisible(canRegisterPayment);
+        payGeneralDebtButton.setManaged(canRegisterPayment);
+        if (generalDebtOperationKeyLabel != null) {
+            generalDebtOperationKeyLabel.setText(generalDebtWorkflow == null
+                    ? "Deuda general no conectada." : "La clave se conserva durante reintentos inciertos.");
+        }
         modeLabel.setText(salesWorkflow == null || !salesWorkflow.supportsDurableIdempotency()
                 ? "Modo en memoria: las claves de reintento duran mientras la aplicación está abierta."
-                : "Abonos con claves idempotentes persistidas en PostgreSQL.");
+                : "Abonos de ventas y deuda general con claves idempotentes persistidas en PostgreSQL.");
     }
 
     /** Lista clientes con deuda total positiva y prepara el selector de cartera por venta. */
@@ -128,6 +179,7 @@ public class PortfolioController {
         updatingView = false;
         if (selected == null) {
             salesTable.getItems().clear();
+            if (generalDebtMovementsTable != null) generalDebtMovementsTable.getItems().clear();
             salesDebtLabel.setText("Deuda de ventas: —");
             generalDebtLabel.setText("Deuda general: —");
             lastQuerySucceeded = true;
@@ -204,6 +256,95 @@ public class PortfolioController {
     }
 
     @FXML
+    private void handleRegisterGeneralDebt() {
+        registerGeneralDebt(false);
+    }
+
+    @FXML
+    private void handlePayGeneralDebt() {
+        registerGeneralDebt(true);
+    }
+
+    private void registerGeneralDebt(boolean payment) {
+        Customer selected;
+        BigDecimal amount;
+        String category;
+        String description;
+        String fingerprint;
+        try {
+            requirePermission(payment ? Permission.REGISTER_PAYMENT : Permission.REGISTER_GENERAL_DEBT,
+                    payment ? "No tiene permiso para abonar deuda general."
+                            : "No tiene permiso para registrar deuda general.");
+            if (generalDebtWorkflow == null) throw new IllegalStateException("La deuda general no está conectada.");
+            selected = requireCustomerSelection();
+            amount = new BigDecimal(generalDebtAmountField.getText().trim());
+            category = requireText(generalDebtCategoryField.getText(), "La categoría es obligatoria.");
+            description = requireText(generalDebtDescriptionField.getText(), "La descripción es obligatoria.");
+            fingerprint = String.join("|", payment ? "PAYMENT" : "DEBT", selected.getId(),
+                    amount.stripTrailingZeros().toPlainString(), category, description);
+            if (pendingGeneralFingerprint != null && !pendingGeneralFingerprint.equals(fingerprint)) {
+                throw new IllegalStateException("Hay una operación general de resultado incierto. Reintente los "
+                        + "mismos datos antes de iniciar otra operación.");
+            }
+            if (pendingGeneralKey == null) pendingGeneralKey = UUID.randomUUID().toString();
+            if (generalDebtOperationKeyLabel != null) {
+                generalDebtOperationKeyLabel.setText("Referencia de deuda general: " + pendingGeneralKey);
+            }
+        } catch (RuntimeException invalid) {
+            messageLabel.setText("Operación general no enviada: " + safeMessage(invalid));
+            return;
+        }
+
+        try {
+            if (payment) {
+                generalDebtWorkflow.registerPayment(selected.getId(), amount, category, description, pendingGeneralKey);
+            } else {
+                generalDebtWorkflow.registerDebt(selected.getId(), amount, category, description, pendingGeneralKey);
+            }
+        } catch (IllegalArgumentException | SecurityException rejected) {
+            pendingGeneralKey = null;
+            pendingGeneralFingerprint = null;
+            if (generalDebtOperationKeyLabel != null) {
+                generalDebtOperationKeyLabel.setText("La clave se genera al registrar la siguiente operación.");
+            }
+            messageLabel.setText(payment ? "Abono general rechazado: " + safeMessage(rejected)
+                    : "Deuda general rechazada: " + safeMessage(rejected));
+            return;
+        } catch (RuntimeException uncertain) {
+            pendingGeneralFingerprint = fingerprint;
+            messageLabel.setText("No se pudo confirmar la operación general: " + safeMessage(uncertain)
+                    + " Se conserva su referencia; reintente con los mismos datos.");
+            return;
+        }
+
+        pendingGeneralKey = null;
+        pendingGeneralFingerprint = null;
+        generalDebtAmountField.clear();
+        generalDebtCategoryField.clear();
+        generalDebtDescriptionField.clear();
+        if (generalDebtOperationKeyLabel != null) {
+            generalDebtOperationKeyLabel.setText("La clave se genera al registrar la siguiente operación.");
+        }
+        messageLabel.setText(payment ? "Abono aplicado solo a deuda general." : "Deuda general registrada.");
+        try {
+            showPortfolio(customerService.getAllCustomers());
+            if (!lastQuerySucceeded) {
+                messageLabel.setText(confirmedGeneralOperationMessage(payment)
+                        + " No se pudo actualizar la consulta de cartera; use Actualizar cartera sin repetir la operación.");
+            }
+        } catch (RuntimeException refreshFailure) {
+            clearPortfolioView();
+            messageLabel.setText(confirmedGeneralOperationMessage(payment)
+                    + " No se pudo actualizar la cartera: " + safeMessage(refreshFailure)
+                    + " Use Actualizar cartera sin repetir la operación.");
+        }
+    }
+
+    private static String confirmedGeneralOperationMessage(boolean payment) {
+        return payment ? "Abono general confirmado." : "Deuda general registrada correctamente.";
+    }
+
+    @FXML
     private void handleRefreshPortfolio() {
         try {
             requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
@@ -231,9 +372,17 @@ public class PortfolioController {
             return true;
         }
         try {
-            BigDecimal salesDebt = salesWorkflow == null
-                    ? BigDecimal.ZERO : salesWorkflow.outstandingSalesDebt(selected.getId());
-            BigDecimal generalDebt = selected.getBalance().subtract(salesDebt);
+            BigDecimal salesDebt;
+            BigDecimal generalDebt;
+            if (generalDebtWorkflow != null) {
+                CustomerDebtBreakdown breakdown = generalDebtWorkflow.findBalance(selected.getId());
+                salesDebt = breakdown.outstandingSalesDebt();
+                generalDebt = breakdown.generalDebt();
+            } else {
+                salesDebt = salesWorkflow == null ? BigDecimal.ZERO
+                        : salesWorkflow.outstandingSalesDebt(selected.getId());
+                generalDebt = selected.getBalance().subtract(salesDebt);
+            }
             List<Sale> pendingSales = salesWorkflow == null ? List.of() : salesWorkflow.listAll().stream()
                     .filter(sale -> sale.getCustomer() != null
                             && selected.getId().equals(sale.getCustomer().getId()))
@@ -244,6 +393,11 @@ public class PortfolioController {
             generalDebtLabel.setText(generalDebt.signum() < 0
                     ? "Inconsistencia: ventas superan el saldo agregado."
                     : "Deuda general: " + money(generalDebt));
+            if (generalDebtWorkflow != null) {
+                generalDebtMovementsTable.getItems().setAll(generalDebtWorkflow.listMovements(selected.getId(),
+                        movementFromDatePicker.getValue(), movementThroughDatePicker.getValue(),
+                        movementCategoryFilterField.getText()));
+            }
             return true;
         } catch (RuntimeException failure) {
             clearPortfolioView();
@@ -257,6 +411,7 @@ public class PortfolioController {
         updatingView = true;
         portfolioTable.getItems().clear();
         salesTable.getItems().clear();
+        if (generalDebtMovementsTable != null) generalDebtMovementsTable.getItems().clear();
         customerCombo.getItems().clear();
         customerCombo.getSelectionModel().clearSelection();
         salesDebtLabel.setText("Deuda de ventas: no disponible");
@@ -267,6 +422,29 @@ public class PortfolioController {
 
     private void requirePermission(Permission permission, String message) {
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
+    }
+
+    @FXML
+    private void handleRefreshGeneralDebtMovements() {
+        try {
+            requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
+            if (generalDebtWorkflow == null) throw new IllegalStateException("El historial general no está conectado.");
+            if (!refreshSelectedCustomer()) throw new IllegalStateException("No se pudo actualizar la deuda general.");
+            messageLabel.setText("Movimientos de deuda general actualizados.");
+        } catch (RuntimeException failure) {
+            messageLabel.setText("No se pudo consultar el historial general: " + safeMessage(failure));
+        }
+    }
+
+    private Customer requireCustomerSelection() {
+        Customer selected = customerCombo.getValue();
+        if (selected == null) throw new IllegalArgumentException("Seleccione el cliente.");
+        return selected;
+    }
+
+    private static String requireText(String value, String message) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(message);
+        return value.trim();
     }
 
     private static String money(BigDecimal amount) {
