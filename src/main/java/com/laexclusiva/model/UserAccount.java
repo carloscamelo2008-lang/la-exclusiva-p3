@@ -16,13 +16,16 @@ public class UserAccount {
     private boolean active;
     private String sellerId;
     private LocalDateTime createdAt;
+    private long securityVersion;
 
     public UserAccount() {
+        this.securityVersion = 0;
         this.active = true;
         this.createdAt = LocalDateTime.now();
     }
 
     public UserAccount(Long id, String username, String passwordHash, UserRole role, String sellerId) {
+        this.securityVersion = 0;
         this.id = id;
         this.username = username;
         this.passwordHash = passwordHash;
@@ -86,5 +89,23 @@ public class UserAccount {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    /** @return versión de seguridad del snapshot de la cuenta, no un permiso de acceso */
+    public long getSecurityVersion() {
+        return securityVersion;
+    }
+
+    /**
+     * Asigna el metadato recuperado o confirmado por la persistencia, sin incrementarlo.
+     * No debe enlazarse a campos editables de formularios ni utilizarse como autorización.
+     * @param securityVersion versión no negativa de la cuenta
+     * @throws IllegalArgumentException si la versión es negativa
+     */
+    public void setSecurityVersion(long securityVersion) {
+        if (securityVersion < 0) {
+            throw new IllegalArgumentException("La versión de seguridad no puede ser negativa.");
+        }
+        this.securityVersion = securityVersion;
     }
 }

@@ -165,3 +165,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé preparar estos archivos, conservando las migraciones anteriores y el código Java de identidad. Dejé la aplicación del esquema pendiente de autorización y la seguridad pendiente de revisión de Jesús; el bloqueo administrativo reservado no está implementado.
 * **Verificación realizada:** Codex inspeccionó el SQL y ejecutó tres pruebas estáticas con Temurin 17.0.21; aprobaron sin fallos, errores ni omisiones. `git diff --check` pasó. No hubo conexiones ni ejecución SQL: el funcionamiento del trigger en PostgreSQL sigue pendiente de validar.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 14 – Modelo de versión de seguridad
+
+* **Fecha:** 18/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Metadato de seguridad en usuarios (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para incorporar la versión de seguridad al modelo sin cambiar los constructores existentes.
+* **Resumen de la respuesta recibida:** Codex añadió `securityVersion`, inicializado en cero, con lectura y asignación validada. Preparó pruebas de límites, atributos y compatibilidad.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé únicamente el modelo y sus pruebas. La versión es un metadato de persistencia, no un campo de formulario ni un permiso; dejé el incremento y el mapeo de repositorios para otra actividad.
+* **Verificación realizada:** Codex ejecutó 101 pruebas con Temurin 17.0.21: 8 nuevas del modelo y 93 existentes de usuarios, autenticación, repositorio JDBC simulado y composición; todas aprobaron sin fallos, errores ni omisiones. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
