@@ -139,3 +139,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé ampliar las pruebas existentes para evitar duplicarlas, conservando los contratos y el modo memoria. La reconstrucción usa el mismo repositorio en memoria; no demuestra persistencia entre procesos.
 * **Verificación realizada:** Codex ejecutó 84 pruebas: 10 de usuarios, 32 de autenticación y 42 del repositorio JDBC simulado; todas aprobaron, sin fallos, errores ni omisiones. Usó JDK 25.0.2 y compilación para Java 17. Revisó el diff y `git diff --check`; no ejecutó PostgreSQL ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 12 – Composición independiente de identidad
+
+* **Fecha:** 18/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Composición de identidad (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para preparar identidad en memoria y PostgreSQL sin conectar todavía la aplicación.
+* **Resumen de la respuesta recibida:** Codex creó `IdentityServices`, que reúne repositorio y autenticación, reutiliza sus instancias y recibe el proveedor JDBC existente sin abrir conexiones al construirse.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé la composición aislada y sus pruebas, sin crear cuentas ni cambiar contratos. Dejé la integración con `App` y `ApplicationServices` pendiente; la aplicación aún no autentica mediante esta fábrica PostgreSQL.
+* **Verificación realizada:** Codex ejecutó 103 pruebas: 9 nuevas de composición y 94 existentes de usuarios, autenticación, repositorio y transacciones; todas aprobaron, sin fallos, errores ni omisiones. Usó JDBC simulado, JDK 25.0.2 y compilación para Java 17. `git diff --check` pasó. No ejecutó PostgreSQL ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
