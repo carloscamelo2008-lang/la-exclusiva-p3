@@ -512,6 +512,20 @@ transacción de origen. La facturación se suma desde `sale_line` usando sus pre
 sumar pagos por joins, y se presenta como métrica distinta al efectivo recibido. Esto evita duplicar
 ingresos y no interpreta ventas pendientes como recaudo.
 
+La pantalla actualiza tabla e indicadores mediante `CashWorkflow.loadSnapshot(...)`, cuyo resultado
+`CashSnapshot` agrupa ambos. `CashWorkflowJdbc` ejecuta sus consultas con el `TransactionBoundary`
+compartido mediante `inReadOnlyRepeatableRead`: el `JdbcTransactionManager` configura la misma
+conexión de lectura en `REPEATABLE_READ`, y `JdbcConnectionProvider` la reutiliza para movimientos,
+resumen y facturación. Así un commit concurrente entre las consultas queda fuera de toda esa
+instantánea y aparece completo en la siguiente actualización. Una transacción exterior incompatible
+se rechaza explícitamente; no se presenta `READ_COMMITTED` como una lectura consistente. El
+workflow en memoria conserva la implementación predeterminada del puerto.
+
+V102 crea `cash_movement` vacío y no guarda la fecha de activación/cobertura del libro. Por ello no
+se puede afirmar qué cobros históricos contiene ni se reconstruyen recibos automáticamente. Caja
+advierte que los cobros anteriores a la activación podrían faltar, indica que no existe una fecha
+verificable y mantiene la facturación histórica separada del efectivo registrado.
+
 Migraciones nuevas y exclusivas de la rama: V100 (clave/huella de venta), V101 (libro auditable de
 deuda general), V102 (libro de caja) y V103 (refuerzo del `CHECK` de identidad de venta para bases
 donde V100 ya se aplicó). V100/V101/V102 se aplicaron manualmente solo en `la_exclusiva_test` luego

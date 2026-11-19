@@ -952,3 +952,45 @@ módulo no nombrado. Algunas pruebas simuladas imprimen trazas intencionales de 
 pero todas pasaron. Las futuras bases deben recibir V103 tras una inspección de solo lectura y una
 comprobación de compatibilidad; la validación de `la_exclusiva_test` no aplica la migración a otros
 entornos ni sustituye la autorización y verificación de despliegue correspondientes.
+
+## Cobertura histórica y lectura consistente de Caja (2026-11-18)
+
+V102 crea el libro `cash_movement` vacío y no registra cuándo comenzó su cobertura. Las operaciones
+de ventas/cartera escriben recibos de forma atómica desde que ese libro está habilitado, pero no hay
+metadato que permita comprobar una fecha inicial ni evidencia completa para reconstruir todos los
+cobros anteriores. No se modificaron pagos ni datos históricos y no se generaron recibos de
+reconstrucción. La facturación sigue calculándose para todo el rango desde precios históricos de
+`sale_line`, separada del recaudo efectivamente registrado.
+
+El FXML de Caja muestra el aviso: “los cobros anteriores a la activación del libro podrían no estar
+incluidos”; también indica que no hay una fecha de cobertura verificable y que no se reconstruyen
+cobros automáticamente. `FinancialControllersTest.cashScreenDisclosesUnverifiedHistoricalCoverageWithoutInventingADate`
+verifica este mensaje para impedir que se sugiera una fecha o cobertura no demostrada.
+
+Para que el refresco no mezcle estados, `CashController` solicita un único `CashSnapshot` con
+movimientos filtrados para la tabla y resumen por fechas. En producción, `CashWorkflowJdbc` ejecuta
+las consultas existentes bajo el mismo `JdbcTransactionManager` y proveedor, usando una transacción
+de lectura `REPEATABLE_READ`. No se crea otro administrador ni se cambia `CashMovementRepositoryJdbc`;
+el contexto existente hace que las consultas compartan la conexión. La tabla y sus indicadores solo
+se publican cuando la instantánea completa termina. Si falla una lectura, se conserva el
+comportamiento previo de limpiar filas e indicadores y no se repite ninguna escritura. El modo
+`memory` continúa usando el método predeterminado de `CashWorkflow`.
+
+`FinancialOperationsPostgresIntegrationTest.cashSnapshotUsesOneRepeatableReadWhenMovementCommitsBetweenQueries`
+detiene la lectura después de obtener las filas, confirma un ingreso manual ficticio desde una
+segunda conexión y luego deja continuar el resumen. La primera actualización excluye el nuevo
+movimiento tanto de la tabla como del total; la siguiente lo incluye en ambos. La clave del fixture
+usa el prefijo único de la suite y su limpieza borra solo ese movimiento.
+
+Validación de estos cambios: las suites dirigidas (`CashWorkflowJdbcTest`, `JdbcTransactionManagerTest`,
+`FinancialOperationsPostgresIntegrationTest` y `FinancialControllersTest`) pasaron **30/30**, con
+7 pruebas PostgreSQL reales, sin fallos ni omisiones. `mvn clean verify` con Microsoft JDK
+**17.0.18**, Maven **3.10.0** y `la_exclusiva_test` terminó en **BUILD SUCCESS: 268 pruebas,
+0 fallidas, 0 errores y 0 omitidas**; los reportes Surefire confirman **24 PostgreSQL reales** y
+244 unitarias/simuladas/JavaFX. La prueba de Caja concurrente pasó en PostgreSQL real. No se
+ejecutaron migraciones, ni se modificó el esquema persistente; las pruebas solo usaron fixtures
+ficticios propios con limpieza acotada.
+
+Permanecen las advertencias conocidas del modelo efectivo de JavaFX y de carga desde módulo no
+nombrado; se imprimieron trazas previstas por pruebas que simulan fallos de consulta. No afectaron
+los resultados. No se tocaron autenticación, identidad, ventas, inventario o cartera.
