@@ -11,12 +11,28 @@ public class UserSession {
 
     private final UserAccount userAccount;
     private final LocalDateTime loginTime;
+    private final Long authenticatedUserId;
+    private final long authenticatedSecurityVersion;
     private boolean valid = true;
 
+    /**
+     * Captura identidad y versión sin autenticar ni consultar el repositorio.
+     * Conserva la cuenta mutable por compatibilidad; sus cambios no renuevan la captura.
+     * El llamador no debe modificar simultáneamente la cuenta durante la construcción.
+     * @param userAccount cuenta con identificador persistido positivo y versión no negativa
+     * @throws IllegalArgumentException por cuenta nula, ID inválido o versión negativa
+     */
     public UserSession(UserAccount userAccount) {
         if (userAccount == null) {
             throw new IllegalArgumentException("La cuenta de usuario no puede ser nula.");
         }
+        Long userId = userAccount.getId();
+        long securityVersion = userAccount.getSecurityVersion();
+        if (userId == null || userId <= 0 || securityVersion < 0) {
+            throw new IllegalArgumentException("La sesión requiere un ID positivo y una versión de seguridad no negativa.");
+        }
+        this.authenticatedUserId = userId;
+        this.authenticatedSecurityVersion = securityVersion;
         this.userAccount = userAccount;
         this.loginTime = LocalDateTime.now();
     }
@@ -27,6 +43,18 @@ public class UserSession {
 
     public LocalDateTime getLoginTime() {
         return loginTime;
+    }
+
+    /** @return ID capturado al construir la sesión, independiente de la cuenta mutable */
+    public Long getAuthenticatedUserId() {
+        return authenticatedUserId;
+    }
+
+    /**
+     * @return versión capturada al construir la sesión; no se renueva ni valida su vigencia persistida
+     */
+    public long getAuthenticatedSecurityVersion() {
+        return authenticatedSecurityVersion;
     }
 
     /** Indica si la sesión sigue vigente y su cuenta está activa. */
