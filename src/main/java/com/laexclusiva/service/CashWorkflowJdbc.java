@@ -3,7 +3,9 @@ package com.laexclusiva.service;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
 import com.laexclusiva.model.CashMovement;
+import com.laexclusiva.model.CashSnapshot;
 import com.laexclusiva.model.CashSummary;
+import com.laexclusiva.persistence.jdbc.TransactionBoundary;
 import com.laexclusiva.repository.CashMovementRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -14,11 +16,21 @@ import java.util.List;
 /** Casos de uso JDBC de caja; los recibos comerciales se escriben junto con la operación de origen. */
 public final class CashWorkflowJdbc implements CashWorkflow {
     private final CashMovementRepository movements;
+    private final TransactionBoundary transactions;
 
-    /** Crea el caso de uso sobre el repositorio conectado a la transacción compartida de PostgreSQL. */
-    public CashWorkflowJdbc(CashMovementRepository movements) {
-        if (movements == null) throw new IllegalArgumentException("El repositorio de caja es obligatorio.");
+    /**
+     * Crea los casos de uso de caja con el repositorio y el límite transaccional compartido.
+     *
+     * @param movements repositorio de movimientos
+     * @param transactions coordinador utilizado también por los flujos financieros
+     * @throws IllegalArgumentException si falta una dependencia
+     */
+    public CashWorkflowJdbc(CashMovementRepository movements, TransactionBoundary transactions) {
+        if (movements == null || transactions == null) {
+            throw new IllegalArgumentException("El repositorio y el límite transaccional son obligatorios.");
+        }
         this.movements = movements;
+        this.transactions = transactions;
     }
 
     @Override
@@ -58,6 +70,12 @@ public final class CashWorkflowJdbc implements CashWorkflow {
                 .map(CashMovement::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
         return new CashSummary(movements.findInvoicedSales(from, through), saleReceipts,
                 generalReceipts, otherIncome, expenses);
+    }
+
+    @Override
+    public CashSnapshot loadSnapshot(LocalDate from, LocalDate through, CashCategory category) {
+        return transactions.inReadOnlyRepeatableRead(
+                () -> CashWorkflow.super.loadSnapshot(from, through, category));
     }
 
     @Override public boolean supportsDurableIdempotency() { return true; }

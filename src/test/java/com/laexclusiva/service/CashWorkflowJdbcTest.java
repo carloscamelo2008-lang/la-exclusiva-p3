@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
 import com.laexclusiva.model.CashMovement;
+import com.laexclusiva.model.CashSnapshot;
+import com.laexclusiva.persistence.jdbc.TransactionBoundary;
 import com.laexclusiva.repository.CashMovementRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -23,7 +25,7 @@ class CashWorkflowJdbcTest {
     @Test
     void summaryCountsCashReceiptsSeparatelyFromInvoicesAndManualWritesAreIdempotent() {
         FakeCashRepository repository = new FakeCashRepository();
-        CashWorkflowJdbc cash = new CashWorkflowJdbc(repository);
+        CashWorkflowJdbc cash = new CashWorkflowJdbc(repository, new DirectTransactionBoundary());
         LocalDate date = LocalDate.of(2026, 11, 18);
         seed(repository, CashCategory.SALE_INITIAL_PAYMENT, new BigDecimal("100.00"), date, "SALE_INITIAL", "S1");
         seed(repository, CashCategory.SALE_INSTALLMENT, new BigDecimal("50.00"), date, "SALE_INSTALLMENT", "S1:P1");
@@ -56,6 +58,24 @@ class CashWorkflowJdbcTest {
         assertEquals(1, cash.listMovements(date, date, CashCategory.OTHER_INCOME).size());
         assertEquals(5, cash.listMovements(date, date, null).size());
         assertNotEquals(summary.invoicedSales(), summary.cashIn());
+    }
+
+    @Test
+    void snapshotKeepsCategoryFilterOnRowsAndRetainsUnfilteredSummary() {
+        FakeCashRepository repository = new FakeCashRepository();
+        CashWorkflowJdbc cash = new CashWorkflowJdbc(repository, new DirectTransactionBoundary());
+        LocalDate date = LocalDate.of(2026, 11, 18);
+        seed(repository, CashCategory.SALE_INITIAL_PAYMENT, new BigDecimal("100.00"), date,
+                "SALE_INITIAL", "S1");
+        seed(repository, CashCategory.OTHER_INCOME, new BigDecimal("25.00"), date, "MANUAL", "M1");
+
+        CashSnapshot snapshot = cash.loadSnapshot(date, date, CashCategory.OTHER_INCOME);
+
+        assertEquals(1, snapshot.movements().size());
+        assertEquals(CashCategory.OTHER_INCOME, snapshot.movements().get(0).category());
+        assertEquals(new BigDecimal("100.00"), snapshot.summary().saleReceipts());
+        assertEquals(new BigDecimal("25.00"), snapshot.summary().otherIncome());
+        assertEquals(new BigDecimal("1000.00"), snapshot.summary().invoicedSales());
     }
 
     private static void seed(FakeCashRepository repository, CashCategory category, BigDecimal amount,
@@ -98,6 +118,12 @@ class CashWorkflowJdbcTest {
         }
         @Override public BigDecimal findInvoicedSales(LocalDate from, LocalDate through) {
             return new BigDecimal("1000.00");
+        }
+    }
+
+    private static final class DirectTransactionBoundary implements TransactionBoundary {
+        @Override public <T> T inTransaction(java.util.function.Supplier<T> operation) {
+            return operation.get();
         }
     }
 }

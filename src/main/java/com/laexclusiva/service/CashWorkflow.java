@@ -3,6 +3,7 @@ package com.laexclusiva.service;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
 import com.laexclusiva.model.CashMovement;
+import com.laexclusiva.model.CashSnapshot;
 import com.laexclusiva.model.CashSummary;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -44,6 +45,22 @@ public interface CashWorkflow {
      * @return totales separados para no confundir ventas facturadas con recaudo
      */
     CashSummary summarize(LocalDate from, LocalDate through);
+
+    /**
+     * Obtiene las filas visibles y los indicadores para una actualización de pantalla.
+     *
+     * <p>La implementación JDBC reemplaza este recorrido por una transacción
+     * {@code REPEATABLE_READ}. El método predeterminado conserva compatibilidad con workflows
+     * simulados y en memoria.</p>
+     *
+     * @param from fecha inicial inclusiva o {@code null}
+     * @param through fecha final inclusiva o {@code null}
+     * @param category filtro aplicado únicamente a la tabla o {@code null}
+     * @return filas y resumen del rango solicitado
+     */
+    default CashSnapshot loadSnapshot(LocalDate from, LocalDate through, CashCategory category) {
+        return new CashSnapshot(listMovements(from, through, category), summarize(from, through));
+    }
 
     /** Indica si las operaciones manuales tienen claves persistidas. */
     boolean supportsDurableIdempotency();

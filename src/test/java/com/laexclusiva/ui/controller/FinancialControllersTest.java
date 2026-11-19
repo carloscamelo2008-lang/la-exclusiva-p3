@@ -54,6 +54,19 @@ class FinancialControllersTest {
     }
 
     @Test
+    void cashScreenDisclosesUnverifiedHistoricalCoverageWithoutInventingADate() throws Exception {
+        runOnFx(() -> {
+            FXMLLoader loader = load("cash_view.fxml");
+            String notice = label(loader, "historicalCoverageNoticeLabel").getText();
+
+            assertTrue(notice.contains("cobros anteriores a la activación del libro podrían no estar incluidos"));
+            assertTrue(notice.contains("No hay una fecha de cobertura verificable"));
+            assertTrue(notice.contains("La facturación histórica se muestra por separado"));
+            return null;
+        });
+    }
+
+    @Test
     void cashFormKeepsTheSameKeyAndTimestampAfterAnUncertainWrite() throws Exception {
         runOnFx(() -> {
             ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());

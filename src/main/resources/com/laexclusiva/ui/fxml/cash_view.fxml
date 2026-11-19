@@ -16,6 +16,9 @@
     <padding><Insets top="18.0" right="18.0" bottom="18.0" left="18.0" /></padding>
     <Label text="Caja y cierre operativo" style="-fx-font-size: 22px; -fx-font-weight: bold;" />
     <Label text="Las ventas facturadas se muestran separadas del efectivo realmente recibido." wrapText="true" />
+    <Label fx:id="historicalCoverageNoticeLabel"
+           text="Cobertura histórica: los cobros anteriores a la activación del libro podrían no estar incluidos. No hay una fecha de cobertura verificable y no se reconstruyen cobros automáticamente. La facturación histórica se muestra por separado."
+           wrapText="true" style="-fx-text-fill: #8a4b08; -fx-font-weight: bold;" />
     <HBox spacing="8.0" alignment="CENTER_LEFT">
         <DatePicker fx:id="fromDatePicker" promptText="Desde" />
         <DatePicker fx:id="throughDatePicker" promptText="Hasta" />

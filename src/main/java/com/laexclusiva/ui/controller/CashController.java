@@ -3,6 +3,7 @@ package com.laexclusiva.ui.controller;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
 import com.laexclusiva.model.CashMovement;
+import com.laexclusiva.model.CashSnapshot;
 import com.laexclusiva.model.CashSummary;
 import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserSession;
@@ -185,11 +186,11 @@ public final class CashController {
     }
 
     private void refresh() {
-        List<CashMovement> records = cash.listMovements(fromDatePicker.getValue(),
+        CashSnapshot snapshot = cash.loadSnapshot(fromDatePicker.getValue(),
                 throughDatePicker.getValue(), categoryFilterCombo.getValue());
-        CashSummary summary = cash.summarize(fromDatePicker.getValue(), throughDatePicker.getValue());
-        // Solo se actualiza la vista cuando la tabla y el resumen corresponden a consultas exitosas.
-        movementsTable.getItems().setAll(records);
+        CashSummary summary = snapshot.summary();
+        // La tabla y los indicadores se publican juntos solo después de una lectura completa.
+        movementsTable.getItems().setAll(snapshot.movements());
         invoicedSalesLabel.setText("Ventas facturadas: " + money(summary.invoicedSales()));
         saleReceiptsLabel.setText("Efectivo recibido por ventas: " + money(summary.saleReceipts()));
         generalDebtReceiptsLabel.setText("Pagos de deuda general: " + money(summary.generalDebtReceipts()));

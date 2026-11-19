@@ -75,6 +75,42 @@ class JdbcTransactionManagerTest {
     }
 
     @Test
+    void readOnlyRepeatableReadSetsIsolationBeforeStartingAndCommitsOnce() {
+        RecordingConnection recording = new RecordingConnection();
+        JdbcConnectionProvider provider = providerFor(recording);
+        JdbcTransactionManager tx = new JdbcTransactionManager(provider);
+
+        String result = tx.inReadOnlyRepeatableRead(() -> provider.withConnection(connection -> {
+            assertFalse(connection.getAutoCommit());
+            assertEquals(Connection.TRANSACTION_REPEATABLE_READ, connection.getTransactionIsolation());
+            assertTrue(connection.isReadOnly());
+            return "instantánea";
+        }));
+
+        assertEquals("instantánea", result);
+        assertTrue(recording.readOnlySetBeforeTransaction);
+        assertTrue(recording.isolationSetBeforeTransaction);
+        assertEquals(1, recording.commits);
+        assertEquals(0, recording.rollbacks);
+        assertEquals(1, recording.closes);
+    }
+
+    @Test
+    void repeatableReadCannotJoinAnIncompatibleOuterTransaction() {
+        RecordingConnection recording = new RecordingConnection();
+        JdbcConnectionProvider provider = providerFor(recording);
+        JdbcTransactionManager tx = new JdbcTransactionManager(provider);
+
+        assertThrows(IllegalStateException.class, () -> tx.inTransaction(() ->
+                tx.inReadOnlyRepeatableRead(() -> "incompatible")));
+
+        assertEquals(0, recording.commits);
+        assertEquals(1, recording.rollbacks);
+        assertEquals(1, recording.closes);
+        assertFalse(tx.isTransactionActive());
+    }
+
+    @Test
     void protectsJdbcBackReferencesAndPreservesBatchAndGeneratedKeys() {
         RecordingConnection recording = new RecordingConnection();
         JdbcConnectionProvider provider = providerFor(recording);
@@ -248,6 +284,10 @@ class JdbcTransactionManagerTest {
     private static final class RecordingConnection implements InvocationHandler {
         private final Connection connection = driverProxy(Connection.class, this);
         private boolean autoCommit = true;
+        private boolean readOnly;
+        private int isolation = Connection.TRANSACTION_READ_COMMITTED;
+        private boolean readOnlySetBeforeTransaction;
+        private boolean isolationSetBeforeTransaction;
         private int commits;
         private int rollbacks;
         private int closes;
@@ -314,6 +354,18 @@ class JdbcTransactionManagerTest {
                     yield null;
                 }
                 case "getAutoCommit" -> autoCommit;
+                case "setReadOnly" -> {
+                    readOnly = (Boolean) args[0];
+                    readOnlySetBeforeTransaction = autoCommit;
+                    yield null;
+                }
+                case "isReadOnly" -> readOnly;
+                case "setTransactionIsolation" -> {
+                    isolation = (Integer) args[0];
+                    isolationSetBeforeTransaction = autoCommit;
+                    yield null;
+                }
+                case "getTransactionIsolation" -> isolation;
                 case "createStatement" -> statement(Statement.class);
                 case "prepareStatement" -> statement(PreparedStatement.class);
                 case "prepareCall" -> statement(CallableStatement.class);

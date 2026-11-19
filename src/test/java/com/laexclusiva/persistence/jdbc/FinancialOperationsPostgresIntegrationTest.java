@@ -1,6 +1,7 @@
 package com.laexclusiva.persistence.jdbc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -8,6 +9,7 @@ import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
 import com.laexclusiva.model.CashMovement;
+import com.laexclusiva.model.CashSnapshot;
 import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.GeneralDebtMovementType;
@@ -51,12 +53,13 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -123,7 +126,7 @@ class FinancialOperationsPostgresIntegrationTest {
         cashRepository = new CashMovementRepositoryJdbc(connections, transactions);
         generalDebt = new CustomerGeneralDebtWorkflowJdbc(customers, salesDebt, balances,
                 generalLedger, cashRepository, transactions);
-        cash = new CashWorkflowJdbc(cashRepository);
+        cash = new CashWorkflowJdbc(cashRepository, transactions);
 
         String token = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
         customerId = "C-FIN-" + token;
@@ -278,6 +281,64 @@ class FinancialOperationsPostgresIntegrationTest {
     }
 
     @Test
+    void cashSnapshotUsesOneRepeatableReadWhenMovementCommitsBetweenQueries() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = now.toLocalDate();
+        CashSnapshot baseline = cash.loadSnapshot(today, today, CashCategory.OTHER_INCOME);
+        String key = manualKeyPrefix + "-snapshot-concurrent";
+        CountDownLatch firstReadComplete = new CountDownLatch(1);
+        CountDownLatch writerCommitted = new CountDownLatch(1);
+        AtomicBoolean pauseAfterFirstRead = new AtomicBoolean(true);
+        CashMovementRepository coordinatedRepository = new CashMovementRepository() {
+            @Override public java.util.Optional<RequestRecord> findByIdempotencyKey(String candidate) {
+                return cashRepository.findByIdempotencyKey(candidate);
+            }
+            @Override public SaveResult saveOnce(CashMovement movement, String fingerprint) {
+                return cashRepository.saveOnce(movement, fingerprint);
+            }
+            @Override public List<CashMovement> find(LocalDate from, LocalDate through, String category) {
+                List<CashMovement> found = cashRepository.find(from, through, category);
+                if (pauseAfterFirstRead.compareAndSet(true, false)) {
+                    firstReadComplete.countDown();
+                    awaitWriter(writerCommitted);
+                }
+                return found;
+            }
+            @Override public BigDecimal findInvoicedSales(LocalDate from, LocalDate through) {
+                return cashRepository.findInvoicedSales(from, through);
+            }
+        };
+        CashWorkflow consistentReads = new CashWorkflowJdbc(coordinatedRepository, transactions);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<CashSnapshot> pendingRead = pool.submit(() ->
+                    consistentReads.loadSnapshot(today, today, CashCategory.OTHER_INCOME));
+            assertTrue(firstReadComplete.await(15, TimeUnit.SECONDS),
+                    "La primera consulta debe detenerse con la instantánea ya iniciada.");
+
+            cash.registerMovement(CashDirection.INCOME, CashCategory.OTHER_INCOME, new BigDecimal("17.00"),
+                    now, "Fixture concurrente de caja", key);
+            writerCommitted.countDown();
+
+            CashSnapshot consistent = pendingRead.get(15, TimeUnit.SECONDS);
+            assertFalse(consistent.movements().stream().anyMatch(row -> row.idempotencyKey().equals(key)),
+                    "La tabla no debe incorporar un movimiento que su resumen todavía no puede observar.");
+            assertEquals(baseline.summary().otherIncome(), consistent.summary().otherIncome(),
+                    "La consulta del resumen debe usar la misma instantánea que la tabla.");
+
+            CashSnapshot nextRefresh = consistentReads.loadSnapshot(today, today, CashCategory.OTHER_INCOME);
+            assertTrue(nextRefresh.movements().stream().anyMatch(row -> row.idempotencyKey().equals(key)));
+            assertEquals(baseline.summary().otherIncome().add(new BigDecimal("17.00")),
+                    nextRefresh.summary().otherIncome());
+        } finally {
+            writerCommitted.countDown();
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
     void failureAfterBalanceDeltaRollsBackGeneralLedgerAndCustomerBalance() {
         CashMovementRepository failingCash = new CashMovementRepository() {
             @Override public java.util.Optional<RequestRecord> findByIdempotencyKey(String key) {
@@ -419,6 +480,17 @@ class FinancialOperationsPostgresIntegrationTest {
             return true;
         } catch (IllegalArgumentException expectedOverpayAfterLock) {
             return false;
+        }
+    }
+
+    private static void awaitWriter(CountDownLatch writerCommitted) {
+        try {
+            if (!writerCommitted.await(15, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("La escritura concurrente no confirmó a tiempo.");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Se interrumpió la lectura concurrente de caja.", interrupted);
         }
     }
 

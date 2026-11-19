@@ -151,7 +151,7 @@ public final class ApplicationServices {
                 movementRepository, transactions, cashRepository);
         CustomerGeneralDebtWorkflow generalDebt = new CustomerGeneralDebtWorkflowJdbc(customerRepository,
                 debtQuery, customerBalances, generalDebtRepository, cashRepository, transactions);
-        CashWorkflow cash = new CashWorkflowJdbc(cashRepository);
+        CashWorkflow cash = new CashWorkflowJdbc(cashRepository, transactions);
         return new ApplicationServices(customers, sellers, products, inventory, sales, debtQuery, true,
                 generalDebt, cash);
     }
