@@ -871,14 +871,14 @@ donde V100 ya se aplicó; no transforma filas y falla de forma transaccional si 
 incompletas. El catálogo local confirmó una fila histórica con ambas columnas nulas y cero filas con
 identidad parcial o huella inválida.
 
-**V103 no se ejecutó.** El esquema persistente de `la_exclusiva_test` aún conserva la definición
-anterior de V100, porque Carlos indicó que no se ejecuten migraciones nuevas sin autorización. Para
-evitar alterar el esquema, `SaleRequestIdentityPostgresIntegrationTest` comprobó restricciones SQL
-en una tabla temporal de PostgreSQL dentro de una transacción revertida: acepta varias filas
-históricas con ambas columnas nulas; rechaza claves repetidas (SQLSTATE `23505`), pares incompletos
-y huellas inválidas (SQLSTATE `23514`). La prueba también verifica el texto de V100/V103. Las pruebas
-de workflow existentes cubren replay exacto, rechazo de la misma clave con solicitud distinta y
-recuperación de la venta original.
+**Estado al terminar la revisión anterior:** V103 aún no se había ejecutado porque se requería
+autorización para modificar el esquema persistente. Para aquella validación,
+`SaleRequestIdentityPostgresIntegrationTest` comprobó restricciones SQL en una tabla temporal de
+PostgreSQL dentro de una transacción revertida: acepta varias filas históricas con ambas columnas
+nulas; rechaza claves repetidas (SQLSTATE `23505`), pares incompletos y huellas inválidas (SQLSTATE
+`23514`). La prueba también verifica el texto de V100/V103. Las pruebas de workflow existentes
+cubren replay exacto, rechazo de la misma clave con solicitud distinta y recuperación de la venta
+original. La aplicación persistente de V103 se registra en la validación posterior de esta página.
 
 `FinancialOperationsPostgresIntegrationTest` agrega un fallo después de guardar el recibo inicial y
 aplicar el delta de stock. PostgreSQL confirma rollback de venta/clave, línea, pago inicial, salida de
@@ -905,3 +905,50 @@ usa una tabla temporal: aplicar V103 al esquema persistente requiere autorizaci�
 Commits asociados: `2e21a3f` (rechazo de stock definitivo y contrato), `8a7a4a0` (confirmación de
 cartera tras error de consulta), `a2772ee` (corrección V100 y upgrade V103), `dd678fa` (regresiones
 JavaFX/PostgreSQL y rollback integral) y `818831f` (expectativa del rechazo tipado en `SaleServiceTest`).
+
+## Aplicación controlada de V103 y validación final (2026-11-18)
+
+Con autorización explícita se aplicó únicamente
+`database/migrations/V103__enforce_sale_request_identity_coherence.sql` a
+`la_exclusiva_test` (PostgreSQL 18.6). Antes de modificar el esquema, `current_database()` devolvió
+exactamente `la_exclusiva_test`; se confirmó que existían `sale`, `sale_line`, `sale_payment`, las
+columnas de V100, la restricción de unicidad y las tablas de V101/V102. V103 no estaba aplicada.
+La restricción anterior, correspondiente al SQL V100 que estaba instalado, usaba la condición
+`(idempotency_key IS NULL AND request_fingerprint IS NULL) OR (idempotency_key IS NOT NULL AND request_fingerprint ~ '^[0-9a-f]{64}$')`;
+al faltar `request_fingerprint IS NOT NULL`, PostgreSQL podía aceptar una expresión `CHECK` cuyo
+resultado fuera `NULL`.
+
+Se comprobó antes y después que había una fila histórica con clave y huella nulas, cero identidades
+incompletas/inválidas y cero claves duplicadas. El total de filas de `sale` era 1 antes y después de
+V103, y continuó en 1 tras las suites; no se alteró ningún dato histórico. La migración se ejecutó
+desde su archivo original, sin editarlo, con `ON_ERROR_STOP` y `lock_timeout` de 5 segundos. Sus
+sentencias `DROP CONSTRAINT`, `ADD CONSTRAINT ... NOT VALID` y `VALIDATE CONSTRAINT` terminaron en el
+mismo `BEGIN`/`COMMIT`. La consulta posterior confirmó `convalidated = true`, que la restricción
+única `uq_sale_idempotency_key` sigue validada y que las filas existentes cumplen el contrato.
+`pg_get_constraintdef` devolvió:
+
+```sql
+CHECK ((((idempotency_key IS NULL) AND (request_fingerprint IS NULL)) OR ((idempotency_key IS NOT NULL) AND (request_fingerprint IS NOT NULL) AND (request_fingerprint ~ '^[0-9a-f]{64}$'::text))))
+```
+
+La versión nueva exige clave y huella simultáneas, y formato hexadecimal minúsculo de 64 caracteres.
+La fila histórica nula/nula sigue permitida. V100, V101 y V102 no se repitieron; no se ejecutaron
+`DROP`, `TRUNCATE`, limpiezas generales ni cambios en `la_exclusiva`.
+
+Con Microsoft JDK **17.0.18** y Maven **3.10.0**, las suites dirigidas
+`SaleRequestIdentityPostgresIntegrationTest`, `JdbcSalesWorkflowPostgresIntegrationTest`,
+`FinancialOperationsPostgresIntegrationTest`, `ControllerReviewRegressionTest` y
+`FinancialControllersTest` pasaron **31/31**, sin fallos, errores ni omisiones. Las tres suites
+PostgreSQL aportaron **12 pruebas reales**; las dos suites JavaFX/simuladas aportaron 19. Luego
+`mvn clean verify` terminó en **BUILD SUCCESS: 263 pruebas, 0 fallidas, 0 errores y 0 omitidas**,
+con **23 pruebas PostgreSQL reales** y 240 pruebas unitarias, simuladas o JavaFX, según los 39 XML
+Surefire. Las 23 pruebas reales fueron: cartera (1), clientes/vendedores (1), finanzas (6),
+inventario (3), workflow de ventas (5), productos (3), repositorio de ventas (1), identidad (1) y
+movimientos de inventario (2). No hubo fallo que requiriera corrección de código.
+
+`git diff --check` se ejecutó después de actualizar la documentación. Maven reportó advertencias
+conocidas del modelo efectivo de JavaFX; JavaFX también avisó que las clases se cargan desde un
+módulo no nombrado. Algunas pruebas simuladas imprimen trazas intencionales de fallos de lectura,
+pero todas pasaron. Las futuras bases deben recibir V103 tras una inspección de solo lectura y una
+comprobación de compatibilidad; la validación de `la_exclusiva_test` no aplica la migración a otros
+entornos ni sustituye la autorización y verificación de despliegue correspondientes.
