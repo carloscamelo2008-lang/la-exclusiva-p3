@@ -269,3 +269,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé esa ampliación sin cambiar autenticación ni fronteras. El futuro servicio deberá revalidar dentro de la frontera; todavía no hay operaciones administrativas ni integración automática.
 * **Verificación realizada:** Codex ejecutó 172 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 20 nuevas y 152 regresiones, sin fallos, errores ni omisiones. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+#### Continuación de la Interacción 18 – Rol y activación protegidos (microcommit 3C)
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Operaciones administrativas (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para integrar cambios de rol y actividad con los componentes de seguridad ya preparados.
+* **Resumen de la respuesta recibida:** Codex creó un servicio que revalida al actor, comprueba la versión del objetivo, copia sus datos y protege al último administrador antes de una única actualización. Devuelve un resultado sin hashes.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé solo estas dos operaciones y sus pruebas, sin integración en la aplicación. La protección exige emparejar repositorio y frontera; las escrituras directas siguen fuera del protocolo. Dejé pendientes PostgreSQL y la revisión de Jesús.
+* **Verificación realizada:** Codex ejecutó 211 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 39 nuevas y 172 regresiones, sin fallos, errores ni omisiones. Incluyó competencia en memoria con barreras entre dos servicios. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
