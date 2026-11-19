@@ -113,3 +113,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé preparar la propuesta, sin implementar funcionalidades. Los contratos siguen pendientes de aprobación de Carlos y Jesús; dejé fuera los cambios de sus módulos y del menú central.
 * **Verificación realizada:** Codex comprobó el árbol limpio, actualizó las referencias y revisó el diff. `git diff --check` pasó. No ejecutó pruebas ni modificó PostgreSQL.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 10 – Repositorio JDBC de usuarios
+
+* **Fecha:** 18/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Persistencia de usuarios (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para implementar y revisar el repositorio JDBC sin cambiar contratos ni conectar el login.
+* **Resumen de la respuesta recibida:** Codex implementó el adaptador y corrigió el diagnóstico SQL sin datos sensibles, la normalización de nombres y la lectura de hashes históricos. Reforzó los fixtures y evitó su limpieza mientras puedan seguir escribiendo tareas concurrentes.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé estas correcciones sin modificar módulos compartidos. Conservé la validación estricta de nuevas escrituras y dejé pendiente validar en PostgreSQL el límite operativo de 64 intentos de ID.
+* **Verificación realizada:** Codex ejecutó 56 pruebas sin PostgreSQL: 42 del repositorio, 6 de usuarios y 8 de transacciones; todas aprobaron, sin fallos, errores ni omisiones. Usó Maven 3.9.12 y JDK 25.0.2, compilando para Java 17. Las cinco integraciones preparadas solo compilaron. `git diff --check` pasó; no se ejecutaron migraciones ni escrituras PostgreSQL.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
