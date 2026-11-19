@@ -60,3 +60,45 @@ transaccional; no ejecutan el trigger ni demuestran incrementos reales. Quedan p
 autorización, pruebas PostgreSQL de datos históricos, cambios y no-op, manipulación
 manual, nulos, rollback, desbordamiento y actualizaciones concurrentes. Las tablas
 temporales creadas con `LIKE INCLUDING ALL` no copian este trigger automáticamente.
+
+## Integraciones V104 preparadas, todavía no ejecutadas
+
+`UserSecurityVersionPostgresIntegrationTest` añade 11 casos previstos, separados de
+las cinco integraciones existentes, que se conservan. Los casos SQL directos cubren
+INSERT con versión solicitada, cada campo de seguridad, cambios conjuntos, nulos,
+no-op, username y versiones impuestas. Los casos del adaptador cubren mapeo,
+RETURNING, snapshots obsoletos, rollback y dos escritores independientes con commit
+o rollback del primero. Observan la espera real mediante `pg_blocking_pids`, con
+latches y tiempos límite, sin `sleep()` como sincronización.
+
+Estas pruebas no aplican migraciones. Exigen autorización mediante
+`-Dlaexclusiva.test.postgres.userSecurityVersion=true`, además de las variables
+privadas de conexión. La URL solo admite `localhost`, `127.0.0.1` o `[::1]`, puerto
+5432 explícito o predeterminado y base exacta `la_exclusiva_test`, sin opciones ni
+múltiples hosts. Cada conexión física verifica base real, dirección loopback,
+puerto, PostgreSQL 18 y presencia de la columna, CHECK validado y trigger habilitado
+con función invocadora y search_path protegido antes de permitir fixtures. Una
+instalación incompleta provoca error; no se omite silenciosamente ni se repara.
+
+Se fija search_path a `pg_catalog, public` y se acotan conexión, consultas y esperas.
+Los fixtures usan nombres exclusivos registrados antes de insertar y limpieza por
+username exacto e ID exacto de vendedor. La limpieza se omite si siguen activos
+escritores; ante desconexiones pueden quedar fixtures pendientes de revisión y los
+avances de secuencias no se revierten. No se utiliza limpieza global ni se desactiva
+el trigger. Se requiere acceso a catálogos, objetos de usuarios/vendedores, identidad
+y observación de bloqueos de las sesiones de prueba; no se exige superusuario.
+
+`UserSecurityVersionIntegrationSafetyTest` verifica las barreras con JDBC simulado,
+sin abrir sockets. Su aprobación no valida V104 en PostgreSQL. El fixture ficticio
+anterior a V104 debe prepararse y comprobarse manualmente durante una aplicación
+autorizada; estas pruebas posteriores no demuestran migración de filas preexistentes.
+La revocación de sesiones y el último administrador siguen pendientes de implementar.
+
+Solo después de revisión y autorización, usando Temurin Java 17 y variables ya
+configuradas de forma privada, se propondrá ejecutar:
+
+```powershell
+mvn -o "-Dtest=UserSecurityVersionPostgresIntegrationTest" "-Dlaexclusiva.test.postgres.userSecurityVersion=true" test
+```
+
+Este comando es documentación para una ejecución futura; no acredita una ejecución.

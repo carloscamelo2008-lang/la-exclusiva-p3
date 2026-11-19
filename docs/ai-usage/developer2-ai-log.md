@@ -204,3 +204,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé el adaptador y sus pruebas sin cambiar contratos ni otros módulos. Dejé el incremento a cargo del trigger y documenté resultados inciertos y versiones provisionales tras rollback. V104 y la revisión de Jesús siguen pendientes.
 * **Verificación realizada:** Codex ejecutó 70 pruebas del adaptador y 97 regresiones con Temurin 17.0.21: 167 aprobadas, sin fallos, errores ni omisiones. Usó JDBC simulado y comprobó rollback-only. `git diff --check` pasó. No ejecutó PostgreSQL, migraciones ni la suite completa; el trigger no fue validado realmente.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 17 – Preparación de integraciones de versión de seguridad
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Pruebas PostgreSQL preparadas (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para preparar la validación real de versiones sin conectarnos ni aplicar V104.
+* **Resumen de la respuesta recibida:** Codex preparó 11 casos de trigger y adaptador, con fixtures exclusivos, comprobaciones de destino y esquema por conexión y concurrencia con tiempos límite. Conservó las cinco integraciones anteriores.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé preparar las pruebas y documentar sus límites. Dejé la ejecución pendiente de revisión y autorización; la comprobación de una fila anterior a V104 será manual durante su aplicación autorizada.
+* **Verificación realizada:** Codex compiló con Temurin 17.0.21 y ejecutó 104 pruebas distintas sin PostgreSQL: 21 nuevas de seguridad simulada y 83 existentes; todas aprobaron sin fallos, errores ni omisiones. Repitió las 21 nuevas tras la revisión final. `git diff --check` pasó. No ejecutó integraciones, SQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
