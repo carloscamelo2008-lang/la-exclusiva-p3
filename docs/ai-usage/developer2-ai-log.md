@@ -217,3 +217,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé preparar las pruebas y documentar sus límites. Dejé la ejecución pendiente de revisión y autorización; la comprobación de una fila anterior a V104 será manual durante su aplicación autorizada.
 * **Verificación realizada:** Codex compiló con Temurin 17.0.21 y ejecutó 104 pruebas distintas sin PostgreSQL: 21 nuevas de seguridad simulada y 83 existentes; todas aprobaron sin fallos, errores ni omisiones. Repitió las 21 nuevas tras la revisión final. `git diff --check` pasó. No ejecutó integraciones, SQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 18 – Política del último administrador activo
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Política pura de administración (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para preparar la regla que impide retirar al último administrador activo.
+* **Resumen de la respuesta recibida:** Codex creó una política independiente y pruebas de desactivación, cambio de rol, promociones y datos inválidos.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé solo la política y sus pruebas. Dejé pendientes la integración, los bloqueos transaccionales y la revisión de Jesús; esta regla por sí sola no garantiza permisos ni concurrencia.
+* **Verificación realizada:** Codex ejecutó 63 pruebas con Temurin 17.0.21: 20 nuevas y 43 regresiones, sin fallos, errores ni omisiones. Compiló con objetivo Java 17 y pasó `git diff --check`. No ejecutó PostgreSQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
