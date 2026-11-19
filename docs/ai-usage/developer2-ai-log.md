@@ -100,3 +100,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Revisé la propuesta y aprobé las mejoras para facilitar el uso, conservando los permisos. Dejé pendientes los abonos y la integración JDBC.
 * **Verificación realizada:** Codex ejecutó pruebas y revisó visualmente la aplicación con cuentas temporales. GitHub Actions pasó con Java 17: 196 pruebas aprobadas y 3 omitidas. Quedan pendientes datos largos y otros escalados.
 * **Commit o Pull Request relacionado:** [PR #17](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/17). Desarrollo: `d1872c3`; corrección: `e8f546b`; integración de develop: `f2c66cf`.
+
+---
+
+### Interacción 9 – Planificación de identidad y administración
+
+* **Fecha:** 18/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Inspección y propuesta de contratos (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para organizar mi módulo de identidad según el plan del equipo.
+* **Resumen de la respuesta recibida:** Codex revisó el PDF, el código y GitHub. Creó la rama desde `origin/develop` y preparó una propuesta sobre usuarios JDBC, autenticación, bootstrap, sesiones, gestión JavaFX e ID automático de clientes.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé preparar la propuesta, sin implementar funcionalidades. Los contratos siguen pendientes de aprobación de Carlos y Jesús; dejé fuera los cambios de sus módulos y del menú central.
+* **Verificación realizada:** Codex comprobó el árbol limpio, actualizó las referencias y revisó el diff. `git diff --check` pasó. No ejecutó pruebas ni modificó PostgreSQL.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
