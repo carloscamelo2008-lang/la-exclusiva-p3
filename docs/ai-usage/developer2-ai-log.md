@@ -152,3 +152,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé la composición aislada y sus pruebas, sin crear cuentas ni cambiar contratos. Dejé la integración con `App` y `ApplicationServices` pendiente; la aplicación aún no autentica mediante esta fábrica PostgreSQL.
 * **Verificación realizada:** Codex ejecutó 103 pruebas: 9 nuevas de composición y 94 existentes de usuarios, autenticación, repositorio y transacciones; todas aprobaron, sin fallos, errores ni omisiones. Usó JDBC simulado, JDK 25.0.2 y compilación para Java 17. `git diff --check` pasó. No ejecutó PostgreSQL ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 13 – Migración de versión de seguridad
+
+* **Fecha:** 18/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Preparación de V104 (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para preparar el versionado persistente de usuarios aprobado por Carlos, sin aplicar la migración.
+* **Resumen de la respuesta recibida:** Codex creó V104 con columna, restricción y trigger para incrementar la versión al cambiar datos de seguridad. Añadió documentación mínima y controles estáticos.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé preparar estos archivos, conservando las migraciones anteriores y el código Java de identidad. Dejé la aplicación del esquema pendiente de autorización y la seguridad pendiente de revisión de Jesús; el bloqueo administrativo reservado no está implementado.
+* **Verificación realizada:** Codex inspeccionó el SQL y ejecutó tres pruebas estáticas con Temurin 17.0.21; aprobaron sin fallos, errores ni omisiones. `git diff --check` pasó. No hubo conexiones ni ejecución SQL: el funcionamiento del trigger en PostgreSQL sigue pendiente de validar.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
