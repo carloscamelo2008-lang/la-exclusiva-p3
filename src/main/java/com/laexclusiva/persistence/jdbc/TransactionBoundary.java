@@ -15,6 +15,21 @@ public interface TransactionBoundary {
     <T> T inTransaction(Supplier<T> operation);
 
     /**
+     * Ejecuta una lectura que necesita repetir consultas bajo una misma instantánea.
+     *
+     * <p>El límite JDBC debe usar aislamiento {@code REPEATABLE_READ}. Implementaciones de prueba
+     * o en memoria pueden delegar a su transacción ordinaria cuando no exista concurrencia SQL.</p>
+     *
+     * @param operation lecturas que deben compartir una instantánea
+     * @param <T> tipo del resultado
+     * @return resultado leído
+     * @throws IllegalArgumentException si la operación es nula y la implementación valida el argumento
+     */
+    default <T> T inReadOnlyRepeatableRead(Supplier<T> operation) {
+        return inTransaction(operation);
+    }
+
+    /**
      * Ejecuta una operación sin resultado dentro de la misma transacción.
      *
      * @param operation lógica que debe ejecutarse atómicamente

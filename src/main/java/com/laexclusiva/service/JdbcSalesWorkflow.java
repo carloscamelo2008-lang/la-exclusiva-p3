@@ -1,6 +1,9 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.CashCategory;
+import com.laexclusiva.model.CashDirection;
+import com.laexclusiva.model.CashMovement;
 import com.laexclusiva.model.MovementType;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SaleLine;
@@ -10,9 +13,11 @@ import com.laexclusiva.model.StockMovement;
 import com.laexclusiva.model.StockRequest;
 import com.laexclusiva.persistence.jdbc.TransactionBoundary;
 import com.laexclusiva.repository.CustomerBalanceAdjuster;
+import com.laexclusiva.repository.CashMovementRepository;
 import com.laexclusiva.repository.CustomerDebtQuery;
 import com.laexclusiva.repository.CustomerRepositoryInterface;
 import com.laexclusiva.repository.IdempotentSalePaymentAppender;
+import com.laexclusiva.repository.IdempotentSaleRepository;
 import com.laexclusiva.repository.InventoryStockAdjuster;
 import com.laexclusiva.repository.ProductRepository;
 import com.laexclusiva.repository.SaleRepository;
@@ -26,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 
 /** Coordina ventas y abonos JDBC dentro de una sola transacción compartida. */
 public final class JdbcSalesWorkflow implements SalesWorkflow {
@@ -33,12 +39,14 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
     private final CustomerRepositoryInterface customers;
     private final SellerRepositoryInterface sellers;
     private final SaleRepository sales;
+    private final IdempotentSaleRepository idempotentSales;
     private final IdempotentSalePaymentAppender payments;
     private final CustomerDebtQuery debtQuery;
     private final CustomerBalanceAdjuster customerBalances;
     private final InventoryStockAdjuster inventory;
     private final StockMovementRepository movements;
     private final TransactionBoundary transactions;
+    private final CashMovementRepository cashMovements;
 
     /**
      * Crea el caso de uso con adaptadores que comparten proveedor y coordinador JDBC.
@@ -48,6 +56,17 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
                              IdempotentSalePaymentAppender payments, CustomerDebtQuery debtQuery,
                              CustomerBalanceAdjuster customerBalances, InventoryStockAdjuster inventory,
                              StockMovementRepository movements, TransactionBoundary transactions) {
+        this(products, customers, sellers, sales, payments, debtQuery, customerBalances,
+                inventory, movements, transactions, null);
+    }
+
+    /** Variante productiva que añade entradas de caja dentro de la misma transacción de venta y pago. */
+    public JdbcSalesWorkflow(ProductRepository products, CustomerRepositoryInterface customers,
+                             SellerRepositoryInterface sellers, SaleRepository sales,
+                             IdempotentSalePaymentAppender payments, CustomerDebtQuery debtQuery,
+                             CustomerBalanceAdjuster customerBalances, InventoryStockAdjuster inventory,
+                             StockMovementRepository movements, TransactionBoundary transactions,
+                             CashMovementRepository cashMovements) {
         if (products == null || customers == null || sellers == null || sales == null || payments == null
                 || debtQuery == null || customerBalances == null || inventory == null || movements == null
                 || transactions == null) {
@@ -57,12 +76,14 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         this.customers = customers;
         this.sellers = sellers;
         this.sales = sales;
+        this.idempotentSales = sales instanceof IdempotentSaleRepository repository ? repository : null;
         this.payments = payments;
         this.debtQuery = debtQuery;
         this.customerBalances = customerBalances;
         this.inventory = inventory;
         this.movements = movements;
         this.transactions = transactions;
+        this.cashMovements = cashMovements;
     }
 
     /**
@@ -74,21 +95,40 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
     @Override
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                              BigDecimal initialPayment) {
+        return registerSale(lines, sellerId, customerId, initialPayment, UUID.randomUUID().toString());
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                             BigDecimal initialPayment, String idempotencyKey) {
         List<StockRequest> requests = validateRequests(lines);
         requireId(sellerId, "El vendedor es obligatorio.");
+        requireId(idempotencyKey, "La clave idempotente de la venta es obligatoria.");
+        if (idempotencyKey.length() > 64) {
+            throw new IllegalArgumentException("La clave idempotente supera 64 caracteres.");
+        }
         if (customerId != null && customerId.isBlank()) {
             throw new IllegalArgumentException("El ID del cliente no puede estar vacío.");
         }
+        String fingerprint = SaleRequestFingerprint.calculate(requests, sellerId, customerId, initialPayment);
         return transactions.inTransaction(() -> registerSaleInTransaction(
-                requests, sellerId, customerId, initialPayment));
+                requests, sellerId, customerId, initialPayment, idempotencyKey, fingerprint));
     }
 
     private Sale registerSaleInTransaction(List<StockRequest> requests, String sellerId,
-                                           String customerId, BigDecimal initialPayment) {
+                                           String customerId, BigDecimal initialPayment,
+                                           String idempotencyKey, String fingerprint) {
+        Sale existing = findMatchingRequest(idempotencyKey, fingerprint);
+        if (existing != null) return existing;
+
         Customer customer = customerId == null ? null : customers.findByIdForUpdate(customerId);
         if (customerId != null && customer == null) {
             throw new IllegalArgumentException("No existe el cliente " + customerId + ".");
         }
+        // Otra transacción pudo terminar mientras esta esperaba el bloqueo del cliente.
+        existing = findMatchingRequest(idempotencyKey, fingerprint);
+        if (existing != null) return existing;
 
         Seller seller = sellers.findById(sellerId)
                 .orElseThrow(() -> new IllegalArgumentException("No existe el vendedor " + sellerId + "."));
@@ -112,6 +152,18 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
             throw new IllegalArgumentException("Se requiere cliente para una venta con saldo pendiente.");
         }
 
+        boolean inserted;
+        if (idempotentSales == null) {
+            sales.save(sale);
+            inserted = true;
+        } else {
+            IdempotentSaleRepository.SaveResult saved =
+                    idempotentSales.saveOnce(sale, idempotencyKey, fingerprint);
+            if (!saved.inserted()) return saved.sale();
+            inserted = true;
+        }
+        if (inserted) recordInitialCashReceipt(sale);
+
         Map<String, Integer> unitsByProduct = requiredUnits(requests, productById);
         for (Map.Entry<String, Integer> entry : unitsByProduct.entrySet()) {
             inventory.decreaseStock(entry.getKey(), entry.getValue());
@@ -121,9 +173,18 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         if (outstanding.signum() > 0) {
             customerBalances.increaseBalance(customerId, outstanding);
         }
-        sales.save(sale);
         return sales.findById(sale.getId())
                 .orElseThrow(() -> new IllegalStateException("PostgreSQL no devolvió la venta recién guardada."));
+    }
+
+    private Sale findMatchingRequest(String key, String fingerprint) {
+        if (idempotentSales == null) return null;
+        return idempotentSales.findByIdempotencyKey(key).map(record -> {
+            if (!record.fingerprint().equals(fingerprint)) {
+                throw new IllegalArgumentException("La clave de venta ya se usó con datos diferentes.");
+            }
+            return record.sale();
+        }).orElse(null);
     }
 
     /**
@@ -160,9 +221,29 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
                             "La cartera de ventas supera el saldo agregado del cliente; revise la inconsistencia.");
                 }
                 customerBalances.decreaseBalance(customerId, result.payment().getAmount());
+                recordSaleInstallmentCash(saleId, result.payment(), idempotencyKey);
             }
             return findById(saleId);
         });
+    }
+
+    private void recordInitialCashReceipt(Sale sale) {
+        if (cashMovements == null || sale.getPayments().isEmpty()) return;
+        com.laexclusiva.model.SalePayment payment = sale.getPayments().get(0);
+        String source = sale.getId();
+        CashMovement entry = new CashMovement(0, CashDirection.INCOME, CashCategory.SALE_INITIAL_PAYMENT,
+                payment.getAmount(), payment.getTimestamp(), "Pago inicial de venta " + sale.getId(),
+                "SALE-INITIAL:" + source, "SALE_INITIAL", source);
+        cashMovements.saveOnce(entry, CashWorkflowJdbc.cashFingerprint(entry));
+    }
+
+    private void recordSaleInstallmentCash(String saleId, SalePayment payment, String paymentKey) {
+        if (cashMovements == null) return;
+        String source = saleId + ":" + paymentKey;
+        CashMovement entry = new CashMovement(0, CashDirection.INCOME, CashCategory.SALE_INSTALLMENT,
+                payment.getAmount(), payment.getTimestamp(), "Abono a venta " + saleId,
+                "SALE-INSTALLMENT:" + source, "SALE_INSTALLMENT", source);
+        cashMovements.saveOnce(entry, CashWorkflowJdbc.cashFingerprint(entry));
     }
 
     @Override

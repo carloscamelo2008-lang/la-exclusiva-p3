@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.laexclusiva.model.InitialCatalog;
+import com.laexclusiva.model.InsufficientStockException;
 import com.laexclusiva.model.MovementType;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SalePresentation;
@@ -120,7 +121,7 @@ class SaleServiceTest {
         inventory.addStock("POKER_750", 0, 3, "Inicial");
         int originalMovementCount = inventory.allMovements().size();
 
-        assertThrows(IllegalStateException.class, () -> sales.registerSale(List.of(
+        assertThrows(InsufficientStockException.class, () -> sales.registerSale(List.of(
                 request("POKER_250", SalePresentation.HALF_BASKET, 1),
                 request("POKER_750", SalePresentation.HALF_BASKET, 1)),
                 seller.getId(), "C001", BigDecimal.valueOf(20_000L)));

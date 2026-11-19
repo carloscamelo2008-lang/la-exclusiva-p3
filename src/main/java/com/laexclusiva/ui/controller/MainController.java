@@ -8,6 +8,8 @@ import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
 import com.laexclusiva.service.SellerService;
 import com.laexclusiva.service.SalesWorkflow;
+import com.laexclusiva.service.CashWorkflow;
+import com.laexclusiva.service.CustomerGeneralDebtWorkflow;
 import com.laexclusiva.ui.ApplicationServices;
 import javafx.css.PseudoClass;
 import javafx.fxml.FXML;
@@ -37,6 +39,7 @@ public class MainController {
     @FXML private Button btnDashboard;
     @FXML private Button btnCustomers;
     @FXML private Button btnCredit;
+    @FXML private Button btnCash;
 
     private UserSession currentSession;
     private CustomerService customerService;
@@ -44,6 +47,8 @@ public class MainController {
     private ProductService productService;
     private InventoryService inventoryService;
     private SalesWorkflow salesWorkflow;
+    private CashWorkflow cashWorkflow;
+    private CustomerGeneralDebtWorkflow generalDebtWorkflow;
     private Runnable onLogout;
     private final AuthorizationService authorizationService = new AuthorizationService();
 
@@ -64,6 +69,8 @@ public class MainController {
         this.productService = services.products();
         this.inventoryService = services.inventory();
         this.salesWorkflow = services.sales();
+        this.cashWorkflow = services.cash();
+        this.generalDebtWorkflow = services.generalDebt();
     }
 
     public void setOnLogout(Runnable onLogout) {
@@ -87,7 +94,7 @@ public class MainController {
 
     private void selectNavigation(Button selected) {
         for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit,
-                btnInventory, btnSales}) {
+                btnInventory, btnSales, btnCash}) {
             button.pseudoClassStateChanged(ACTIVE, button == selected);
         }
     }
@@ -150,7 +157,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/portfolio_view.fxml"));
             Node portfolioView = loader.load();
             PortfolioController controller = loader.getController();
-            controller.configure(customerService, salesWorkflow, currentSession);
+            controller.configure(customerService, salesWorkflow, generalDebtWorkflow, currentSession);
             controller.showPortfolio(customerService.getAllCustomers());
             rootPane.setCenter(portfolioView);
             selectNavigation(btnCredit);
@@ -182,6 +189,27 @@ public class MainController {
         } catch (IOException | RuntimeException failure) {
             LOGGER.log(Level.WARNING, "No se pudo abrir el registro de ventas.", failure);
             navigationMessage.setText("No se pudo abrir el registro de ventas.");
+        }
+    }
+
+    @FXML
+    private void handleShowCash() {
+        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_CASH)) {
+            navigationMessage.setText("No tiene permiso para consultar caja.");
+            return;
+        }
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/cash_view.fxml"));
+            Node view = loader.load();
+            CashController controller = loader.getController();
+            controller.configure(cashWorkflow, currentSession);
+            rootPane.setCenter(view);
+            selectNavigation(btnCash);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir el módulo de caja.", failure);
+            navigationMessage.setText("No se pudo abrir el módulo de caja.");
         }
     }
 
@@ -244,6 +272,9 @@ public class MainController {
                 && authorizationService.hasPermission(session, Permission.VIEW_SALES);
         btnSales.setVisible(canRegisterSales);
         btnSales.setManaged(canRegisterSales);
+        boolean canViewCash = authorizationService.hasPermission(session, Permission.VIEW_CASH);
+        btnCash.setVisible(canViewCash);
+        btnCash.setManaged(canViewCash);
         btnAdminUsers.setDisable(true);
         selectNavigation(btnDashboard);
     }

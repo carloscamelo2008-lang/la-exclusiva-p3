@@ -1,6 +1,7 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Customer;
+import com.laexclusiva.model.InsufficientStockException;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SaleLine;
 import com.laexclusiva.model.SalePayment;
@@ -69,10 +70,10 @@ public class SaleService {
      * @return venta registrada, con su identificador generado y pagos iniciales
      * @throws IllegalArgumentException si las líneas, identificadores, entidades o el pago son inválidos,
      *                                  o si falta un producto, vendedor o cliente requerido
-     * @throws IllegalStateException si el stock no alcanza, hay una inconsistencia de saldos
-     *                               o se detecta un identificador de venta duplicado
-     * @throws com.laexclusiva.model.InsufficientStockException si las existencias cambian entre la
-     *                                                          comprobación previa y el descuento
+     * @throws IllegalStateException si hay una inconsistencia de saldos o se detecta un
+     *                               identificador de venta duplicado
+     * @throws InsufficientStockException si las existencias no alcanzan; el inventario valida
+     *                                     todas las líneas antes de aplicar cualquier descuento
      */
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                             BigDecimal initialPayment) {
@@ -101,12 +102,6 @@ public class SaleService {
         if (saleRepository.findById(sale.getId()).isPresent()) {
             throw new IllegalStateException("Ya existe una venta con el ID " + sale.getId() + ".");
         }
-        // Esta comprobación ocurre antes de escribir; discountSale vuelve a validar al descontar.
-        if (!inventoryService.canFulfill(requests)) {
-            throw new IllegalStateException(
-                    "No hay existencias suficientes para completar todas las líneas de la venta.");
-        }
-
         BigDecimal pendingBalance = sale.calculateBalance();
         CustomerService.SaleDebtSnapshot customerSnapshot = pendingBalance.signum() > 0
                 ? customerService.snapshotSaleDebtState(customer.getId()) : null;

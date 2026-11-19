@@ -39,6 +39,11 @@
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
+            <Button fx:id="btnCash" onAction="#handleShowCash" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Caja y movimientos">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
             <Button fx:id="btnInventory" onAction="#handleShowInventory" mnemonicParsing="false" prefHeight="40.0" prefWidth="260.0" styleClass="nav-button" text="Catálogo e Inventario">
                <padding>
                   <Insets left="20.0" top="10.0" />
