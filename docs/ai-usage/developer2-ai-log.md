@@ -126,3 +126,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé estas correcciones sin modificar módulos compartidos. Conservé la validación estricta de nuevas escrituras y dejé pendiente validar en PostgreSQL el límite operativo de 64 intentos de ID.
 * **Verificación realizada:** Codex ejecutó 56 pruebas sin PostgreSQL: 42 del repositorio, 6 de usuarios y 8 de transacciones; todas aprobaron con JDK 25.0.2 y compilación para Java 17. Después ejecuté manualmente las cinco integraciones en `la_exclusiva_test` con PostgreSQL 18; aprobaron sin fallos, errores ni omisiones. Codex confirmó el informe de Surefire y revisó el diff. `git diff --check` pasó. No se ejecutó la suite completa ni se verificó con JDK 17.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+### Interacción 11 – Pruebas de autenticación con repositorio
+
+* **Fecha:** 18/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Pruebas unitarias de autenticación (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para completar la cobertura de autenticación sin conectar el login a PostgreSQL.
+* **Resumen de la respuesta recibida:** Codex revisó las pruebas existentes y añadió casos de credenciales rechazadas, reconstrucción del servicio y cambio de usuario. Reforzó la comprobación del rol, vendedor y sesión invalidada.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé ampliar las pruebas existentes para evitar duplicarlas, conservando los contratos y el modo memoria. La reconstrucción usa el mismo repositorio en memoria; no demuestra persistencia entre procesos.
+* **Verificación realizada:** Codex ejecutó 84 pruebas: 10 de usuarios, 32 de autenticación y 42 del repositorio JDBC simulado; todas aprobaron, sin fallos, errores ni omisiones. Usó JDK 25.0.2 y compilación para Java 17. Revisó el diff y `git diff --check`; no ejecutó PostgreSQL ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
