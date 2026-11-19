@@ -230,3 +230,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé solo la política y sus pruebas. Dejé pendientes la integración, los bloqueos transaccionales y la revisión de Jesús; esta regla por sí sola no garantiza permisos ni concurrencia.
 * **Verificación realizada:** Codex ejecutó 63 pruebas con Temurin 17.0.21: 20 nuevas y 43 regresiones, sin fallos, errores ni omisiones. Compiló con objetivo Java 17 y pasó `git diff --check`. No ejecutó PostgreSQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+#### Continuación de la Interacción 18 – Frontera administrativa (microcommit 2)
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Coordinación administrativa (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para preparar una frontera común para las futuras operaciones de usuarios.
+* **Resumen de la respuesta recibida:** Codex implementó sincronización sobre el repositorio en memoria y una frontera JDBC con transacción compartida, READ COMMITTED y el bloqueo reservado. Añadió pruebas sin conexión.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé solo la coordinación, sin operaciones administrativas ni integración. Quedan pendientes permisos, último administrador, revisión de Jesús y pruebas PostgreSQL; las escrituras externas no quedan protegidas.
+* **Verificación realizada:** Codex corrigió una ambigüedad de compilación y, en la revisión final, reprodujo y corrigió la exposición de detalles SQL en errores. Ejecutó 159 pruebas con Temurin 17.0.21: 24 nuevas y 135 regresiones, sin fallos, errores ni omisiones. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
