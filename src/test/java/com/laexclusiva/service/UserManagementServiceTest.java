@@ -3,6 +3,7 @@ package com.laexclusiva.service;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
+import com.laexclusiva.model.Seller;
 import com.laexclusiva.repository.InMemoryUserRepository;
 import com.laexclusiva.repository.UserRepository;
 import com.laexclusiva.security.PasswordHasher;
@@ -12,6 +13,8 @@ import java.util.Arrays;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -701,6 +704,305 @@ class UserManagementServiceTest {
         target.setPasswordHash(PasswordHasher.hash("Original-Password-Test-Only"));
         storage.update(target);
         return stored("3");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1", "3"})
+    void assignsSellerToEitherActiveRolePreservingOtherFields(String targetId) {
+        SellerLookup lookup = new SellerLookup();
+        UserManagementService operation = withSellers(lookup);
+        UserAccount before = stored(targetId);
+        UserSession actor = session("2");
+        users.forbidPostWriteReads = true;
+        var result = operation.assignSeller(actor, targetId, 0, "SELLER-AVAILABLE");
+        assertEquals(List.of("enter", "find:2", "find:" + targetId, "seller:SELLER-AVAILABLE", "all", "update", "exit"), users.events);
+        UserAccount after = stored(targetId);
+        assertEquals("SELLER-AVAILABLE", after.getSellerId());
+        assertEquals(before.getId(), after.getId());
+        assertEquals(before.getUsername(), after.getUsername());
+        assertTrue(before.getPasswordHash().equals(after.getPasswordHash()));
+        assertEquals(before.getRole(), after.getRole());
+        assertEquals(before.isActive(), after.isActive());
+        assertEquals(before.getCreatedAt(), after.getCreatedAt());
+        assertEquals(1, result.securityVersion());
+        assertEquals(before.getRole(), result.role());
+        assertEquals(1, lookup.reads);
+        assertEquals(1, users.updates);
+        assertEquals(0, users.saves);
+        assertFalse(result.toString().contains(after.getPasswordHash()));
+        if (targetId.equals("3")) {
+            assertNotSame(users.loadedTarget, users.submitted);
+            assertEquals(before.getSellerId(), users.loadedTarget.getSellerId());
+        }
+    }
+
+    @Test
+    void permitsInactiveSharingButRejectsReactivationUntilSellerIsReleased() {
+        SellerLookup lookup = new SellerLookup();
+        UserManagementService operation = withSellers(lookup);
+        UserAccount inactive = stored("3");
+        inactive.setActive(false);
+        storage.update(inactive);
+        operation.assignSeller(session("1"), "2", 0, "SELLER-AVAILABLE");
+        var assignedInactive = operation.assignSeller(session("1"), "3", 1, "SELLER-AVAILABLE");
+        assertEquals(2, assignedInactive.securityVersion());
+        assertFalse(assignedInactive.active());
+        int before = users.updates;
+        assertThrows(IllegalStateException.class, () -> operation.setActive(session("1"), "3", 2, true));
+        assertEquals(before, users.updates);
+        assertFalse(stored("3").isActive());
+        assertEquals(2, stored("3").getSecurityVersion());
+        int lookups = lookup.reads;
+        operation.assignSeller(session("1"), "2", 1, null);
+        var reactivated = operation.setActive(session("1"), "3", 2, true);
+        assertTrue(reactivated.active());
+        assertEquals(3, reactivated.securityVersion());
+        assertEquals(lookups, lookup.reads, "Desvincular y reactivar no consultan vendedores.");
+    }
+
+    @Test
+    void unlinksWithoutSellerServiceAndRepeatedUnlinkDoesNotWrite() {
+        UserAccount before = stored("3");
+        var first = service.assignSeller(session("1"), "3", 0, null);
+        var repeated = service.assignSeller(session("1"), "3", 1, null);
+        assertNull(stored("3").getSellerId());
+        assertEquals(1, first.securityVersion());
+        assertEquals(1, repeated.securityVersion());
+        assertEquals(1, users.updates);
+        assertEquals(before.getRole(), stored("3").getRole());
+        assertEquals(before.isActive(), stored("3").isActive());
+        assertTrue(before.getPasswordHash().equals(stored("3").getPasswordHash()));
+        assertFalse(users.events.contains("all"));
+    }
+
+    @Test
+    void missingSellerServiceRejectsNonNullAssignmentEvenWhenUnchanged() {
+        assertThrows(IllegalStateException.class, () -> service.assignSeller(session("1"), "3", 0, "SELLER-3"));
+        assertEquals(0, users.updates);
+        assertEquals(0, stored("3").getSecurityVersion());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "\t", "bad\u0000seller"})
+    void rejectsInvalidSellerIdsWithoutLookupOrWrite(String id) {
+        SellerLookup lookup = new SellerLookup();
+        assertThrows(IllegalArgumentException.class, () -> withSellers(lookup).assignSeller(session("1"), "3", 0, id));
+        assertEquals(0, lookup.reads);
+        assertEquals(0, users.updates);
+    }
+
+    @Test
+    void rejectsSellerIdLongerThan32Units() {
+        SellerLookup lookup = new SellerLookup();
+        assertThrows(IllegalArgumentException.class,
+                () -> withSellers(lookup).assignSeller(session("1"), "3", 0, "x".repeat(33)));
+        assertEquals(0, lookup.reads);
+        assertEquals(0, users.updates);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING", " seller-available ", "seller-available"})
+    void sellerLookupUsesExactIdWithoutNormalization(String id) {
+        SellerLookup lookup = new SellerLookup();
+        assertThrows(IllegalArgumentException.class, () -> withSellers(lookup).assignSeller(session("1"), "3", 0, id));
+        assertEquals(id, lookup.requested);
+        assertEquals(1, lookup.reads);
+        assertEquals(0, users.updates);
+    }
+
+    @Test
+    void repeatedAssignmentValidatesButDoesNotWriteOrIncrementVersion() {
+        SellerLookup lookup = new SellerLookup();
+        var result = withSellers(lookup).assignSeller(session("1"), "3", 0, "SELLER-3");
+        assertEquals(0, result.securityVersion());
+        assertEquals(0, users.updates);
+        assertEquals(1, lookup.reads);
+        assertTrue(users.events.contains("all"));
+    }
+
+    @Test
+    void rejectsDuplicateSellerBetweenActiveAccounts() {
+        SellerLookup lookup = new SellerLookup();
+        assertThrows(IllegalStateException.class, () -> withSellers(lookup).assignSeller(session("1"), "3", 0, "SELLER-2"));
+        assertEquals(0, users.updates);
+        assertEquals("SELLER-3", stored("3").getSellerId());
+    }
+
+    @Test
+    void exclusivityIsCaseSensitiveAndDoesNotNormalizeIds() {
+        SellerLookup lookup = new SellerLookup();
+        lookup.available.put("seller-2", seller("seller-2"));
+        var result = withSellers(lookup).assignSeller(session("1"), "3", 0, "seller-2");
+        assertEquals(1, result.securityVersion());
+        assertEquals("seller-2", stored("3").getSellerId());
+        assertEquals("SELLER-2", stored("2").getSellerId());
+    }
+
+    @Test
+    void rejectsHistoricalDuplicateEvenForAlreadyActiveAccountOrRepeatedAssignment() {
+        UserAccount duplicate = stored("3");
+        duplicate.setSellerId("SELLER-2");
+        storage.update(duplicate);
+        SellerLookup lookup = new SellerLookup();
+        assertThrows(IllegalStateException.class, () -> service.setActive(session("1"), "3", 1, true));
+        assertThrows(IllegalStateException.class,
+                () -> withSellers(lookup).assignSeller(session("1"), "3", 1, "SELLER-2"));
+        assertEquals(0, users.updates);
+        assertEquals(1, stored("3").getSecurityVersion());
+    }
+
+    @Test
+    void activatesAccountWithoutSellerAndReactivatesUniqueHistoricalSellerWithoutLookup() {
+        UserAccount target = stored("3");
+        target.setActive(false);
+        target.setSellerId(null);
+        storage.update(target);
+        assertTrue(service.setActive(session("1"), "3", 1, true).active());
+        target = stored("3");
+        target.setActive(false);
+        target.setSellerId("HISTORICAL-UNKNOWN");
+        storage.update(target);
+        assertTrue(service.setActive(session("1"), "3", 3, true).active());
+        assertEquals(4, stored("3").getSecurityVersion());
+    }
+
+    @Test
+    void sellerAssignmentRejectsUnauthorizedInvalidatedAndObsoleteSessions() {
+        SellerLookup lookup = new SellerLookup();
+        UserManagementService operation = withSellers(lookup);
+        assertThrows(SecurityException.class, () -> operation.assignSeller(null, "3", 0, "SELLER-AVAILABLE"));
+        assertThrows(SecurityException.class, () -> operation.assignSeller(session("3"), "2", 0, "SELLER-AVAILABLE"));
+        UserSession invalid = session("1");
+        invalid.invalidate();
+        assertThrows(SecurityException.class, () -> operation.assignSeller(invalid, "3", 0, "SELLER-AVAILABLE"));
+        UserSession obsolete = session("1");
+        UserAccount changed = stored("1");
+        changed.setSellerId("CHANGED");
+        storage.update(changed);
+        assertThrows(SecurityException.class, () -> operation.assignSeller(obsolete, "3", 0, "SELLER-AVAILABLE"));
+        assertEquals(0, lookup.reads);
+        assertEquals(0, users.updates);
+    }
+
+    @Test
+    void sellerAssignmentRejectsMissingTargetAndVersionConflictBeforeLookup() {
+        SellerLookup lookup = new SellerLookup();
+        UserManagementService operation = withSellers(lookup);
+        assertThrows(IllegalArgumentException.class, () -> operation.assignSeller(session("1"), "999", 0, "SELLER-AVAILABLE"));
+        assertThrows(IllegalArgumentException.class, () -> operation.assignSeller(session("1"), "3", -1, "SELLER-AVAILABLE"));
+        assertThrows(ConcurrentModificationException.class, () -> operation.assignSeller(session("1"), "3", 1, "SELLER-AVAILABLE"));
+        assertEquals(0, lookup.reads);
+        assertEquals(0, users.updates);
+    }
+
+    @Test
+    void sellerLookupFailureStopsWithoutWriteOrRetry() {
+        SellerLookup lookup = new SellerLookup();
+        lookup.failure = new IllegalStateException("simulated lookup failure");
+        assertSame(lookup.failure, assertThrows(IllegalStateException.class,
+                () -> withSellers(lookup).assignSeller(session("1"), "3", 0, "SELLER-AVAILABLE")));
+        assertEquals(1, lookup.reads);
+        assertEquals(0, users.updates);
+        assertEquals("SELLER-3", stored("3").getSellerId());
+    }
+
+    @Test
+    void ownSellerChangeMakesCapturedSessionObsoleteWithoutRenewal() {
+        UserSession actor = session("1");
+        UserManagementService operation = withSellers(new SellerLookup());
+        assertEquals(1, operation.assignSeller(actor, "1", 0, "SELLER-AVAILABLE").securityVersion());
+        assertEquals(0, actor.getAuthenticatedSecurityVersion());
+        assertTrue(actor.isValid());
+        assertThrows(SecurityException.class, () -> operation.setActive(actor, "3", 0, false));
+        assertEquals(1, users.updates);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"assignments", "reactivations", "mixed"})
+    void competingSellerOperationsNeverLeaveTwoActiveOwners(String scenario) throws Exception {
+        storage.save(account(4, UserRole.WORKER));
+        if (!scenario.equals("assignments")) {
+            UserAccount target4 = stored("4");
+            target4.setActive(false);
+            target4.setSellerId("SELLER-AVAILABLE");
+            storage.update(target4);
+        }
+        if (scenario.equals("reactivations")) {
+            UserAccount target3 = stored("3");
+            target3.setActive(false);
+            target3.setSellerId("SELLER-AVAILABLE");
+            storage.update(target3);
+        }
+        long version3 = stored("3").getSecurityVersion();
+        long version4 = stored("4").getSecurityVersion();
+        SellerLookup lookup = new SellerLookup();
+        UserManagementService first = new UserManagementService(users,
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), lookup);
+        UserManagementService second = new UserManagementService(users,
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), lookup);
+        UserSession actor1 = session("1");
+        UserSession actor2 = session("2");
+        CyclicBarrier start = new CyclicBarrier(3);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> one = executor.submit(() -> sellerAfterBarrier(() -> scenario.equals("reactivations")
+                    ? first.setActive(actor1, "3", version3, true)
+                    : first.assignSeller(actor1, "3", version3, "SELLER-AVAILABLE"), start));
+            Future<Boolean> two = executor.submit(() -> sellerAfterBarrier(() -> scenario.equals("assignments")
+                    ? second.assignSeller(actor2, "4", version4, "SELLER-AVAILABLE")
+                    : second.setActive(actor2, "4", version4, true), start));
+            start.await(5, TimeUnit.SECONDS);
+            boolean firstWon = one.get(10, TimeUnit.SECONDS);
+            boolean secondWon = two.get(10, TimeUnit.SECONDS);
+            assertNotEquals(firstWon, secondWon);
+            assertEquals(1, storage.findAll().stream().filter(user -> user.isActive()
+                    && "SELLER-AVAILABLE".equals(user.getSellerId())).count());
+            assertEquals(version3 + (firstWon ? 1 : 0), stored("3").getSecurityVersion());
+            assertEquals(version4 + (secondWon ? 1 : 0), stored("4").getSecurityVersion());
+            assertEquals(1, users.updates);
+            assertEquals(0, actor1.getAuthenticatedSecurityVersion());
+            assertEquals(0, actor2.getAuthenticatedSecurityVersion());
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    private boolean sellerAfterBarrier(Supplier<UserManagementService.UserChangeResult> operation,
+                                       CyclicBarrier start) throws Exception {
+        start.await(5, TimeUnit.SECONDS);
+        try { operation.get(); return true; }
+        catch (IllegalStateException duplicate) {
+            assertTrue(duplicate.getMessage().contains("otra cuenta activa"));
+            return false;
+        }
+    }
+
+    private UserManagementService withSellers(SellerLookup lookup) {
+        return new UserManagementService(users, boundary, new AuthorizationService(), lookup);
+    }
+
+    private static Seller seller(String id) {
+        return new Seller(id, "Vendedor de prueba", "3001234567", "Dirección de prueba");
+    }
+
+    /** Consulta simulada de solo lectura; exige el monitor administrativo, sin tocar otro módulo. */
+    private final class SellerLookup extends SellerService {
+        final Map<String, Seller> available = new HashMap<>();
+        int reads;
+        String requested;
+        RuntimeException failure;
+        SellerLookup() {
+            super(null);
+            for (String id : List.of("SELLER-1", "SELLER-2", "SELLER-3", "SELLER-AVAILABLE")) available.put(id, seller(id));
+        }
+        @Override public Optional<Seller> getSellerById(String id) {
+            reads++;
+            requested = id;
+            users.enter("seller:" + id);
+            if (failure != null) throw failure;
+            return Optional.ofNullable(available.get(id));
+        }
     }
 
     private boolean createAfterBarrier(UserManagementService operation, UserSession actor, String username,

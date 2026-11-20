@@ -308,3 +308,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé restablecimientos propios y ajenos sin contraseña anterior, conservando las reglas actuales. Dejé pendientes la revisión de Jesús, la integración y PostgreSQL; las sesiones antiguas se rechazan al revalidar, sin cancelar operaciones iniciadas.
 * **Verificación realizada:** Codex ejecutó 331 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 23 nuevas y 308 regresiones, sin fallos, errores ni omisiones. Comprobó cambio propio, nuevo login y concurrencia en memoria con un único ganador. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+#### Continuación de la Interacción 18 – Asignación de vendedor (microcommit 3F)
+
+* **Fecha:** 19/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Vendedor de la cuenta (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para asignar o desvincular vendedores y evitar que dos cuentas activas compartan uno.
+* **Resumen de la respuesta recibida:** Codex conservó el constructor anterior, añadió consulta opcional de vendedores y comprobó existencia y exclusividad dentro de la frontera. También protegió la activación sin consultar vendedores históricos.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé las reglas aprobadas por Carlos para ambos roles, incluidos vendedores compartidos por cuentas inactivas y desvinculación con null. No se corrigen duplicados históricos ni se protegen escrituras externas; la integración de Ventas y la revisión de Jesús siguen pendientes.
+* **Verificación realizada:** Codex ejecutó 356 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 25 nuevas y 331 regresiones, sin fallos, errores ni omisiones. Los tres escenarios concurrentes de memoria conservaron un solo propietario activo. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.

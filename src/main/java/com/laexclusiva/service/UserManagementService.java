@@ -6,10 +6,12 @@ import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.UserRepository;
 import com.laexclusiva.security.PasswordHasher;
 import java.util.ConcurrentModificationException;
+import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Crea cuentas y cambia rol, actividad y contraseña dentro del protocolo administrativo cooperativo.
+ * Crea cuentas y cambia rol, actividad, contraseña y vendedor dentro del protocolo administrativo cooperativo.
  * Repositorio, revalidador y frontera deben compartir almacenamiento: en memoria el mismo
  * repositorio monitorizado y en JDBC el mismo proveedor. El constructor no puede verificar
  * ese emparejamiento. No protege escrituras directas ni SQL externo ni integra la aplicación.
@@ -18,6 +20,7 @@ public final class UserManagementService {
     private final UserRepository users;
     private final UserAdministrationBoundary boundary;
     private final AdministrativeSessionValidator sessions;
+    private final SellerService sellers;
     private final ActiveAdministratorPolicy policy = new ActiveAdministratorPolicy();
 
     /**
@@ -28,12 +31,26 @@ public final class UserManagementService {
      */
     public UserManagementService(UserRepository users, UserAdministrationBoundary boundary,
                                  AuthorizationService authorization) {
+        this(users, boundary, authorization, null);
+    }
+
+    /**
+     * Añade consulta de vendedores existentes sin construir infraestructura adicional.
+     * @param users repositorio compartido de cuentas
+     * @param boundary frontera administrativa de ese almacenamiento
+     * @param authorization mecanismo existente de permisos
+     * @param sellers consulta de vendedores, opcional solo para operaciones que no verifican existencia
+     * @throws IllegalArgumentException si falta repositorio, frontera o autorización
+     */
+    public UserManagementService(UserRepository users, UserAdministrationBoundary boundary,
+                                 AuthorizationService authorization, SellerService sellers) {
         if (users == null || boundary == null || authorization == null) {
             throw new IllegalArgumentException("Repositorio, frontera y autorización son obligatorios.");
         }
         this.users = users;
         this.boundary = boundary;
         this.sessions = new AdministrativeSessionValidator(users, authorization);
+        this.sellers = sellers;
     }
 
     /**
@@ -61,6 +78,7 @@ public final class UserManagementService {
      * No renueva sesiones. Un error se propaga sin reintentos ni lecturas posteriores al UPDATE.
      * En memoria no hay rollback general; se valida todo antes de la única escritura final.
      * En JDBC un fallo de commit/cierre puede dejar resultado incierto: consultar antes de repetir.
+     * Si queda activa con vendedor, exige exclusividad incluso en no-op; no consulta su existencia histórica.
      * @param actor sesión del administrador solicitante
      * @param userId ID positivo del objetivo, expresado como texto
      * @param expectedVersion versión del objetivo que conoce el llamador
@@ -74,7 +92,7 @@ public final class UserManagementService {
     public UserChangeResult setActive(UserSession actor, String userId, long expectedVersion, boolean active) {
         return boundary.execute(() -> {
             sessions.validate(actor);
-            return update(userId, expectedVersion, proposed -> proposed.setActive(active));
+            return update(userId, expectedVersion, proposed -> proposed.setActive(active), true);
         });
     }
 
@@ -109,10 +127,17 @@ public final class UserManagementService {
     }
 
     private UserChangeResult update(String userId, long expectedVersion, Consumer<UserAccount> change) {
+        return update(userId, expectedVersion, change, false);
+    }
+
+    private UserChangeResult update(String userId, long expectedVersion, Consumer<UserAccount> change,
+                                    boolean checkSellerExclusivity) {
         UserAccount current = loadExpected(userId, expectedVersion);
         UserAccount proposed = copy(current);
         change.accept(proposed);
-        long administrators = users.findAll().stream()
+        List<UserAccount> accounts = users.findAll();
+        if (checkSellerExclusivity) validateSellerExclusivity(proposed, accounts);
+        long administrators = accounts.stream()
                 .filter(user -> user.isActive() && user.getRole() == UserRole.ADMINISTRATOR).count();
         policy.validateChange(current, proposed, administrators);
         users.update(proposed);
@@ -147,6 +172,51 @@ public final class UserManagementService {
             users.update(proposed);
             return new UserChangeResult(proposed.getId(), proposed.getRole(), proposed.isActive(), proposed.getSecurityVersion());
         });
+    }
+
+    /**
+     * Asigna un vendedor existente o desvincula con null, sin alterar otros campos.
+     * Comprueba exclusividad entre cuentas activas de cualquier rol; las inactivas pueden compartirlo.
+     * Revalida y consulta dentro de la misma frontera. La comparación de IDs es exacta.
+     * No corrige duplicados históricos ni protege escritores que omitan el protocolo; no hay
+     * índice único PostgreSQL para esta regla. Ventas aún requiere su integración de revalidación.
+     * @param actor sesión administrativa vigente
+     * @param userId ID positivo del objetivo
+     * @param expectedVersion versión esperada del objetivo
+     * @param sellerId ID exacto del vendedor o null para desvincular
+     * @return estado seguro, sin escribir cuando la asignación no cambia
+     * @throws SecurityException si el actor no está autorizado
+     * @throws IllegalArgumentException por parámetros inválidos, usuario o vendedor inexistente
+     * @throws ConcurrentModificationException si la cuenta objetivo cambió
+     * @throws IllegalStateException si falta la consulta o el vendedor ya pertenece a otra cuenta activa
+     */
+    public UserChangeResult assignSeller(UserSession actor, String userId, long expectedVersion, String sellerId) {
+        return boundary.execute(() -> {
+            sessions.validate(actor);
+            UserAccount current = loadExpected(userId, expectedVersion);
+            if (sellerId != null) {
+                if (sellerId.isBlank() || sellerId.length() > 32 || sellerId.indexOf('\0') >= 0) {
+                    throw new IllegalArgumentException("El ID de vendedor debe tener entre 1 y 32 caracteres válidos.");
+                }
+                if (sellers == null) throw new IllegalStateException("La consulta de vendedores no está configurada.");
+                var seller = sellers.getSellerById(sellerId)
+                        .orElseThrow(() -> new IllegalArgumentException("El vendedor no existe."));
+                if (!sellerId.equals(seller.getId())) throw new IllegalStateException("La identidad del vendedor es inconsistente.");
+            }
+            UserAccount proposed = copy(current);
+            proposed.setSellerId(sellerId);
+            if (proposed.isActive() && sellerId != null) validateSellerExclusivity(proposed, users.findAll());
+            if (!Objects.equals(current.getSellerId(), sellerId)) users.update(proposed);
+            return new UserChangeResult(proposed.getId(), proposed.getRole(), proposed.isActive(), proposed.getSecurityVersion());
+        });
+    }
+
+    private static void validateSellerExclusivity(UserAccount proposed, List<UserAccount> accounts) {
+        if (!proposed.isActive() || proposed.getSellerId() == null) return;
+        boolean occupied = accounts.stream().anyMatch(other -> other.isActive()
+                && !Objects.equals(other.getId(), proposed.getId())
+                && proposed.getSellerId().equals(other.getSellerId()));
+        if (occupied) throw new IllegalStateException("El vendedor ya está asignado a otra cuenta activa.");
     }
 
     private UserAccount loadExpected(String userId, long expectedVersion) {
