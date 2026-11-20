@@ -9,7 +9,7 @@ import java.util.ConcurrentModificationException;
 import java.util.function.Consumer;
 
 /**
- * Crea cuentas y cambia rol y actividad dentro del protocolo administrativo cooperativo.
+ * Crea cuentas y cambia rol, actividad y contraseña dentro del protocolo administrativo cooperativo.
  * Repositorio, revalidador y frontera deben compartir almacenamiento: en memoria el mismo
  * repositorio monitorizado y en JDBC el mismo proveedor. El constructor no puede verificar
  * ese emparejamiento. No protege escrituras directas ni SQL externo ni integra la aplicación.
@@ -109,6 +109,47 @@ public final class UserManagementService {
     }
 
     private UserChangeResult update(String userId, long expectedVersion, Consumer<UserAccount> change) {
+        UserAccount current = loadExpected(userId, expectedVersion);
+        UserAccount proposed = copy(current);
+        change.accept(proposed);
+        long administrators = users.findAll().stream()
+                .filter(user -> user.isActive() && user.getRole() == UserRole.ADMINISTRATOR).count();
+        policy.validateChange(current, proposed, administrators);
+        users.update(proposed);
+        return new UserChangeResult(proposed.getId(), proposed.getRole(), proposed.isActive(), proposed.getSecurityVersion());
+    }
+
+    /**
+     * Restablece administrativamente una contraseña, incluida la propia, sin pedir la anterior.
+     * Revalida antes de procesar la contraseña y conserva los campos ajenos en una copia.
+     * Acepta el mismo texto: el salt aleatorio normalmente cambia el hash y la versión.
+     * PBKDF2 prolonga la frontera; no se garantiza el borrado seguro de contraseñas String.
+     * No renueva sesiones: las anteriores se rechazan en su siguiente revalidación, sin cancelar
+     * operaciones iniciadas ni proteger consumidores que omitan esa comprobación.
+     * No reintenta fallos ni relee tras escribir; un resultado JDBC puede ser provisional o incierto.
+     * @param actor sesión administrativa vigente
+     * @param userId ID positivo del objetivo
+     * @param expectedVersion versión esperada del objetivo
+     * @param newPassword nueva contraseña no nula ni vacía, sin reglas adicionales de complejidad
+     * @return estado resultante sin credenciales ni hash
+     * @throws SecurityException si el actor no está autorizado
+     * @throws IllegalArgumentException por datos inválidos u objetivo inexistente
+     * @throws ConcurrentModificationException si la versión del objetivo no coincide
+     */
+    public UserChangeResult changePassword(UserSession actor, String userId, long expectedVersion, String newPassword) {
+        return boundary.execute(() -> {
+            sessions.validate(actor);
+            if (newPassword == null || newPassword.isEmpty()) {
+                throw new IllegalArgumentException("La contraseña no puede ser nula o vacía.");
+            }
+            UserAccount proposed = copy(loadExpected(userId, expectedVersion));
+            proposed.setPasswordHash(PasswordHasher.hash(newPassword));
+            users.update(proposed);
+            return new UserChangeResult(proposed.getId(), proposed.getRole(), proposed.isActive(), proposed.getSecurityVersion());
+        });
+    }
+
+    private UserAccount loadExpected(String userId, long expectedVersion) {
         Long id;
         try {
             id = userId == null ? null : Long.valueOf(userId.trim());
@@ -124,13 +165,7 @@ public final class UserManagementService {
         if (current.getSecurityVersion() != expectedVersion) {
             throw new ConcurrentModificationException("La cuenta cambió; vuelva a cargarla antes de actualizar.");
         }
-        UserAccount proposed = copy(current);
-        change.accept(proposed);
-        long administrators = users.findAll().stream()
-                .filter(user -> user.isActive() && user.getRole() == UserRole.ADMINISTRATOR).count();
-        policy.validateChange(current, proposed, administrators);
-        users.update(proposed);
-        return new UserChangeResult(proposed.getId(), proposed.getRole(), proposed.isActive(), proposed.getSecurityVersion());
+        return current;
     }
 
     private static UserAccount copy(UserAccount user) {

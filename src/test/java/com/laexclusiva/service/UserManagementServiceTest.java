@@ -501,6 +501,208 @@ class UserManagementServiceTest {
         }
     }
 
+    @Test
+    void passwordResetChangesOnlyHashAndVersionWithinOneBoundary() {
+        UserAccount before = preparePasswordTarget();
+        users.forbidPostWriteReads = true;
+        users.failureStage = "all";
+        UserSession actor = session("1");
+        var result = service.changePassword(actor, "3", before.getSecurityVersion(), "Replacement-Test-Only");
+        assertEquals(List.of("enter", "find:1", "find:3", "update", "exit"), users.events);
+        assertEquals(1, users.updates);
+        assertEquals(0, users.saves);
+        assertNotSame(users.loadedTarget, users.submitted);
+        assertTrue(before.getPasswordHash().equals(users.loadedTarget.getPasswordHash()));
+        UserAccount after = stored("3");
+        assertEquals(before.getId(), after.getId());
+        assertEquals(before.getUsername(), after.getUsername());
+        assertEquals(before.getRole(), after.getRole());
+        assertEquals(before.isActive(), after.isActive());
+        assertEquals(before.getSellerId(), after.getSellerId());
+        assertEquals(before.getCreatedAt(), after.getCreatedAt());
+        assertEquals(before.getSecurityVersion() + 1, after.getSecurityVersion());
+        assertFalse(before.getPasswordHash().equals(after.getPasswordHash()));
+        assertTrue(PasswordHasher.verify("Replacement-Test-Only", after.getPasswordHash()));
+        assertFalse(PasswordHasher.verify("Original-Password-Test-Only", after.getPasswordHash()));
+        assertEquals(after.getId(), result.id());
+        assertEquals(after.getRole(), result.role());
+        assertEquals(after.isActive(), result.active());
+        assertEquals(after.getSecurityVersion(), result.securityVersion());
+        assertFalse(result.toString().contains("Replacement-Test-Only"));
+        assertFalse(result.toString().contains(after.getPasswordHash()));
+        assertEquals(0, actor.getAuthenticatedSecurityVersion());
+    }
+
+    @Test
+    void passwordResetRejectsWorkerAndInvalidatedOrNullSessionBeforeProcessingCredentials() {
+        assertThrows(SecurityException.class, () -> service.changePassword(session("3"), "2", 0, null));
+        UserSession invalid = session("1");
+        invalid.invalidate();
+        assertThrows(SecurityException.class, () -> service.changePassword(invalid, "3", 0, null));
+        assertThrows(SecurityException.class, () -> service.changePassword(null, "3", 0, null));
+        assertEquals(0, users.updates);
+        assertEquals(0, users.saves);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"deleted", "inactive", "obsolete"})
+    void passwordResetRejectsAnActorNoLongerAuthorized(String state) {
+        UserSession actor = session("1");
+        if (state.equals("deleted")) storage.delete("1");
+        else {
+            UserAccount current = stored("1");
+            if (state.equals("inactive")) current.setActive(false);
+            else current.setSellerId("CHANGED-SELLER");
+            storage.update(current);
+        }
+        assertThrows(SecurityException.class,
+                () -> service.changePassword(actor, "3", 0, "Replacement-Test-Only"));
+        assertEquals(0, users.updates);
+        assertEquals(0, actor.getAuthenticatedSecurityVersion());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "0", "-1", "invalid", "9223372036854775808"})
+    void passwordResetRejectsInvalidTargetIds(String id) {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.changePassword(session("1"), id, 0, "Replacement-Test-Only"));
+        assertEquals(0, users.updates);
+    }
+
+    @Test
+    void passwordResetRejectsMissingTargetAndNegativeExpectedVersion() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.changePassword(session("1"), "999", 0, "Replacement-Test-Only"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.changePassword(session("1"), "3", -1, "Replacement-Test-Only"));
+        assertEquals(0, users.updates);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void passwordResetRejectsNullOrEmptyPassword(String password) {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.changePassword(session("1"), "3", 0, password));
+        assertEquals(List.of("enter", "find:1", "exit"), users.events);
+        assertEquals(0, users.updates);
+    }
+
+    @Test
+    void passwordResetRejectsOldVersionWithoutOverwritingHash() {
+        UserAccount before = preparePasswordTarget();
+        assertThrows(ConcurrentModificationException.class,
+                () -> service.changePassword(session("1"), "3", 0, "Replacement-Test-Only"));
+        assertTrue(before.getPasswordHash().equals(stored("3").getPasswordHash()));
+        assertEquals(before.getSecurityVersion(), stored("3").getSecurityVersion());
+        assertEquals(0, users.updates);
+    }
+
+    @Test
+    void passwordResetAcceptsSameTextButUsesANewSaltAndVersion() {
+        UserAccount before = preparePasswordTarget();
+        var result = service.changePassword(session("1"), "3", before.getSecurityVersion(), "Original-Password-Test-Only");
+        UserAccount after = stored("3");
+        assertTrue(PasswordHasher.verify("Original-Password-Test-Only", after.getPasswordHash()));
+        assertFalse(before.getPasswordHash().equals(after.getPasswordHash()));
+        assertEquals(before.getSecurityVersion() + 1, result.securityVersion());
+        assertEquals(1, users.updates);
+    }
+
+    @Test
+    void passwordResetPreservesExistingWhitespacePasswordContract() {
+        var result = service.changePassword(session("1"), "3", 0, " ");
+        assertEquals(1, result.securityVersion());
+        assertTrue(PasswordHasher.verify(" ", stored("3").getPasswordHash()));
+    }
+
+    @Test
+    void ownPasswordResetMakesOldSessionObsoleteAndAllowsANewLogin() {
+        storage.delete("2");
+        UserAccount admin = stored("1");
+        admin.setPasswordHash(PasswordHasher.hash("Original-Admin-Test-Only"));
+        storage.update(admin);
+        AuthenticationService authentication = new AuthenticationService(storage);
+        UserSession actor = authentication.createSession("fixture-1", "Original-Admin-Test-Only").orElseThrow();
+        long captured = actor.getAuthenticatedSecurityVersion();
+        var result = service.changePassword(actor, "1", captured, "Replacement-Admin-Test-Only");
+        assertEquals(captured + 1, result.securityVersion());
+        assertTrue(actor.isValid());
+        assertEquals(captured, actor.getAuthenticatedSecurityVersion());
+        assertThrows(SecurityException.class, () -> service.setActive(actor, "3", 0, false));
+        assertTrue(authentication.createSession("fixture-1", "Original-Admin-Test-Only").isEmpty());
+        UserSession fresh = authentication.createSession("fixture-1", "Replacement-Admin-Test-Only").orElseThrow();
+        assertEquals(result.securityVersion(), fresh.getAuthenticatedSecurityVersion());
+        assertTrue(service.setActive(fresh, "3", 0, true).active());
+        assertEquals(UserRole.ADMINISTRATOR, stored("1").getRole());
+        assertTrue(stored("1").isActive());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"find:1", "find:3", "update"})
+    void passwordResetPersistenceFailureDoesNotRetryOrModifyStoredHash(String stage) {
+        UserAccount before = preparePasswordTarget();
+        users.failureStage = stage;
+        assertSame(users.failure, assertThrows(IllegalStateException.class,
+                () -> service.changePassword(session("1"), "3", before.getSecurityVersion(), "Replacement-Test-Only")));
+        assertEquals(1, users.events.stream().filter(stage::equals).count());
+        assertEquals(stage.equals("update") ? 1 : 0, users.updates);
+        assertTrue(before.getPasswordHash().equals(stored("3").getPasswordHash()));
+        assertEquals(before.getSecurityVersion(), stored("3").getSecurityVersion());
+    }
+
+    @Test
+    void twoPasswordResetsWithTheSameVersionHaveOneWinnerWithoutRevokingTheActors() throws Exception {
+        UserAccount before = preparePasswordTarget();
+        UserManagementService first = new UserManagementService(users,
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+        UserManagementService second = new UserManagementService(users,
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+        UserSession actor1 = session("1");
+        UserSession actor2 = session("2");
+        CyclicBarrier start = new CyclicBarrier(3);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> one = executor.submit(() -> resetAfterBarrier(first, actor1, before.getSecurityVersion(), "First-Reset-Test-Only", start));
+            Future<Boolean> two = executor.submit(() -> resetAfterBarrier(second, actor2, before.getSecurityVersion(), "Second-Reset-Test-Only", start));
+            start.await(5, TimeUnit.SECONDS);
+            boolean firstWon = one.get(10, TimeUnit.SECONDS);
+            boolean secondWon = two.get(10, TimeUnit.SECONDS);
+            assertNotEquals(firstWon, secondWon);
+            UserAccount after = stored("3");
+            assertEquals(before.getSecurityVersion() + 1, after.getSecurityVersion());
+            assertTrue(PasswordHasher.verify(firstWon ? "First-Reset-Test-Only" : "Second-Reset-Test-Only", after.getPasswordHash()));
+            assertFalse(PasswordHasher.verify(firstWon ? "Second-Reset-Test-Only" : "First-Reset-Test-Only", after.getPasswordHash()));
+            assertEquals(1, users.updates);
+            assertEquals(0, users.saves);
+            assertEquals(0, actor1.getAuthenticatedSecurityVersion());
+            assertEquals(0, actor2.getAuthenticatedSecurityVersion());
+            assertEquals(UserRole.ADMINISTRATOR, stored("1").getRole());
+            assertEquals(UserRole.ADMINISTRATOR, stored("2").getRole());
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    private boolean resetAfterBarrier(UserManagementService operation, UserSession actor, long version,
+                                     String password, CyclicBarrier start) throws Exception {
+        start.await(5, TimeUnit.SECONDS);
+        try {
+            operation.changePassword(actor, "3", version, password);
+            return true;
+        } catch (ConcurrentModificationException expectedConflict) {
+            return false;
+        }
+    }
+
+    private UserAccount preparePasswordTarget() {
+        UserAccount target = stored("3");
+        target.setPasswordHash(PasswordHasher.hash("Original-Password-Test-Only"));
+        storage.update(target);
+        return stored("3");
+    }
+
     private boolean createAfterBarrier(UserManagementService operation, UserSession actor, String username,
                                        CyclicBarrier start) throws Exception {
         start.await(5, TimeUnit.SECONDS);
