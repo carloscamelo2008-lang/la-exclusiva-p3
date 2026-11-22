@@ -40,3 +40,12 @@ Esta ficha propone contratos; no autoriza implementación, migraciones ni cambio
 Antes de programar, Carlos y Jesús deben aprobar o ajustar las firmas, política de sesiones,
 bloqueos de bootstrap/último administrador, posible V003 y puntos de montaje. La aprobación no
 está registrada todavía. Código y commits en inglés; JavaDoc, documentación y mensajes en español.
+
+## Coordinación confirmada de numeración — 22/11/2026
+
+Carlos confirmó conservar V104 para versiones de seguridad y reservar V105 para
+exclusividad de vendedor activo, como migraciones independientes. La posible V003
+mencionada en la propuesta inicial queda sustituida por esta numeración. V004 de
+Compras y Recepción ya está integrada en develop; las migraciones financieras
+ocupan V100–V103. Esto no constituye aprobación íntegra de los demás contratos
+pendientes. La revisión final de seguridad y SQL corresponde a Carlos y Jesús.

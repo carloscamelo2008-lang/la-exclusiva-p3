@@ -17,6 +17,7 @@ import java.util.Base64;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Optional;
+import org.postgresql.util.PSQLException;
 
 /**
  * Persiste cuentas sobre V001 y V104 sin autenticar ni administrar permisos.
@@ -262,6 +263,12 @@ public final class UserRepositoryJdbc implements UserRepository {
                     return operation.apply(connection);
                 } catch (SQLException failure) {
                     if ("23505".equals(failure.getSQLState())) {
+                        if (failure instanceof PSQLException postgres
+                                && postgres.getServerErrorMessage() != null
+                                && "uq_user_account_active_seller".equals(
+                                        postgres.getServerErrorMessage().getConstraint())) {
+                            throw new IllegalArgumentException("El vendedor ya está asignado a otra cuenta activa.");
+                        }
                         throw new IllegalArgumentException("Ya existe un usuario con el ID o nombre indicado.");
                     }
                     if ("23503".equals(failure.getSQLState())) {

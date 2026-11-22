@@ -102,3 +102,59 @@ mvn -o "-Dtest=UserSecurityVersionPostgresIntegrationTest" "-Dlaexclusiva.test.p
 ```
 
 Este comando es documentación para una ejecución futura; no acredita una ejecución.
+
+## V105 — Exclusividad de vendedor en cuentas activas
+
+Preparada, no aplicada. Carlos confirmó V104 y V105 independientes, sin renombrar
+V104 a V003. V004 corresponde a Compras y Recepción, integrada en develop, y
+V100–V103 a finanzas. Los demás acuerdos pendientes no se consideran aprobados.
+
+V105 crea `uq_user_account_active_seller` sobre `public.user_account(seller_id)`
+con predicado `active = TRUE AND seller_id IS NOT NULL`, sin filtro por rol.
+Permite múltiples cuentas inactivas con el mismo vendedor y cuentas con vendedor
+NULL. Conserva el índice general `idx_user_account_seller_id` y no corrige filas.
+
+Diagnóstico previo, documentado pero no ejecutado:
+
+```sql
+SELECT seller_id, COUNT(*) AS active_account_count
+FROM public.user_account
+WHERE active = TRUE
+  AND seller_id IS NOT NULL
+GROUP BY seller_id
+HAVING COUNT(*) > 1
+ORDER BY seller_id;
+```
+
+Debe devolver cero filas; los duplicados requieren resolución humana autorizada.
+El diagnóstico no sustituye la unicidad ni impide cambios posteriores concurrentes.
+Antes del despliegue deben verificarse destino, migraciones previas y V104, que el
+adaptador Java necesita. El DDL de V105 depende directamente de la tabla de V001.
+V104 y V105 siguen sin aplicar. Cualquier futura ejecución requiere aprobación
+expresa de Carlos y Jesús y se limitará a `la_exclusiva_test`.
+
+El índice ordinario se crea dentro de BEGIN/COMMIT y puede bloquear escrituras;
+requiere ventana autorizada y límites de espera acordados. No usa CONCURRENTLY ni
+IF NOT EXISTS. Ante duplicados u otro error, detenerse y revertir la transacción;
+no reparar datos ni repetir automáticamente. Un índice válido rechazará conflictos
+entre escritores externos: el segundo puede esperar al primero; tras commit puede
+fallar por unicidad y tras rollback puede continuar si no queda otro conflicto.
+La unicidad es inmediata: una transferencia debe liberar primero al propietario.
+
+El adaptador distingue SQLSTATE 23505 y el nombre exacto del índice mediante
+PSQLException/ServerErrorMessage, sin analizar mensajes del servidor. Devuelve
+«El vendedor ya está asignado a otra cuenta activa.»; los demás índices y los
+metadatos ausentes conservan el mensaje genérico de ID o username. No hay reintentos
+ni cambios en rollback-only. No se propagan detalles sensibles del servidor.
+
+### Validación PostgreSQL pendiente
+
+Las pruebas estáticas y JDBC simuladas no validan el índice en una base real.
+Con fixtures exclusivos y autorización deberán comprobarse: rechazo de duplicados
+activos para ambos roles; una activa con varias inactivas; múltiples NULL;
+reactivación con vendedor ocupado; escritura SQL directa; dos asignaciones, dos
+reactivaciones y operación mixta con conexiones independientes; primer escritor
+con commit y con rollback; conservación de active, seller_id y security_version
+tras rechazo/rollback; interacción con el trigger V104; índice válido y predicado
+correcto en catálogos; diagnóstico sin duplicados y fallo seguro de creación ante
+duplicados históricos. No se aplicarán migraciones automáticamente desde pruebas.

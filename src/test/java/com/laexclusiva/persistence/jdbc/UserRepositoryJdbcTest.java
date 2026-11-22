@@ -24,6 +24,8 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.ServerErrorMessage;
 
 /** Verifica SQL parametrizado, mapeo, errores y participación transaccional sin abrir PostgreSQL. */
 class UserRepositoryJdbcTest {
@@ -720,6 +722,65 @@ class UserRepositoryJdbcTest {
             case "statement" -> jdbc.statementCloseFailure = failure;
             default -> jdbc.connectionCloseFailure = failure;
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"generated", "historical", "update"})
+    void sellerUniqueConflictUsesStructuredMetadataAcrossWritePaths(String operation) {
+        jdbc.replies.add(new Reply(List.of(), 0, postgresUnique("uq_user_account_active_seller")));
+        UserAccount user = account(operation.equals("generated") ? null : 8L);
+        user.setSecurityVersion(7);
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> {
+            if (operation.equals("update")) users.update(user); else users.save(user);
+        });
+        assertEquals("El vendedor ya está asignado a otra cuenta activa.", failure.getMessage());
+        assertNull(failure.getCause());
+        assertEquals(0, failure.getSuppressed().length);
+        assertEquals(7, user.getSecurityVersion());
+        assertEquals(operation.equals("generated") ? null : 8L, user.getId());
+        assertEquals(1, jdbc.calls.size(), "No debe reintentar la escritura.");
+        assertResourcesClosed(1, 0);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"uq_user_account_username_normalized", "user_account_pkey", "UQ_USER_ACCOUNT_ACTIVE_SELLER", "missing"})
+    void otherUniqueMetadataKeepsGenericMessageDespiteMisleadingServerText(String constraint) {
+        jdbc.replies.add(new Reply(List.of(), 0, postgresUnique(constraint.equals("missing") ? null : constraint)));
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> users.save(account(null)));
+        assertEquals("Ya existe un usuario con el ID o nombre indicado.", failure.getMessage());
+        assertNull(failure.getCause());
+        assertResourcesClosed(1, 0);
+    }
+
+    @Test
+    void genericAndMissingPostgresMetadataNeverGuessTheSellerConflict() {
+        for (SQLException error : List.of(new SQLException("uq_user_account_active_seller " + HASH, "23505"),
+                new PSQLException("uq_user_account_active_seller " + HASH, org.postgresql.util.PSQLState.UNIQUE_VIOLATION))) {
+            jdbc.replies.add(new Reply(List.of(), 0, error));
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> users.save(account(null)));
+            assertEquals("Ya existe un usuario con el ID o nombre indicado.", failure.getMessage());
+            assertNull(failure.getCause());
+        }
+        assertResourcesClosed(2, 0);
+    }
+
+    @Test
+    void capturedSellerConflictStillMarksOuterTransactionRollbackOnly() {
+        jdbc.replies.add(new Reply(List.of(), 0, postgresUnique("uq_user_account_active_seller")));
+        assertThrows(JdbcPersistenceException.class, () -> new JdbcTransactionManager(connections).inTransaction(() -> {
+            assertThrows(IllegalArgumentException.class, () -> users.update(account(8L)));
+            return null;
+        }));
+        assertEquals(0, jdbc.commits);
+        assertEquals(1, jdbc.rollbacks);
+        assertResourcesClosed(1, 0);
+    }
+
+    private static PSQLException postgresUnique(String constraint) {
+        // Campos del protocolo PostgreSQL simulados; nunca se abre una conexión real.
+        String fields = "SERROR\0C23505\0Muq_user_account_active_seller " + HASH + "\0"
+                + (constraint == null ? "" : "n" + constraint + "\0") + "\0";
+        return new PSQLException(new ServerErrorMessage(fields));
     }
 
     private void assertResourcesClosed(int statements, int resultSets) {

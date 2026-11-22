@@ -321,3 +321,16 @@
 * **Qué se acepta, modifica o descarta y por qué:** Autoricé las reglas aprobadas por Carlos para ambos roles, incluidos vendedores compartidos por cuentas inactivas y desvinculación con null. No se corrigen duplicados históricos ni se protegen escrituras externas; la integración de Ventas y la revisión de Jesús siguen pendientes.
 * **Verificación realizada:** Codex ejecutó 356 pruebas con Temurin 17.0.21+9 y objetivo Java 17: 25 nuevas y 331 regresiones, sin fallos, errores ni omisiones. Los tres escenarios concurrentes de memoria conservaron un solo propietario activo. `git diff --check` pasó. No ejecutó PostgreSQL, V104 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+
+---
+
+#### Continuación de la Interacción 18 – Exclusividad PostgreSQL (microcommit 4A)
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – V105 y conflictos JDBC (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para preparar la exclusividad del vendedor activo también ante escrituras externas.
+* **Resumen de la respuesta recibida:** Codex preparó V105 independiente, el diagnóstico de duplicados y la clasificación del índice mediante metadatos PostgreSQL, con pruebas simuladas y estáticas.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté el alcance aprobado por Carlos, conservando V104, los errores de ID y username y los módulos ajenos. Los duplicados requieren resolución humana; Carlos y Jesús deben revisar el SQL antes de autorizar su aplicación.
+* **Verificación realizada:** Codex ejecutó 372 pruebas con Temurin 17.0.21+9 y objetivo Java 17: diez nuevas y 362 regresiones, sin fallos, errores ni omisiones. `git diff --check` pasó y las migraciones anteriores permanecieron intactas. No ejecutó PostgreSQL, V104, V105 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
