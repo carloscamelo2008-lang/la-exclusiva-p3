@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<ScrollPane fitToWidth="true" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.laexclusiva.ui.controller.PurchasesController">
+    <VBox spacing="10">
+        <padding><Insets top="18" right="18" bottom="18" left="18"/></padding>
+        <Label text="Compras y recepción de mercancía" style="-fx-font-size: 22px; -fx-font-weight: bold;"/>
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Button fx:id="refreshButton" text="Actualizar compras" onAction="#handleRefresh"/>
+            <Label fx:id="messageLabel" wrapText="true" HBox.hgrow="ALWAYS"/>
+        </HBox>
+        <Label text="Proveedores" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+        <TableView fx:id="suppliersTable" prefHeight="145"/>
+        <FlowPane fx:id="supplierEditor" hgap="8" vgap="8">
+            <TextField fx:id="supplierName" promptText="Nombre del proveedor" accessibleText="Nombre del proveedor"/>
+            <TextField fx:id="supplierTaxId" promptText="Identificación tributaria" accessibleText="Identificación tributaria"/>
+            <TextField fx:id="supplierContact" promptText="Datos de contacto" accessibleText="Datos de contacto"/>
+            <Button fx:id="createSupplierButton" text="Registrar proveedor" onAction="#handleCreateSupplier"/>
+            <Button fx:id="toggleSupplierButton" text="Activar / desactivar seleccionado" onAction="#handleToggleSupplier"/>
+        </FlowPane>
+        <Separator/>
+        <Label text="Nuevo pedido de mercancía" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+        <Label text="Las existencias se actualizan al recibir la mercancía." wrapText="true"/>
+        <VBox fx:id="orderEditor" spacing="8">
+            <FlowPane hgap="8" vgap="8">
+                <ComboBox fx:id="supplierCombo" promptText="Proveedor activo" accessibleText="Proveedor activo" prefWidth="190"/>
+                <ComboBox fx:id="productCombo" promptText="Producto" accessibleText="Producto a pedir" prefWidth="220"/>
+                <TextField fx:id="orderBaskets" promptText="Canastas" accessibleText="Canastas pedidas" prefWidth="90"/>
+                <TextField fx:id="orderLoose" promptText="Sueltas" accessibleText="Unidades sueltas pedidas" prefWidth="90"/>
+                <Button fx:id="addOrderLineButton" text="Añadir línea" onAction="#handleAddOrderLine"/>
+            </FlowPane>
+            <Label fx:id="equivalenceLabel"/>
+            <TableView fx:id="draftOrderTable" prefHeight="115"/>
+            <FlowPane hgap="8" vgap="8">
+                <Button text="Quitar línea seleccionada" onAction="#handleRemoveOrderLine"/>
+                <TextField fx:id="orderNotes" promptText="Notas del pedido" accessibleText="Notas del pedido"/>
+                <Button fx:id="createOrderButton" text="Emitir pedido" onAction="#handleCreateOrder"/>
+            </FlowPane>
+        </VBox>
+        <Separator/>
+        <Label text="Pedidos y recepción" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+        <TableView fx:id="ordersTable" prefHeight="150"/>
+        <Button fx:id="detailButton" text="Consultar detalle e historial" onAction="#handleLoadOrder"/>
+        <Label fx:id="selectedOrderLabel" text="Seleccione un pedido para consultar sus líneas."/>
+        <TableView fx:id="orderLinesTable" prefHeight="135"/>
+        <VBox fx:id="receiptEditor" spacing="8">
+            <FlowPane hgap="8" vgap="8">
+                <TextField fx:id="receiptBaskets" promptText="Canastas recibidas" accessibleText="Canastas recibidas"/>
+                <TextField fx:id="receiptLoose" promptText="Sueltas recibidas" accessibleText="Unidades sueltas recibidas"/>
+                <Button fx:id="addReceiptLineButton" text="Añadir línea seleccionada" onAction="#handleAddReceiptLine"/>
+            </FlowPane>
+            <TableView fx:id="draftReceiptTable" prefHeight="115"/>
+            <FlowPane hgap="8" vgap="8">
+                <Button text="Quitar línea seleccionada" onAction="#handleRemoveReceiptLine"/>
+                <TextField fx:id="receiptNotes" promptText="Notas de recepción" accessibleText="Notas de recepción"/>
+            </FlowPane>
+        </VBox>
+        <Button fx:id="receiveButton" text="Confirmar recepción" onAction="#handleReceive"/>
+        <Label fx:id="receiptMessageLabel" wrapText="true"/>
+        <Label fx:id="receiptKeyLabel" wrapText="true"/>
+        <Label text="Historial de recepciones" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+        <Button fx:id="refreshHistoryButton" text="Actualizar historial" onAction="#handleRefreshHistory"/>
+        <TableView fx:id="historyTable" prefHeight="145"/>
+    </VBox>
+</ScrollPane>
