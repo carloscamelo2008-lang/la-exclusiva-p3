@@ -84,6 +84,17 @@ public final class GoodsReceiptService {
         }
     }
 
+    /**
+     * Consulta el historial persistido de un pedido.
+     * @param session sesión con permiso para consultar inventario
+     * @param orderId identificador del pedido
+     * @return recepciones del pedido, ordenadas por identificador
+     */
+    public List<GoodsReceipt> findByPurchaseOrderId(UserSession session, long orderId) {
+        requirePermission(authorization, session, Permission.VIEW_INVENTORY);
+        return transactions.inTransaction(() -> receipts.findByPurchaseOrderId(orderId));
+    }
+
     /** Indica que la clave ya identifica una recepción con otras cantidades o líneas. */
     public static final class IdempotencyConflictException extends IllegalStateException {
         private IdempotencyConflictException() {
