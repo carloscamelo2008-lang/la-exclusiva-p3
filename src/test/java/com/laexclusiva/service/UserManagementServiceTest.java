@@ -25,6 +25,29 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class UserManagementServiceTest {
+    @ParameterizedTest
+    @ValueSource(strings = {"passwordpassword", "demasiadocorta", "123456789012345"})
+    void policyRejectionNeverWritesOrChangesTargetVersion(String secret) {
+        var before = stored("3");
+        var request = new UserManagementService.CreateUserRequest("new-member", secret, UserRole.WORKER, true);
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(session("1"), request));
+        assertThrows(IllegalArgumentException.class, () -> service.changePassword(session("1"), "3", 0, secret));
+        assertEquals(0, users.saves);
+        assertEquals(0, users.updates);
+        assertEquals(before.getSecurityVersion(), stored("3").getSecurityVersion());
+        assertEquals(before.getPasswordHash(), stored("3").getPasswordHash());
+    }
+
+    @Test
+    void administrativeCreationHashesTheUnmodifiedUnicodePhrase() {
+        users.allowCreate = true;
+        String secret = "  una frase con n\u0303 original  ";
+        var result = service.createUser(session("1"), new UserManagementService.CreateUserRequest(
+                "new-member", secret, UserRole.WORKER, true));
+        String hash = stored(result.id().toString()).getPasswordHash();
+        assertTrue(PasswordHasher.verify(secret, hash));
+        assertFalse(PasswordHasher.verify(secret.trim(), hash));
+    }
     private final InMemoryUserRepository storage = new InMemoryUserRepository();
     private final RecordingUsers users = new RecordingUsers();
     private final UserAdministrationBoundary boundary = new UserAdministrationBoundary() {
@@ -414,12 +437,11 @@ class UserManagementServiceTest {
     }
 
     @Test
-    void preservesExistingPasswordContractWithoutAddingComplexityRules() {
+    void rejectsShortCreationPasswordWithoutSaving() {
         users.allowCreate = true;
         var request = new UserManagementService.CreateUserRequest("new-member", " ", UserRole.WORKER, true);
-        var result = service.createUser(session("1"), request);
-        assertTrue(PasswordHasher.verify(" ", stored(result.id().toString()).getPasswordHash()));
-        assertEquals(1, users.saves);
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(session("1"), request));
+        assertEquals(0, users.saves);
     }
 
     @Test
@@ -613,10 +635,9 @@ class UserManagementServiceTest {
     }
 
     @Test
-    void passwordResetPreservesExistingWhitespacePasswordContract() {
-        var result = service.changePassword(session("1"), "3", 0, " ");
-        assertEquals(1, result.securityVersion());
-        assertTrue(PasswordHasher.verify(" ", stored("3").getPasswordHash()));
+    void passwordResetRejectsShortPasswordWithoutUpdating() {
+        assertThrows(IllegalArgumentException.class, () -> service.changePassword(session("1"), "3", 0, " "));
+        assertEquals(0, users.updates);
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.UserRepository;
 import com.laexclusiva.security.PasswordHasher;
+import com.laexclusiva.security.PasswordPolicy;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Objects;
@@ -115,9 +116,7 @@ public final class UserManagementService {
             if (username == null || username.isBlank() || username.length() > 100 || username.indexOf('\0') >= 0) {
                 throw new IllegalArgumentException("El nombre de usuario debe tener entre 1 y 100 caracteres válidos.");
             }
-            if (request.password() == null || request.password().isEmpty()) {
-                throw new IllegalArgumentException("La contraseña no puede ser nula o vacía.");
-            }
+            PasswordPolicy.validate(request.password());
             if (request.role() == null) throw new IllegalArgumentException("El rol es obligatorio.");
             UserAccount user = new UserAccount(null, username, PasswordHasher.hash(request.password()), request.role(), null);
             user.setActive(request.active());
@@ -155,7 +154,7 @@ public final class UserManagementService {
      * @param actor sesión administrativa vigente
      * @param userId ID positivo del objetivo
      * @param expectedVersion versión esperada del objetivo
-     * @param newPassword nueva contraseña no nula ni vacía, sin reglas adicionales de complejidad
+     * @param newPassword nueva contraseña que cumple la política centralizada
      * @return estado resultante sin credenciales ni hash
      * @throws SecurityException si el actor no está autorizado
      * @throws IllegalArgumentException por datos inválidos u objetivo inexistente
@@ -164,9 +163,7 @@ public final class UserManagementService {
     public UserChangeResult changePassword(UserSession actor, String userId, long expectedVersion, String newPassword) {
         return boundary.execute(() -> {
             sessions.validate(actor);
-            if (newPassword == null || newPassword.isEmpty()) {
-                throw new IllegalArgumentException("La contraseña no puede ser nula o vacía.");
-            }
+            PasswordPolicy.validate(newPassword);
             UserAccount proposed = copy(loadExpected(userId, expectedVersion));
             proposed.setPasswordHash(PasswordHasher.hash(newPassword));
             users.update(proposed);

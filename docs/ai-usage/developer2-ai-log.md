@@ -334,3 +334,25 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté el alcance aprobado por Carlos, conservando V104, los errores de ID y username y los módulos ajenos. Los duplicados requieren resolución humana; Carlos y Jesús deben revisar el SQL antes de autorizar su aplicación.
 * **Verificación realizada:** Codex ejecutó 372 pruebas con Temurin 17.0.21+9 y objetivo Java 17: diez nuevas y 362 regresiones, sin fallos, errores ni omisiones. `git diff --check` pasó y las migraciones anteriores permanecieron intactas. No ejecutó PostgreSQL, V104, V105 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+---
+
+#### Continuación de la Interacción 18 – Política de contraseñas (microcommit 4B)
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Política centralizada (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para aplicar las reglas aprobadas a nuevas cuentas, restablecimientos y aprovisionamiento.
+* **Resumen de la respuesta recibida:** Codex centralizó longitud Unicode y bloqueo local, conservó el secreto original y validó antes del hash y de crear cuentas demo.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté frases y espacios sin reglas de composición, manteniendo los hashes históricos. La lista inicial ilustrativa sigue pendiente de revisión de Jesús; dejé verify para 4C.
+* **Verificación realizada:** Codex ejecutó 364 pruebas dirigidas con Temurin 17.0.21+9 y objetivo Java 17, sin fallos, errores ni omisiones; incluyó 24 de política, administración y arranque JavaFX. Revisó la consola sin probarla interactivamente. `git diff --check` pasó. No ejecutó la suite completa ni PostgreSQL, V104 o V105.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
+#### Continuación de 4B – Correcciones de auditoría
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Corrección de política y Login (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Pedí corregir la incompatibilidad del Login con los espacios y reforzar las pruebas del recurso.
+* **Resumen de la respuesta recibida:** Codex conservó la contraseña intacta en Login, acotó la lectura por línea y probó el fallo cerrado de validate con clases aisladas.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté el ajuste mínimo autorizado por Carlos, sin cambiar autenticación, hashes o navegación. La lista permanece ilustrativa y pendiente de revisión de Jesús.
+* **Verificación realizada:** Codex ejecutó 376 pruebas dirigidas con Temurin 17.0.21+9 y objetivo Java 17: cero fallos, errores u omisiones. Comprobó Login con espacios y contraseña histórica, dos llamadas tras fallo de carga y lectura acotada. `git diff --check` pasó. No ejecutó la suite completa, consola interactiva ni PostgreSQL.
+* **Commit o Pull Request relacionado:** Pendiente de creación.

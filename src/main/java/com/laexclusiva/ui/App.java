@@ -5,6 +5,7 @@ import com.laexclusiva.model.UserRole;
 import com.laexclusiva.repository.InMemoryUserRepository;
 import com.laexclusiva.repository.UserRepository;
 import com.laexclusiva.security.PasswordHasher;
+import com.laexclusiva.security.PasswordPolicy;
 import com.laexclusiva.service.AuthenticationService;
 import com.laexclusiva.ui.controller.LoginController;
 import javafx.application.Application;
@@ -26,16 +27,21 @@ public class App extends Application {
     }
 
     public void initializeDemoAccounts(String adminPass, String workerPass) {
-        if (adminPass == null || adminPass.isBlank() || workerPass == null || workerPass.isBlank()) {
-            throw new IllegalStateException("Modo demo activado pero faltan las contraseñas requeridas.");
+        try {
+            PasswordPolicy.validate(adminPass);
+            PasswordPolicy.validate(workerPass);
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalStateException("Las contraseñas demo deben cumplir la política de contraseñas.");
         }
         userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
         userRepository.save(new UserAccount(2L, "worker", PasswordHasher.hash(workerPass), UserRole.WORKER, null));
     }
 
     public void initializeInitialAdmin(String adminPass) {
-        if (adminPass == null || adminPass.isBlank()) {
-            throw new IllegalStateException("Arranque normal requiere definir la contraseña inicial del administrador mediante LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD.");
+        try {
+            PasswordPolicy.validate(adminPass);
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalStateException("Defina LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD con una contraseña que cumpla la política.");
         }
         userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
     }
