@@ -54,7 +54,7 @@
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnAdminUsers" mnemonicParsing="false" prefHeight="64.0" prefWidth="260.0" styleClass="nav-button" disable="true" wrapText="true" text="Gestión de Usuarios (pendiente)">
+            <Button fx:id="btnAdminUsers" onAction="#handleShowAdminUsers" mnemonicParsing="false" prefHeight="64.0" prefWidth="260.0" styleClass="nav-button" wrapText="true" text="Gestión de Usuarios">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>

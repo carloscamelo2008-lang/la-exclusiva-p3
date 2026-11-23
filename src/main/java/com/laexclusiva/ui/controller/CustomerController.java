@@ -32,7 +32,13 @@ public class CustomerController {
 
     private CustomerService customerService;
     private UserSession session;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService = new AuthorizationService();
+
+    /** Inyecta la autorización respaldada por la identidad de la aplicación. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        this.authorizationService = authorizationService;
+    }
 
     @FXML
     private void initialize() {
@@ -44,6 +50,7 @@ public class CustomerController {
 
     /** Reemplaza las filas visibles por los clientes obtenidos del servicio configurado. */
     public void showCustomers(List<Customer> customers) {
+        requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         customersTable.getItems().setAll(customers);
     }
 
@@ -58,6 +65,7 @@ public class CustomerController {
         if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         customerService = service;
         this.session = session;
+        requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         boolean canRegister = authorizationService.hasPermission(session, Permission.REGISTER_CUSTOMER);
         registrationPane.setVisible(canRegister);
         registrationPane.setManaged(canRegister);

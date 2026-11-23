@@ -57,7 +57,13 @@ public class InventoryController {
     private ProductService products;
     private InventoryService inventory;
     private UserSession session;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService = new AuthorizationService();
+
+    /** Inyecta la autoridad actual que se revalida en cada acción de inventario. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        this.authorizationService = authorizationService;
+    }
 
     @FXML
     private void initialize() {
@@ -99,6 +105,8 @@ public class InventoryController {
         this.products = products;
         this.inventory = inventory;
         this.session = session;
+        requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
+        requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar el inventario.");
         productCombo.getItems().setAll(products.listAll());
         boolean canManageEntries = authorizationService.hasPermission(session, Permission.MANAGE_INVENTORY_ENTRIES);
         boolean canManageProducts = authorizationService.hasPermission(session, Permission.MANAGE_PRODUCTS);
@@ -184,6 +192,8 @@ public class InventoryController {
     @FXML
     private void handleRefreshInventory() {
         try {
+            requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
+            requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar el inventario.");
             refresh();
             messageLabel.setText("Inventario actualizado.");
         } catch (RuntimeException failure) {
@@ -217,6 +227,8 @@ public class InventoryController {
     }
 
     private void refresh() {
+        requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
+        requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar el inventario.");
         java.util.List<BeerProduct> catalog = products.listAll();
         productCombo.getItems().setAll(catalog);
         inventoryTable.getItems().setAll(catalog.stream()

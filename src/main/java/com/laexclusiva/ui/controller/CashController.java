@@ -56,7 +56,13 @@ public final class CashController {
     @FXML private Label netCashLabel;
     @FXML private Label messageLabel;
 
-    private final AuthorizationService authorization = new AuthorizationService();
+    private AuthorizationService authorization = new AuthorizationService();
+
+    /** Inyecta la autoridad actual compartida con la aplicación. */
+    public void setAuthorizationService(AuthorizationService authorization) {
+        if (authorization == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        this.authorization = authorization;
+    }
     private CashWorkflow cash;
     private UserSession session;
     private String operationKey = UUID.randomUUID().toString();

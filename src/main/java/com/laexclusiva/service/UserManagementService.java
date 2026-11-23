@@ -218,6 +218,24 @@ public final class UserManagementService {
         });
     }
 
+    /**
+     * Consulta cuentas bajo la misma autoridad y frontera que las mutaciones administrativas.
+     * El resultado omite hashes, contraseñas y otros datos de autenticación.
+     *
+     * @param actor sesión administrativa vigente
+     * @return resumen seguro ordenado por ID
+     * @throws SecurityException si la sesión no es auténtica o no conserva MANAGE_USERS
+     */
+    public List<UserSummary> listUsers(UserSession actor) {
+        return boundary.execute(() -> {
+            sessions.validate(actor);
+            return users.findAll().stream()
+                    .map(user -> new UserSummary(user.getId(), user.getUsername(), user.getRole(),
+                            user.isActive(), user.getSellerId(), user.getSecurityVersion()))
+                    .toList();
+        });
+    }
+
     private static void validateSellerExclusivity(UserAccount proposed, List<UserAccount> accounts) {
         if (!proposed.isActive() || proposed.getSellerId() == null) return;
         boolean occupied = accounts.stream().anyMatch(other -> other.isActive()
@@ -256,6 +274,10 @@ public final class UserManagementService {
 
     /** Resultado inmutable sin cuenta mutable, contraseña ni hash. */
     public record UserChangeResult(Long id, UserRole role, boolean active, long securityVersion) {}
+
+    /** Vista segura de una cuenta para tablas administrativas; nunca contiene credenciales. */
+    public record UserSummary(Long id, String username, UserRole role, boolean active,
+                              String sellerId, long securityVersion) {}
 
     /** Entrada inmutable de creación. No registrar el request ni sus accesores de credenciales. */
     public record CreateUserRequest(String username, String password, UserRole role, boolean active) {

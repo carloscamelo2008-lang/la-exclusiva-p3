@@ -71,7 +71,13 @@ public class PortfolioController {
     private CustomerGeneralDebtWorkflow generalDebtWorkflow;
     private boolean canRegisterPayment;
     private UserSession session;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService = new AuthorizationService();
+
+    /** Inyecta la autoridad actual compartida con la aplicación. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        this.authorizationService = authorizationService;
+    }
     private String pendingSaleId;
     private BigDecimal pendingAmount;
     private String pendingKey;
@@ -145,6 +151,8 @@ public class PortfolioController {
         this.salesWorkflow = salesWorkflow;
         this.generalDebtWorkflow = generalDebtWorkflow;
         this.session = session;
+        requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
+        requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         this.canRegisterPayment = authorizationService.hasPermission(session, Permission.REGISTER_PAYMENT);
         boolean canRegisterGeneralDebt = authorizationService.hasPermission(session, Permission.REGISTER_GENERAL_DEBT);
         paymentPane.setVisible(canRegisterPayment && salesWorkflow != null);
@@ -166,6 +174,8 @@ public class PortfolioController {
 
     /** Lista clientes con deuda total positiva y prepara el selector de cartera por venta. */
     public void showPortfolio(List<Customer> customers) {
+        requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
+        requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         if (customers == null) throw new IllegalArgumentException("La lista de clientes es obligatoria.");
         String previousCustomerId = customerCombo.getValue() == null ? null : customerCombo.getValue().getId();
         List<Customer> debtors = customers.stream()
@@ -189,6 +199,7 @@ public class PortfolioController {
     }
 
     public void showDebtors(List<Customer> debtors) {
+        requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
         portfolioTable.getItems().setAll(debtors);
     }
 
@@ -364,6 +375,12 @@ public class PortfolioController {
 
     private boolean refreshSelectedCustomer() {
         if (updatingView) return true;
+        if (!authorizationService.hasPermission(session, Permission.VIEW_PORTFOLIO)
+                || !authorizationService.hasPermission(session, Permission.VIEW_CUSTOMER)) {
+            clearPortfolioView();
+            messageLabel.setText("La sesión ya no permite consultar la cartera.");
+            return false;
+        }
         Customer selected = customerCombo.getValue();
         if (selected == null) {
             salesTable.getItems().clear();

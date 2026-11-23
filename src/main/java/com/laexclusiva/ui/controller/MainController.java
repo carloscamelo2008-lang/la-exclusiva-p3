@@ -50,7 +50,8 @@ public class MainController {
     private CashWorkflow cashWorkflow;
     private CustomerGeneralDebtWorkflow generalDebtWorkflow;
     private Runnable onLogout;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService = new AuthorizationService();
+    private ApplicationServices applicationServices;
 
     public void setCustomerService(CustomerService customerService) {
         this.customerService = customerService;
@@ -64,6 +65,8 @@ public class MainController {
         if (services == null) {
             throw new IllegalArgumentException("La composición de servicios es obligatoria.");
         }
+        this.applicationServices = services;
+        this.authorizationService = services.authorization();
         this.customerService = services.customers();
         this.sellerService = services.sellers();
         this.productService = services.products();
@@ -80,12 +83,18 @@ public class MainController {
     @FXML
     private void handleLogout() {
         try {
+            if (currentSession != null) {
+                if (applicationServices != null) {
+                    applicationServices.identity().authentication().revoke(currentSession);
+                } else {
+                    currentSession.invalidate();
+                }
+                currentSession = null;
+            }
             if (onLogout == null) {
                 throw new IllegalStateException("El regreso al inicio de sesión no está configurado.");
             }
             onLogout.run();
-            currentSession.invalidate();
-            currentSession = null;
         } catch (RuntimeException failure) {
             LOGGER.log(Level.WARNING, "No se pudo cerrar la sesión.", failure);
             navigationMessage.setText("No se pudo volver al inicio de sesión. Intente de nuevo.");
@@ -94,7 +103,7 @@ public class MainController {
 
     private void selectNavigation(Button selected) {
         for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit,
-                btnInventory, btnSales, btnCash}) {
+                btnInventory, btnSales, btnCash, btnAdminUsers}) {
             button.pseudoClassStateChanged(ACTIVE, button == selected);
         }
     }
@@ -111,6 +120,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/customers_view.fxml"));
             Node customerView = loader.load();
             CustomerController controller = loader.getController();
+            controller.setAuthorizationService(authorizationService);
             controller.configure(customerService, currentSession);
             controller.showCustomers(customerService.getAllCustomers());
             rootPane.setCenter(customerView);
@@ -134,6 +144,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/sellers_view.fxml"));
             Node sellerView = loader.load();
             SellerController controller = loader.getController();
+            controller.setAuthorizationService(authorizationService);
             controller.configure(sellerService, currentSession);
             controller.showSellers(sellerService.getAllSellers());
             rootPane.setCenter(sellerView);
@@ -157,6 +168,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/portfolio_view.fxml"));
             Node portfolioView = loader.load();
             PortfolioController controller = loader.getController();
+            controller.setAuthorizationService(authorizationService);
             controller.configure(customerService, salesWorkflow, generalDebtWorkflow, currentSession);
             controller.showPortfolio(customerService.getAllCustomers());
             rootPane.setCenter(portfolioView);
@@ -181,6 +193,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/sales_view.fxml"));
             Node view = loader.load();
             SalesController controller = loader.getController();
+            controller.setAuthorizationService(authorizationService);
             controller.configure(productService, inventoryService, customerService,
                     sellerService, salesWorkflow, currentSession);
             rootPane.setCenter(view);
@@ -203,6 +216,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/cash_view.fxml"));
             Node view = loader.load();
             CashController controller = loader.getController();
+            controller.setAuthorizationService(authorizationService);
             controller.configure(cashWorkflow, currentSession);
             rootPane.setCenter(view);
             selectNavigation(btnCash);
@@ -225,6 +239,7 @@ public class MainController {
                     "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
             Node view = loader.load();
             InventoryController controller = loader.getController();
+            controller.setAuthorizationService(authorizationService);
             controller.configure(productService, inventoryService, currentSession);
             rootPane.setCenter(view);
             selectNavigation(btnInventory);
@@ -237,7 +252,9 @@ public class MainController {
 
     @FXML
     private void handleShowDashboard() {
-        if (currentSession == null || !currentSession.isActive()) {
+        try {
+            authorizationService.currentPrincipal(currentSession);
+        } catch (RuntimeException invalidSession) {
             navigationMessage.setText("La sesión ya no está activa.");
             return;
         }
@@ -247,13 +264,14 @@ public class MainController {
     }
 
     public void initSession(UserSession session) {
-        if (session == null || !session.isActive()) {
-            throw new IllegalArgumentException("Se requiere una sesión activa.");
-        }
+        var principal = authorizationService.currentPrincipal(session);
         this.currentSession = session;
-        
-        String username = session.getUserAccount().getUsername();
-        String role = session.getUserAccount().getRole().name();
+
+        String username = applicationServices == null
+                ? session.getUserAccount().getUsername()
+                : applicationServices.identity().users().findById(principal.userId().toString())
+                    .orElseThrow(() -> new SecurityException("La cuenta ya no está disponible.")).getUsername();
+        String role = principal.role().name();
 
         welcomeLabel.setText("¡Bienvenido, " + username + "!");
         roleLabel.setText("Rol actual: " + role);
@@ -275,7 +293,31 @@ public class MainController {
         boolean canViewCash = authorizationService.hasPermission(session, Permission.VIEW_CASH);
         btnCash.setVisible(canViewCash);
         btnCash.setManaged(canViewCash);
-        btnAdminUsers.setDisable(true);
+        btnAdminUsers.setDisable(false);
         selectNavigation(btnDashboard);
+    }
+
+    /** Abre la administración completa; las mutaciones vuelven a validarse en el servicio. */
+    @FXML
+    private void handleShowAdminUsers() {
+        if (applicationServices == null
+                || !authorizationService.hasPermission(currentSession, Permission.MANAGE_USERS)) {
+            navigationMessage.setText("No tiene permiso para administrar usuarios.");
+            return;
+        }
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/user_management_view.fxml"));
+            Node view = loader.load();
+            UserManagementController controller = loader.getController();
+            controller.configure(applicationServices.identity().userManagement(), sellerService,
+                    currentSession, authorizationService);
+            rootPane.setCenter(view);
+            selectNavigation(btnAdminUsers);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir la administración de usuarios.", failure);
+            navigationMessage.setText("No se pudo abrir la administración de usuarios.");
+        }
     }
 }

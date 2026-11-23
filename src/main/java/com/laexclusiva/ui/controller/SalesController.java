@@ -61,12 +61,16 @@ public class SalesController {
     private CustomerService customers;
     private SellerService sellers;
     private SalesWorkflow sales;
-    private boolean canViewAllSales;
-    private String assignedSellerId;
     private UserSession session;
     private String saleOperationKey = UUID.randomUUID().toString();
     private String uncertainSaleFingerprint;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService = new AuthorizationService();
+
+    /** Inyecta la autoridad actual compartida con el servicio que procesa las ventas. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        this.authorizationService = authorizationService;
+    }
 
     @FXML
     private void initialize() {
@@ -113,34 +117,36 @@ public class SalesController {
         this.sellers = require(sellers);
         this.sales = require(sales);
         this.session = require(session);
-        this.canViewAllSales = session.getUserAccount().getRole() == UserRole.ADMINISTRATOR;
-        this.assignedSellerId = session.getUserAccount().getSellerId();
+        requirePermission(Permission.REGISTER_SALE, "No tiene permiso para registrar ventas.");
+        requirePermission(Permission.VIEW_SALES, "No tiene permiso para consultar las ventas.");
+        requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
+        requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar inventario.");
+        requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
+        var principal = authorizationService.currentPrincipal(session);
         productCombo.getItems().setAll(products.listAll());
         productCombo.setConverter(converter(product -> product + " · "
                 + inventory.getStock(product.getId()).totalUnits() + " u"));
         customerCombo.getItems().setAll(customers.getAllCustomers());
-        List<Seller> availableSellers = sellers.getAllSellers();
         boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
         if (canViewSellers) {
-            sellerCombo.getItems().setAll(availableSellers);
+            sellerCombo.getItems().setAll(sellers.getAllSellers());
             sellerCombo.setDisable(false);
-        } else if (assignedSellerId != null) {
-            List<Seller> assigned = availableSellers.stream()
-                    .filter(seller -> assignedSellerId.equals(seller.getId())).toList();
-            sellerCombo.getItems().setAll(assigned);
+        } else if (principal.sellerId() != null) {
+            sellers.getSellerById(principal.sellerId()).ifPresent(seller -> {
+                sellerCombo.getItems().setAll(seller);
+                sellerCombo.setValue(seller);
+            });
             sellerCombo.setDisable(true);
-            if (assigned.isEmpty()) {
+            if (sellerCombo.getItems().isEmpty()) {
                 messageLabel.setText("El vendedor asignado a la cuenta no existe en el registro; solicite su corrección.");
-            } else {
-                sellerCombo.setValue(assigned.get(0));
             }
         } else {
             sellerCombo.getItems().clear();
             sellerCombo.setDisable(true);
             messageLabel.setText("La cuenta no tiene vendedor asignado; solicite la asignación al administrador.");
         }
-        if (canViewSellers && assignedSellerId != null) {
-            sellerCombo.getItems().stream().filter(seller -> assignedSellerId.equals(seller.getId()))
+        if (canViewSellers && principal.sellerId() != null) {
+            sellerCombo.getItems().stream().filter(seller -> principal.sellerId().equals(seller.getId()))
                     .findFirst().ifPresent(sellerCombo::setValue);
         }
         try {
@@ -267,11 +273,13 @@ public class SalesController {
     }
 
     private void refreshHistory() {
+        requirePermission(Permission.VIEW_SALES, "No tiene permiso para consultar las ventas.");
         if (sales != null) {
             List<Sale> history = sales.listAll();
-            if (!canViewAllSales) {
-                history = assignedSellerId == null ? List.of() : history.stream()
-                        .filter(sale -> assignedSellerId.equals(sale.getSeller().getId())).toList();
+            var principal = authorizationService.currentPrincipal(session);
+            if (principal.role() != UserRole.ADMINISTRATOR) {
+                history = principal.sellerId() == null ? List.of() : history.stream()
+                        .filter(sale -> principal.sellerId().equals(sale.getSeller().getId())).toList();
             }
             historyTable.getItems().setAll(history);
         }
@@ -294,9 +302,10 @@ public class SalesController {
     }
 
     private boolean isAuthorizedSeller(Seller seller) {
-        if (session.getUserAccount().getRole() == UserRole.ADMINISTRATOR) return true;
-        if (assignedSellerId == null || !assignedSellerId.equals(seller.getId())) return false;
-        return sellers.getAllSellers().stream().anyMatch(candidate -> assignedSellerId.equals(candidate.getId()));
+        var principal = authorizationService.currentPrincipal(session);
+        if (principal.role() == UserRole.ADMINISTRATOR) return true;
+        return principal.sellerId() != null && principal.sellerId().equals(seller.getId())
+                && sellers.getSellerById(principal.sellerId()).isPresent();
     }
 
     private static String money(BigDecimal amount) {

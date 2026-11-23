@@ -31,7 +31,13 @@ public class SellerController {
 
     private SellerService sellerService;
     private UserSession session;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService = new AuthorizationService();
+
+    /** Inyecta la autorización respaldada por la identidad de la aplicación. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        this.authorizationService = authorizationService;
+    }
 
     @FXML
     private void initialize() {
@@ -43,6 +49,7 @@ public class SellerController {
 
     /** Reemplaza las filas visibles por los vendedores obtenidos del servicio configurado. */
     public void showSellers(List<Seller> sellers) {
+        requirePermission(Permission.VIEW_SELLERS, "No tiene permiso para consultar vendedores.");
         sellersTable.getItems().setAll(sellers);
     }
 
