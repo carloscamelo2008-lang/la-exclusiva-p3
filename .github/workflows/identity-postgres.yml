@@ -16,12 +16,13 @@ jobs:
       IDENTITY_LAB_AUTHORIZED: pr22
       LAEXCLUSIVA_PG18_IMAGE: postgres:18-bookworm@sha256:194e55feb2597b1465dbee81cc9fd8d204566cd2eb42c8d22fd6c931a38781b1
       LAEXCLUSIVA_JAVA17_IMAGE: maven:3.9-eclipse-temurin-17@sha256:1a352420f7aba21f5ad08df31bab55f74c013fb491f1ae8ab1dd7ff9ed698584
-      LAB_ROOT: ${{ runner.temp }}/identity-pg-${{ github.run_id }}-${{ github.run_attempt }}
       LAB_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Initialize job-local laboratory path
+        run: echo "LAB_ROOT=$RUNNER_TEMP/identity-pg-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
       - name: Execute isolated migrations, integrations and recovery
         run: python3 database/validation/identity/actions-lab.py
       - name: Destroy only this job's laboratory
