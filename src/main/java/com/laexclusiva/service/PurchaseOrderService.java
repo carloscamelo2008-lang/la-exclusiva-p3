@@ -10,6 +10,7 @@ import com.laexclusiva.repository.PurchaseOrderRepository;
 import com.laexclusiva.repository.PurchaseOrderRepository.NewLine;
 import com.laexclusiva.repository.PurchaseOrderRepository.OrderWithLines;
 import com.laexclusiva.repository.SupplierRepository;
+import com.laexclusiva.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -25,16 +26,33 @@ public final class PurchaseOrderService {
     private final ProductService products;
     private final AuthorizationService authorization;
     private final TransactionBoundary transactions;
+    private final UserRepository auditUsers;
 
     /** Recibe los repositorios, el catálogo y el límite transaccional del módulo. */
     public PurchaseOrderService(PurchaseOrderRepository orders, SupplierRepository suppliers,
                                 ProductService products, AuthorizationService authorization,
                                 TransactionBoundary transactions) {
+        this(orders, suppliers, products, authorization, transactions, null);
+    }
+
+    /**
+     * Configura la identidad persistida que se guardará como autoría histórica de cada pedido.
+     * @param orders repositorio transaccional de pedidos
+     * @param suppliers repositorio de proveedores
+     * @param products catálogo compartido con inventario y ventas
+     * @param authorization autoridad que valida la sesión y el permiso vigente
+     * @param transactions frontera que agrupa las escrituras del pedido
+     * @param auditUsers repositorio compartido para resolver el usuario persistido de auditoría
+     */
+    public PurchaseOrderService(PurchaseOrderRepository orders, SupplierRepository suppliers,
+                                ProductService products, AuthorizationService authorization,
+                                TransactionBoundary transactions, UserRepository auditUsers) {
         this.orders = Objects.requireNonNull(orders);
         this.suppliers = Objects.requireNonNull(suppliers);
         this.products = Objects.requireNonNull(products);
         this.authorization = Objects.requireNonNull(authorization);
         this.transactions = Objects.requireNonNull(transactions);
+        this.auditUsers = auditUsers;
     }
 
     /** Cantidad solicitada de una referencia en canastas completas y unidades sueltas. */
@@ -54,9 +72,9 @@ public final class PurchaseOrderService {
                 BeerProduct product = products.findById(line.productId());
                 return new NewLine(product.getId(), line.baskets(), line.looseUnits(), product.getUnitsPerBasket());
             }).toList();
-            // La sesión actual todavía puede proceder de un repositorio de usuarios en memoria.
+            PurchaseActorResolver.Actor actor = PurchaseActorResolver.resolve(authorization, auditUsers, session);
             return orders.save(new PurchaseOrder(null, supplierId, PurchaseOrderStatus.PENDING, notes,
-                    null, session.getUserAccount().getUsername(), LocalDateTime.now()), requested);
+                    actor.userId(), actor.username(), LocalDateTime.now()), requested);
         });
     }
 

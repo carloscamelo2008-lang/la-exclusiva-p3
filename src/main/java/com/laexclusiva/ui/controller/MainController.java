@@ -37,6 +37,7 @@ public class MainController {
     @FXML private Label roleLabel;
     @FXML private Button btnSellers;
     @FXML private Button btnInventory;
+    @FXML private Button btnPurchases;
     @FXML private Button btnSales;
     @FXML private Button btnAdminUsers;
     @FXML private Button btnDashboard;
@@ -53,6 +54,7 @@ public class MainController {
     private SalesWorkflow salesWorkflow;
     private CashWorkflow cashWorkflow;
     private CustomerGeneralDebtWorkflow generalDebtWorkflow;
+    private com.laexclusiva.service.PurchasesModuleFactory.Services purchases;
     private Runnable onLogout;
     private AuthorizationService authorizationService;
     private ApplicationServices applicationServices;
@@ -80,6 +82,7 @@ public class MainController {
         this.salesWorkflow = services.sales();
         this.cashWorkflow = services.cash();
         this.generalDebtWorkflow = services.generalDebt();
+        this.purchases = services.purchases();
     }
 
     /** Inyecta una autoridad validada para consumidores que configuran servicios por separado. */
@@ -128,7 +131,7 @@ public class MainController {
 
     private void disableProtectedNavigation() {
         for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit,
-                btnInventory, btnSales, btnCash, btnAdminUsers, btnLogout}) {
+                btnInventory, btnPurchases, btnSales, btnCash, btnAdminUsers, btnLogout}) {
             if (button != null) button.setDisable(true);
         }
     }
@@ -154,7 +157,7 @@ public class MainController {
 
     private void selectNavigation(Button selected) {
         for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit,
-                btnInventory, btnSales, btnCash, btnAdminUsers}) {
+                btnInventory, btnPurchases, btnSales, btnCash, btnAdminUsers}) {
             button.pseudoClassStateChanged(ACTIVE, button == selected);
         }
     }
@@ -303,6 +306,25 @@ public class MainController {
         }
     }
 
+    /** Abre Compras; cada consulta y escritura vuelve a validar el permiso en sus servicios. */
+    @FXML
+    private void handleShowPurchases() {
+        if (purchases == null || !hasPermission(Permission.VIEW_INVENTORY)) {
+            navigationMessage.setText("No tiene permiso para consultar compras.");
+            return;
+        }
+        try {
+            Node view = PurchasesController.load(purchases.suppliers(), purchases.orders(), purchases.receipts(),
+                    productService, currentSession, authorizationService);
+            rootPane.setCenter(view);
+            selectNavigation(btnPurchases);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir Compras y recepción.", failure);
+            navigationMessage.setText("No se pudo abrir Compras y recepción.");
+        }
+    }
+
     @FXML
     private void handleShowDashboard() {
         try {
@@ -343,6 +365,8 @@ public class MainController {
         boolean canViewInventory = hasPermission(Permission.VIEW_INVENTORY);
         btnInventory.setVisible(canViewInventory);
         btnInventory.setManaged(canViewInventory);
+        btnPurchases.setVisible(canViewInventory);
+        btnPurchases.setManaged(canViewInventory);
         boolean canRegisterSales = hasPermission(Permission.REGISTER_SALE)
                 && hasPermission(Permission.VIEW_SALES);
         btnSales.setVisible(canRegisterSales);
