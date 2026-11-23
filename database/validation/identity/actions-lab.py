@@ -124,7 +124,7 @@ def psql(files=(), query=None, check=True):
 
 
 def java_tests(cycle):
-    compose("--profile", "java", "create", "--no-deps", "java")
+    compose("--profile", "java", "create", "--no-recreate", "java")
     java = compose("--profile", "java", "ps", "-aq", "java").stdout.strip()
     save(cycle + "-java-isolation.json", json.dumps(inspect_container(java, java=True), indent=2))
     output = run(["docker", "start", "--attach", java], check=False)
