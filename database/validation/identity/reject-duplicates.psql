@@ -1,0 +1,18 @@
+-- Escenario negativo independiente: SOLO en un laboratorio nuevo vacío y autorizado.
+\ir guard.psql
+DO $empty$
+BEGIN
+    IF EXISTS (SELECT FROM pg_catalog.pg_class WHERE relnamespace='public'::regnamespace
+               AND relkind IN ('r','p','v','m','f','S')) THEN
+        RAISE EXCEPTION 'Se requiere public vacío';
+    END IF;
+END;
+$empty$;
+\ir ../../migrations/V001__initial_schema.sql
+\ir ../../migrations/V104__user_security_version.sql
+INSERT INTO public.seller VALUES ('iv_duplicate', 'Fixture negativo', '000', 'Ficticia');
+INSERT INTO public.user_account(username,password_hash,role,active,seller_id,created_at)
+VALUES ('iv_duplicate_a','$pbkdf2-sha256$i=1000$AAAAAAAAAAA=$AAAAAAAAAAAAAAAAAAAAAA==','WORKER',TRUE,'iv_duplicate',CURRENT_TIMESTAMP),
+       ('iv_duplicate_b','$pbkdf2-sha256$i=1000$AAAAAAAAAAA=$AAAAAAAAAAAAAAAAAAAAAA==','WORKER',TRUE,'iv_duplicate',CURRENT_TIMESTAMP);
+-- Debe terminar con código distinto de cero (23505), sin corregir los dos registros.
+\ir ../../migrations/V105__unique_active_user_seller.sql

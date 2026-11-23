@@ -53,7 +53,7 @@ public class LoginController {
         String username = usernameField.getText();
         String password = passwordField.getText();
 
-        if (username == null || username.trim().isEmpty() || password == null || password.trim().isEmpty()) {
+        if (username == null || username.trim().isEmpty() || password == null || password.isEmpty()) {
             errorLabel.setText("Por favor, ingrese usuario y contraseña.");
             return;
         }

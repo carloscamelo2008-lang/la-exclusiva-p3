@@ -1,0 +1,104 @@
+-- SOLO tras autorización específica. psql -X; destino Docker desechable, nunca un servidor existente.
+\ir guard.psql
+DO $empty$
+BEGIN
+    IF EXISTS (SELECT FROM pg_catalog.pg_class WHERE relnamespace = 'public'::regnamespace
+               AND relkind IN ('r', 'p', 'v', 'm', 'f', 'S')) THEN
+        RAISE EXCEPTION 'Se requiere public vacío; no se borra ni repara automáticamente';
+    END IF;
+END;
+$empty$;
+\ir ../../migrations/V001__initial_schema.sql
+
+-- Cuentas ficticias anteriores a V104/V106, con identificadores exclusivos del laboratorio.
+INSERT INTO public.seller VALUES ('iv_seller', 'Fixture identidad', '000', 'Ficticia');
+INSERT INTO public.user_account (id, username, password_hash, role, active, seller_id, created_at)
+VALUES (910000001, 'iv_pre_a', '$pbkdf2-sha256$i=1000$AAAAAAAAAAA=$AAAAAAAAAAAAAAAAAAAAAA==',
+        'ADMINISTRATOR', TRUE, NULL, '2020-01-02 03:04:05'),
+       (910000002, 'iv_pre_b', '$pbkdf2-sha256$i=1000$AAAAAAAAAAA=$AAAAAAAAAAAAAAAAAAAAAA==',
+        'WORKER', FALSE, 'iv_seller', '2020-01-02 03:04:05');
+CREATE TEMP TABLE identity_before AS SELECT * FROM public.user_account;
+
+\ir ../../migrations/V104__user_security_version.sql
+\ir ../../migrations/V105__unique_active_user_seller.sql
+\ir ../../migrations/V106__user_account_instance_identity.sql
+
+DO $backfill$
+BEGIN
+    IF (SELECT count(DISTINCT account_instance_id) FROM public.user_account) <> 2
+       OR EXISTS (SELECT FROM public.user_account WHERE security_version <> 0 OR account_instance_id IS NULL)
+       OR EXISTS (SELECT FROM identity_before b JOIN public.user_account a USING(id)
+          WHERE ROW(a.username,a.password_hash,a.role,a.active,a.seller_id,a.created_at)
+             IS DISTINCT FROM ROW(b.username,b.password_hash,b.role,b.active,b.seller_id,b.created_at)) THEN
+        RAISE EXCEPTION 'Backfill incompleto o atributos históricos modificados';
+    END IF;
+END;
+$backfill$;
+CREATE TEMP TABLE identity_instances AS SELECT id, account_instance_id FROM public.user_account;
+
+BEGIN;
+DO $behavior$
+DECLARE
+    original UUID;
+    inserted UUID;
+    restored UUID;
+    index_name TEXT;
+BEGIN
+    SELECT account_instance_id INTO STRICT original FROM public.user_account WHERE id=910000001;
+    UPDATE public.user_account SET username='iv_renamed', security_version=99 WHERE id=910000001;
+    IF (SELECT security_version FROM public.user_account WHERE id=910000001) <> 0 THEN
+        RAISE EXCEPTION 'No-op/username alteró versión';
+    END IF;
+    UPDATE public.user_account SET role='WORKER', active=FALSE WHERE id=910000001;
+    IF (SELECT security_version FROM public.user_account WHERE id=910000001) <> 1 THEN
+        RAISE EXCEPTION 'Cambio conjunto no incrementó exactamente una vez';
+    END IF;
+    BEGIN
+        UPDATE public.user_account SET account_instance_id=pg_catalog.gen_random_uuid() WHERE id=910000001;
+        RAISE EXCEPTION 'Se permitió sustituir UUID';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    BEGIN
+        UPDATE public.user_account SET account_instance_id=NULL WHERE id=910000001;
+        RAISE EXCEPTION 'Se permitió borrar UUID';
+    EXCEPTION WHEN check_violation THEN NULL;
+    END;
+    -- Incluso un UUID solicitado igual al de otra cuenta se ignora durante INSERT.
+    INSERT INTO public.user_account(id,username,password_hash,role,active,created_at,account_instance_id,security_version)
+    SELECT 910000003,'iv_insert',password_hash,'WORKER',TRUE,created_at,original,99
+      FROM public.user_account WHERE id=910000001
+    RETURNING account_instance_id INTO inserted;
+    IF inserted=original OR (SELECT security_version FROM public.user_account WHERE id=910000003) <> 0 THEN
+        RAISE EXCEPTION 'INSERT permitió imponer metadatos';
+    END IF;
+    -- Cuentas inactivas y seller NULL pueden coexistir; reactivación duplicada se rechaza por V105.
+    UPDATE public.user_account SET seller_id='iv_seller',active=TRUE WHERE id=910000001;
+    BEGIN
+        UPDATE public.user_account SET active=TRUE WHERE id=910000002;
+        RAISE EXCEPTION 'Se permitió vendedor activo duplicado';
+    EXCEPTION WHEN unique_violation THEN
+        GET STACKED DIAGNOSTICS index_name=CONSTRAINT_NAME;
+        IF index_name <> 'uq_user_account_active_seller' THEN RAISE; END IF;
+    END;
+    DELETE FROM public.user_account WHERE id=910000003;
+    INSERT INTO public.user_account(id,username,password_hash,role,active,created_at,account_instance_id)
+    SELECT 910000003,'iv_recreated',password_hash,'ADMINISTRATOR',TRUE,created_at,inserted
+      FROM public.user_account WHERE id=910000001 RETURNING account_instance_id INTO restored;
+    IF restored=inserted THEN RAISE EXCEPTION 'Se reutilizó UUID tras DELETE'; END IF;
+END;
+$behavior$;
+ROLLBACK;
+
+DO $rollback$
+BEGIN
+    IF (SELECT count(*) FROM public.user_account) <> 2
+       OR EXISTS (SELECT FROM identity_instances i JOIN public.user_account a USING(id)
+                  WHERE i.account_instance_id IS DISTINCT FROM a.account_instance_id)
+       OR EXISTS (SELECT FROM identity_before b JOIN public.user_account a USING(id)
+          WHERE ROW(a.username,a.password_hash,a.role,a.active,a.seller_id,a.created_at,a.security_version)
+             IS DISTINCT FROM ROW(b.username,b.password_hash,b.role,b.active,b.seller_id,b.created_at,0::bigint)) THEN
+        RAISE EXCEPTION 'Rollback no restauró los fixtures';
+    END IF;
+END;
+$rollback$;
+\echo 'Validaciones SQL completadas; solo fixtures históricos propios permanecen hasta desechar el contenedor.'

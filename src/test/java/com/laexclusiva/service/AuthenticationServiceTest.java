@@ -44,6 +44,88 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class AuthenticationServiceTest {
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "  frase inicial válida", "frase final válida  ", "               ", "old123"})
+    void loginControllerPassesTheExactSecretIncludingHistoricalPasswords(String secret) throws Exception {
+        onFxThread(() -> {
+            var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
+            javafx.scene.Parent root = loader.load();
+            var controller = (com.laexclusiva.ui.controller.LoginController) loader.getController();
+            var repository = new com.laexclusiva.repository.InMemoryUserRepository();
+            repository.save(new UserAccount(null, "member", com.laexclusiva.security.PasswordHasher.hash(secret),
+                    UserRole.WORKER, null));
+            String[] captured = new String[2];
+            controller.setAuthenticationService(new AuthenticationService(repository) {
+                @Override public java.util.Optional<UserSession> createSession(String username, String password) {
+                    captured[0] = username;
+                    captured[1] = password;
+                    assertTrue(authenticate(username, password).isPresent());
+                    // No navegar: esta regresión observa la entrada del servicio real de autenticación.
+                    return java.util.Optional.empty();
+                }
+            });
+            ((TextField) root.lookup("#usernameField")).setText("  member  ");
+            ((PasswordField) root.lookup("#passwordField")).setText(secret);
+            ((Button) root.lookup("#loginButton")).fire();
+            assertEquals("member", captured[0]);
+            assertEquals(secret, captured[1]);
+            return null;
+        });
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    void loginControllerRejectsMissingPasswordsBeforeCallingService(String secret) throws Exception {
+        onFxThread(() -> {
+            var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
+            javafx.scene.Parent root = loader.load();
+            var controller = (com.laexclusiva.ui.controller.LoginController) loader.getController();
+            controller.setAuthenticationService(new AuthenticationService(null) {
+                @Override public java.util.Optional<UserSession> createSession(String username, String password) {
+                    fail("No debe consultar autenticación con datos ausentes");
+                    return java.util.Optional.empty();
+                }
+            });
+            ((TextField) root.lookup("#usernameField")).setText("member");
+            ((PasswordField) root.lookup("#passwordField")).setText(secret);
+            ((Button) root.lookup("#loginButton")).fire();
+            assertEquals("Por favor, ingrese usuario y contraseña.", ((Label) root.lookup("#errorLabel")).getText());
+            return null;
+        });
+    }
+
+    @Test
+    void loginControllerStillRejectsBlankUsername() throws Exception {
+        onFxThread(() -> {
+            var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
+            javafx.scene.Parent root = loader.load();
+            ((TextField) root.lookup("#usernameField")).setText("   ");
+            ((PasswordField) root.lookup("#passwordField")).setText("Una frase permitida");
+            ((Button) root.lookup("#loginButton")).fire();
+            assertEquals("Por favor, ingrese usuario y contraseña.", ((Label) root.lookup("#errorLabel")).getText());
+            return null;
+        });
+    }
+
+    @Test
+    void invalidSecondDemoPasswordLeavesNoProvisionedAccounts() {
+        App app = new App();
+        assertThrows(IllegalStateException.class,
+                () -> app.initializeDemoAccounts("Una frase demo permitida", "short"));
+        assertTrue(app.getUserRepository().findAll().isEmpty());
+    }
+
+    @Test
+    void blockedInitialPasswordLeavesNoAccountAndNoSecretInError() {
+        App app = new App();
+        var failure = assertThrows(IllegalStateException.class,
+                () -> app.initializeInitialAdmin("passwordpassword"));
+        assertTrue(app.getUserRepository().findAll().isEmpty());
+        assertFalse(failure.getMessage().contains("passwordpassword"));
+        assertNull(failure.getCause());
+    }
+
     @BeforeAll
     public static void initJavaFX() {
         try {
@@ -57,27 +139,27 @@ public class AuthenticationServiceTest {
     @Test
     public void testAppDemoAccountsInitializationMechanism() {
         App app = new App();
-        app.initializeDemoAccounts("passAdmin123", "passWorker123");
+        app.initializeDemoAccounts("passAdmin123-Valid-Only", "passWorker123-Valid-Only");
 
         AuthenticationService authService = new AuthenticationService(app.getUserRepository());
-        assertTrue(authService.authenticate("admin", "passAdmin123").isPresent(), "Admin demo debe autenticarse correctamente");
-        assertTrue(authService.authenticate("worker", "passWorker123").isPresent(), "Worker demo debe autenticarse correctamente");
+        assertTrue(authService.authenticate("admin", "passAdmin123-Valid-Only").isPresent(), "Admin demo debe autenticarse correctamente");
+        assertTrue(authService.authenticate("worker", "passWorker123-Valid-Only").isPresent(), "Worker demo debe autenticarse correctamente");
     }
 
     @Test
     public void testAppDemoAccountsInitializationFailsWithoutPasswords() {
         App app = new App();
-        assertThrows(IllegalStateException.class, () -> app.initializeDemoAccounts(null, "passWorker123"),
+        assertThrows(IllegalStateException.class, () -> app.initializeDemoAccounts(null, "passWorker123-Valid-Only"),
                 "Debe fallar si falta la clave del administrador demo");
     }
 
     @Test
     public void testInitialAdminProvisioningSuccess() {
         App app = new App();
-        app.initializeInitialAdmin("adminSecret123");
+        app.initializeInitialAdmin("adminSecret123-Valid-Only");
 
         AuthenticationService authService = new AuthenticationService(app.getUserRepository());
-        assertTrue(authService.authenticate("admin", "adminSecret123").isPresent(), "El administrador inicial debe poder autenticarse");
+        assertTrue(authService.authenticate("admin", "adminSecret123-Valid-Only").isPresent(), "El administrador inicial debe poder autenticarse");
     }
 
     @Test
@@ -636,7 +718,7 @@ public class AuthenticationServiceTest {
     void testAppCanLoginLogoutAndChangeUserInTheSameWindow() throws Exception {
         onFxThread(() -> {
             App app = new App();
-            app.initializeDemoAccounts("Admin-Test-2026", "Worker-Test-2026");
+            app.initializeDemoAccounts("Admin-Test-2026-Valid-Only", "Worker-Test-2026-Valid-Only");
             Stage stage = new Stage();
             try {
                 app.start(stage);
@@ -648,7 +730,7 @@ public class AuthenticationServiceTest {
                 assertSame(loginScene, stage.getScene());
                 assertEquals("Credenciales inválidas o cuenta inactiva.",
                         ((Label) loginScene.lookup("#errorLabel")).getText());
-                enterLogin(stage, "admin", "Admin-Test-2026");
+                enterLogin(stage, "admin", "Admin-Test-2026-Valid-Only");
                 BorderPane adminMenu = (BorderPane) stage.getScene().getRoot();
                 assertTrue(adminMenu.lookup("#btnSellers").isVisible());
                 assertTrue(adminMenu.lookup("#btnAdminUsers").isDisabled());
@@ -660,7 +742,7 @@ public class AuthenticationServiceTest {
                 assertNotSame(loginScene, stage.getScene());
                 assertTrue(((TextField) stage.getScene().lookup("#usernameField")).getText().isEmpty());
                 assertTrue(((PasswordField) stage.getScene().lookup("#passwordField")).getText().isEmpty());
-                enterLogin(stage, "worker", "Worker-Test-2026");
+                enterLogin(stage, "worker", "Worker-Test-2026-Valid-Only");
                 BorderPane workerMenu = (BorderPane) stage.getScene().getRoot();
                 assertNotSame(adminMenu, workerMenu);
                 assertFalse(workerMenu.lookup("#btnSellers").isVisible());
@@ -684,11 +766,11 @@ public class AuthenticationServiceTest {
     @Test
     void testReauthenticationCreatesANewSessionAfterInvalidation() {
         App app = new App();
-        app.initializeDemoAccounts("Admin-Test-2026", "Worker-Test-2026");
+        app.initializeDemoAccounts("Admin-Test-2026-Valid-Only", "Worker-Test-2026-Valid-Only");
         AuthenticationService auth = new AuthenticationService(app.getUserRepository());
-        UserSession first = auth.createSession("admin", "Admin-Test-2026").orElseThrow();
+        UserSession first = auth.createSession("admin", "Admin-Test-2026-Valid-Only").orElseThrow();
         first.invalidate();
-        UserSession second = auth.createSession("admin", "Admin-Test-2026").orElseThrow();
+        UserSession second = auth.createSession("admin", "Admin-Test-2026-Valid-Only").orElseThrow();
         assertNotSame(first, second);
         assertFalse(first.isActive());
         assertTrue(second.isActive());

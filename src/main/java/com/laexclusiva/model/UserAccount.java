@@ -16,13 +16,30 @@ public class UserAccount {
     private boolean active;
     private String sellerId;
     private LocalDateTime createdAt;
+    private long securityVersion;
+    private java.util.UUID accountInstanceId;
+
+    /** @return identidad persistida de la inserción; null antes de guardar o mapear */
+    public java.util.UUID getAccountInstanceId() { return accountInstanceId; }
+
+    /**
+     * Asigna metadatos de un snapshot para mapeo. No autoriza modificar la identidad persistida;
+     * ambos repositorios rechazan sustituciones en update y generan otra identidad en save.
+     * @param accountInstanceId UUID no nulo confirmado por persistencia
+     */
+    public void setAccountInstanceId(java.util.UUID accountInstanceId) {
+        if (accountInstanceId == null) throw new IllegalArgumentException("La identidad de cuenta es obligatoria.");
+        this.accountInstanceId = accountInstanceId;
+    }
 
     public UserAccount() {
+        this.securityVersion = 0;
         this.active = true;
         this.createdAt = LocalDateTime.now();
     }
 
     public UserAccount(Long id, String username, String passwordHash, UserRole role, String sellerId) {
+        this.securityVersion = 0;
         this.id = id;
         this.username = username;
         this.passwordHash = passwordHash;
@@ -86,5 +103,23 @@ public class UserAccount {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    /** @return versión de seguridad del snapshot de la cuenta, no un permiso de acceso */
+    public long getSecurityVersion() {
+        return securityVersion;
+    }
+
+    /**
+     * Asigna el metadato recuperado o confirmado por la persistencia, sin incrementarlo.
+     * No debe enlazarse a campos editables de formularios ni utilizarse como autorización.
+     * @param securityVersion versión no negativa de la cuenta
+     * @throws IllegalArgumentException si la versión es negativa
+     */
+    public void setSecurityVersion(long securityVersion) {
+        if (securityVersion < 0) {
+            throw new IllegalArgumentException("La versión de seguridad no puede ser negativa.");
+        }
+        this.securityVersion = securityVersion;
     }
 }

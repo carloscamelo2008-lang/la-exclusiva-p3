@@ -7,6 +7,7 @@ import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.*;
 import com.laexclusiva.security.PasswordHasher;
+import com.laexclusiva.security.PasswordPolicy;
 import com.laexclusiva.service.*;
 import com.laexclusiva.ui.ConsoleMenu;
 import java.util.Scanner;
@@ -50,8 +51,11 @@ public final class Main {
         if (demo) {
             String adminPassword = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
             String workerPassword = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
-            if (adminPassword == null || adminPassword.isBlank() || workerPassword == null || workerPassword.isBlank()) {
-                System.err.println("Defina LAEXCLUSIVA_DEMO_ADMIN_PASSWORD y LAEXCLUSIVA_DEMO_WORKER_PASSWORD."); 
+            try {
+                PasswordPolicy.validate(adminPassword);
+                PasswordPolicy.validate(workerPassword);
+            } catch (IllegalArgumentException | IllegalStateException invalid) {
+                System.err.println("No se pudieron validar las contraseñas demo. Revise la política y su configuración.");
                 return;
             }
             DemoDataInitializer initializer = new DemoDataInitializer(productService, inventoryService, customerService, sellerService, saleService);
@@ -63,9 +67,15 @@ public final class Main {
             String username = scanner.nextLine().trim();
             System.out.print("Contraseña: "); 
             String password = scanner.nextLine();
-            if (username.isEmpty() || password.isEmpty()) { 
-                System.err.println("Usuario y contraseña son obligatorios."); 
+            if (username.isEmpty()) {
+                System.err.println("El usuario es obligatorio.");
                 return; 
+            }
+            try {
+                PasswordPolicy.validate(password);
+            } catch (IllegalArgumentException | IllegalStateException invalid) {
+                System.err.println("No se pudo validar la contraseña inicial. Revise la política y su configuración.");
+                return;
             }
             userRepository.save(new UserAccount(null, username, PasswordHasher.hash(password), UserRole.ADMINISTRATOR, null));
         }

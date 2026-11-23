@@ -1,0 +1,17 @@
+-- No escribir ni aplicar migraciones antes de esta barrera.
+\set ON_ERROR_STOP on
+\set VERBOSITY sqlstate
+DO $guard$
+BEGIN
+    IF current_database() <> 'la_exclusiva_test'
+       OR current_user <> 'identity_validation_owner'
+       OR current_setting('cluster_name') <> 'laexclusiva-identity-validation'
+       OR current_setting('server_version_num')::integer / 10000 <> 18
+       OR current_setting('session_replication_role') <> 'origin' THEN
+        RAISE EXCEPTION 'Destino de laboratorio no autorizado';
+    END IF;
+END;
+$guard$;
+SET search_path = public, pg_catalog;
+SET statement_timeout = '30s';
+SET lock_timeout = '5s';
