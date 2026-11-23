@@ -19,6 +19,7 @@ AUTHORIZED_BRANCHES = {
     "feature/daniel-identity-users": "pr22",
     "feature/identity-app-integration": "pr24",
     "feature/purchases-app-integration": "purchases",
+    "feature/smart-reminders-security": "collections",
 }
 event = ENV.get("GITHUB_EVENT_NAME")
 branch = ENV.get("GITHUB_HEAD_REF") if event == "pull_request" else ENV.get("GITHUB_REF_NAME")
@@ -157,7 +158,7 @@ def java_tests(cycle):
             totals[key] += int(suite.attrib[key])
     expected = {
         "identity": (4, {"tests": 26, "failures": 0, "errors": 0, "skipped": 0}),
-        "application": (15, {"tests": 58, "failures": 0, "errors": 0, "skipped": 0}),
+        "application": (16, {"tests": 59, "failures": 0, "errors": 0, "skipped": 0}),
         "incomplete": (1, {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}),
     }[scenario]
     assert (len(suites), totals) == expected, {"suites": len(suites), "totals": totals}
@@ -199,7 +200,8 @@ def main():
                        "V100__sale_creation_idempotency.sql", "V101__general_debt_ledger.sql",
                        "V102__cash_ledger.sql", "V103__enforce_sale_request_identity_coherence.sql",
                        "V104__user_security_version.sql", "V105__unique_active_user_seller.sql",
-                       "V106__user_account_instance_identity.sql")
+                       "V106__user_account_instance_identity.sql", "V107__customer_collection_preferences.sql",
+                       "V108__administrative_audit.sql")
     for name in migration_names:
         report["migrations"][name] = hashlib.sha256((ROOT / "database/migrations" / name).read_bytes()).hexdigest()
     for cycle in ("first", "repeat"):

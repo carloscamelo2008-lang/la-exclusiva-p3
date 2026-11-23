@@ -18,4 +18,6 @@ $empty$;
 \ir ../../migrations/V104__user_security_version.sql
 \ir ../../migrations/V105__unique_active_user_seller.sql
 \ir ../../migrations/V106__user_account_instance_identity.sql
+\ir ../../migrations/V107__customer_collection_preferences.sql
+\ir ../../migrations/V108__administrative_audit.sql
 \echo 'Esquema completo aplicado al cluster temporal aislado.'

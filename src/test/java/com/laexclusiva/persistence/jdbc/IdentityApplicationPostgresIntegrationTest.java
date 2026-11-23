@@ -252,6 +252,17 @@ class IdentityApplicationPostgresIntegrationTest {
         executeCleanup(config, connection -> {
             for (Long id : ids) {
                 if (id == null) continue;
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        DELETE FROM administrative_audit_event
+                        WHERE actor_user_id = ? OR (target_type = 'USER' AND target_reference = ?)
+                        """)) {
+                    statement.setLong(1, id);
+                    statement.setString(2, id.toString());
+                    statement.executeUpdate();
+                }
+            }
+            for (Long id : ids) {
+                if (id == null) continue;
                 try (PreparedStatement statement = connection.prepareStatement("DELETE FROM user_account WHERE id = ?")) {
                     statement.setLong(1, id);
                     statement.executeUpdate();

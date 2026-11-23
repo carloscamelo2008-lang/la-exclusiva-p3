@@ -46,6 +46,11 @@ public final class AdministrativeSessionValidator {
      * @throws SecurityException si la sesión o la cuenta no cumplen las condiciones
      */
     public void validate(UserSession session) {
+        validateCurrent(session);
+    }
+
+    /** Devuelve el principal autenticado vigente después de exigir MANAGE_USERS. */
+    public AuthenticatedPrincipal validateCurrent(UserSession session) {
         if (sessions == null) throw denied();
         AuthenticatedPrincipal principal = sessions.validate(session);
         UserAccount current = new UserAccount();
@@ -55,6 +60,7 @@ public final class AdministrativeSessionValidator {
         if (!authorization.hasPermission(current, Permission.MANAGE_USERS)) {
             throw denied();
         }
+        return principal;
     }
 
     private static SecurityException denied() {

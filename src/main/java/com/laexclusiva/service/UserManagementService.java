@@ -1,14 +1,17 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.UserAccount;
+import com.laexclusiva.model.AdministrativeAuditEvent;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
+import com.laexclusiva.repository.AdministrativeAuditRepository;
 import com.laexclusiva.repository.UserRepository;
 import com.laexclusiva.security.PasswordHasher;
 import com.laexclusiva.security.PasswordPolicy;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Objects;
+import java.time.LocalDateTime;
 import java.util.function.Consumer;
 
 /**
@@ -22,6 +25,7 @@ public final class UserManagementService {
     private final UserAdministrationBoundary boundary;
     private final AdministrativeSessionValidator sessions;
     private final SellerService sellers;
+    private final AdministrativeAuditRepository audit;
     private final ActiveAdministratorPolicy policy = new ActiveAdministratorPolicy();
 
     /** Error conocido de validación que el administrador puede corregir en la pantalla. */
@@ -66,6 +70,13 @@ public final class UserManagementService {
     public UserManagementService(UserRepository users, UserAdministrationBoundary boundary,
                                  AuthorizationService authorization, SellerService sellers,
                                  AuthenticationService authentication) {
+        this(users, boundary, authorization, sellers, authentication, null);
+    }
+
+    /** Compone administración y auditoría dentro de la misma frontera de almacenamiento. */
+    public UserManagementService(UserRepository users, UserAdministrationBoundary boundary,
+                                 AuthorizationService authorization, SellerService sellers,
+                                 AuthenticationService authentication, AdministrativeAuditRepository audit) {
         if (users == null || boundary == null || authorization == null) {
             throw new IllegalArgumentException("Repositorio, frontera y autorización son obligatorios.");
         }
@@ -73,6 +84,7 @@ public final class UserManagementService {
         this.boundary = boundary;
         this.sessions = new AdministrativeSessionValidator(users, authorization, authentication);
         this.sellers = sellers;
+        this.audit = audit;
     }
 
     /**
@@ -89,9 +101,12 @@ public final class UserManagementService {
      */
     public UserChangeResult changeRole(UserSession actor, String userId, long expectedVersion, UserRole role) {
         return boundary.execute(() -> {
-            sessions.validate(actor);
+            var principal = sessions.validateCurrent(actor);
             if (role == null) throw new ValidationException("El rol es obligatorio.");
-            return update(userId, expectedVersion, proposed -> proposed.setRole(role));
+            UserChangeResult result = update(userId, expectedVersion, proposed -> proposed.setRole(role));
+            recordAudit(principal.userId(), AdministrativeAuditEvent.Action.ROLE_CHANGED,
+                    userId, AdministrativeAuditEvent.Result.SUCCESS);
+            return result;
         });
     }
 
@@ -113,8 +128,12 @@ public final class UserManagementService {
      */
     public UserChangeResult setActive(UserSession actor, String userId, long expectedVersion, boolean active) {
         return boundary.execute(() -> {
-            sessions.validate(actor);
-            return update(userId, expectedVersion, proposed -> proposed.setActive(active), true);
+            var principal = sessions.validateCurrent(actor);
+            UserChangeResult result = update(userId, expectedVersion, proposed -> proposed.setActive(active), true);
+            recordAudit(principal.userId(), active ? AdministrativeAuditEvent.Action.ACCOUNT_ACTIVATED
+                            : AdministrativeAuditEvent.Action.ACCOUNT_DEACTIVATED,
+                    userId, AdministrativeAuditEvent.Result.SUCCESS);
+            return result;
         });
     }
 
@@ -131,7 +150,7 @@ public final class UserManagementService {
      */
     public UserChangeResult createUser(UserSession actor, CreateUserRequest request) {
         return boundary.execute(() -> {
-            sessions.validate(actor);
+            var principal = sessions.validateCurrent(actor);
             if (request == null) throw new ValidationException("Los datos de creación son obligatorios.");
             String username = request.username();
             if (username == null || username.isBlank() || username.length() > 100 || username.indexOf('\0') >= 0) {
@@ -150,6 +169,8 @@ public final class UserManagementService {
                 }
                 throw duplicate;
             }
+            recordAudit(principal.userId(), AdministrativeAuditEvent.Action.USER_CREATED,
+                    String.valueOf(user.getId()), AdministrativeAuditEvent.Result.SUCCESS);
             return new UserChangeResult(user.getId(), user.getRole(), user.isActive(), user.getSecurityVersion());
         });
     }
@@ -191,11 +212,13 @@ public final class UserManagementService {
      */
     public UserChangeResult changePassword(UserSession actor, String userId, long expectedVersion, String newPassword) {
         return boundary.execute(() -> {
-            sessions.validate(actor);
+            var principal = sessions.validateCurrent(actor);
             validatePassword(newPassword);
             UserAccount proposed = copy(loadExpected(userId, expectedVersion));
             proposed.setPasswordHash(PasswordHasher.hash(newPassword));
             users.update(proposed);
+            recordAudit(principal.userId(), AdministrativeAuditEvent.Action.PASSWORD_RESET,
+                    userId, AdministrativeAuditEvent.Result.SUCCESS);
             return new UserChangeResult(proposed.getId(), proposed.getRole(), proposed.isActive(), proposed.getSecurityVersion());
         });
     }
@@ -218,7 +241,7 @@ public final class UserManagementService {
      */
     public UserChangeResult assignSeller(UserSession actor, String userId, long expectedVersion, String sellerId) {
         return boundary.execute(() -> {
-            sessions.validate(actor);
+            var principal = sessions.validateCurrent(actor);
             UserAccount current = loadExpected(userId, expectedVersion);
             if (sellerId != null) {
                 if (sellerId.isBlank() || sellerId.length() > 32 || sellerId.indexOf('\0') >= 0) {
@@ -232,9 +255,21 @@ public final class UserManagementService {
             UserAccount proposed = copy(current);
             proposed.setSellerId(sellerId);
             if (proposed.isActive() && sellerId != null) validateSellerExclusivity(proposed, users.findAll());
-            if (!Objects.equals(current.getSellerId(), sellerId)) users.update(proposed);
+            if (!Objects.equals(current.getSellerId(), sellerId)) {
+                users.update(proposed);
+                recordAudit(principal.userId(), AdministrativeAuditEvent.Action.SELLER_ASSIGNMENT_CHANGED,
+                        userId, AdministrativeAuditEvent.Result.SUCCESS);
+            }
             return new UserChangeResult(proposed.getId(), proposed.getRole(), proposed.isActive(), proposed.getSecurityVersion());
         });
+    }
+
+    private void recordAudit(Long actorId, AdministrativeAuditEvent.Action action, String target,
+                             AdministrativeAuditEvent.Result result) {
+        if (audit != null && actorId != null) {
+            audit.append(new AdministrativeAuditEvent(0, actorId, action,
+                    AdministrativeAuditEvent.TargetType.USER, target, LocalDateTime.now(), result));
+        }
     }
 
     /**
