@@ -4,6 +4,7 @@ import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
+import java.util.function.Supplier;
 
 /**
  * Servicio encargado de la autorización y validación de permisos de usuario o sesión.
@@ -71,6 +72,39 @@ public class AuthorizationService {
         } catch (RuntimeException deniedOrUnavailable) {
             return false;
         }
+    }
+
+    /**
+     * Ejecuta una operación comercial solo después de validar la sesión y el permiso vigente.
+     * La validación y la invocación quedan en un mismo punto de aplicación; conserva intactos
+     * los contratos de los servicios legacy que también consumen la consola.
+     *
+     * @param session sesión emitida por la autoridad activa
+     * @param permission permiso requerido en el instante de la operación
+     * @param operation operación de lectura o escritura que no debe iniciarse si se deniega
+     * @param <T> resultado de la operación
+     * @return resultado producido por la operación
+     * @throws SecurityException si la sesión no fue emitida por la autoridad vigente, está revocada,
+     *                           la cuenta cambió o el permiso no corresponde al rol actual
+     * @throws IllegalArgumentException si falta el permiso o la operación
+     */
+    public <T> T execute(UserSession session, Permission permission, Supplier<T> operation) {
+        if (permission == null || operation == null) {
+            throw new IllegalArgumentException("El permiso y la operación son obligatorios.");
+        }
+        if (!hasPermission(session, permission)) {
+            throw new SecurityException("La sesión no permite ejecutar esta operación.");
+        }
+        return operation.get();
+    }
+
+    /** Variante para operaciones que no devuelven resultado. */
+    public void execute(UserSession session, Permission permission, Runnable operation) {
+        if (operation == null) throw new IllegalArgumentException("La operación es obligatoria.");
+        execute(session, permission, () -> {
+            operation.run();
+            return null;
+        });
     }
 
     /**

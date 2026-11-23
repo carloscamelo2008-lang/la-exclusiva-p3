@@ -9,17 +9,27 @@ permissions:
   contents: read
 jobs:
   identity-postgres:
-    if: github.repository == 'carloscamelo2008-lang/la-exclusiva-p3' && (github.ref == 'refs/heads/feature/daniel-identity-users' || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feature/daniel-identity-users' && github.event.pull_request.head.repo.full_name == github.repository))
+    if: >
+      github.repository == 'carloscamelo2008-lang/la-exclusiva-p3' &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (github.event.pull_request.head.ref == 'feature/daniel-identity-users' ||
+         github.event.pull_request.head.ref == 'feature/identity-app-integration')) ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/feature/daniel-identity-users') ||
+       (github.event_name == 'workflow_dispatch' &&
+        (github.ref == 'refs/heads/feature/daniel-identity-users' ||
+         github.ref == 'refs/heads/feature/identity-app-integration')))
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      IDENTITY_LAB_AUTHORIZED: pr22
+      IDENTITY_LAB_AUTHORIZED: ${{ ((github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feature/identity-app-integration') || github.ref == 'refs/heads/feature/identity-app-integration') && 'pr24' || 'pr22' }}
       LAEXCLUSIVA_PG18_IMAGE: postgres:18-bookworm@sha256:194e55feb2597b1465dbee81cc9fd8d204566cd2eb42c8d22fd6c931a38781b1
       LAEXCLUSIVA_JAVA17_IMAGE: maven:3.9-eclipse-temurin-17@sha256:1a352420f7aba21f5ad08df31bab55f74c013fb491f1ae8ab1dd7ff9ed698584
       LAB_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Initialize job-local laboratory path
         run: echo "LAB_ROOT=$RUNNER_TEMP/identity-pg-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"

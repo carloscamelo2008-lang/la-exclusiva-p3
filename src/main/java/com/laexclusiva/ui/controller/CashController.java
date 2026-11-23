@@ -150,8 +150,8 @@ public final class CashController {
         }
 
         try {
-            cash.registerMovement(direction, category, amount, occurredAt,
-                    description, operationKey);
+            authorization.execute(session, Permission.REGISTER_CASH_MOVEMENT, () ->
+                    cash.registerMovement(direction, category, amount, occurredAt, description, operationKey));
         } catch (IllegalArgumentException | SecurityException rejected) {
             if (uncertainFingerprint == null) pendingOccurredAt = null;
             messageLabel.setText("Movimiento rechazado: " + safeMessage(rejected));
@@ -192,8 +192,9 @@ public final class CashController {
     }
 
     private void refresh() {
-        CashSnapshot snapshot = cash.loadSnapshot(fromDatePicker.getValue(),
-                throughDatePicker.getValue(), categoryFilterCombo.getValue());
+        CashSnapshot snapshot = authorization.execute(session, Permission.VIEW_CASH,
+                () -> cash.loadSnapshot(fromDatePicker.getValue(),
+                        throughDatePicker.getValue(), categoryFilterCombo.getValue()));
         CashSummary summary = snapshot.summary();
         // La tabla y los indicadores se publican juntos solo después de una lectura completa.
         movementsTable.getItems().setAll(snapshot.movements());

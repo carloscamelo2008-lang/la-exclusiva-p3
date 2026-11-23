@@ -122,7 +122,8 @@ public class MainController {
             CustomerController controller = loader.getController();
             controller.setAuthorizationService(authorizationService);
             controller.configure(customerService, currentSession);
-            controller.showCustomers(customerService.getAllCustomers());
+            controller.showCustomers(authorizationService.execute(currentSession, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers));
             rootPane.setCenter(customerView);
             selectNavigation(btnCustomers);
             navigationMessage.setText("");
@@ -146,7 +147,8 @@ public class MainController {
             SellerController controller = loader.getController();
             controller.setAuthorizationService(authorizationService);
             controller.configure(sellerService, currentSession);
-            controller.showSellers(sellerService.getAllSellers());
+            controller.showSellers(authorizationService.execute(currentSession, Permission.VIEW_SELLERS,
+                    sellerService::getAllSellers));
             rootPane.setCenter(sellerView);
             selectNavigation(btnSellers);
             navigationMessage.setText("");
@@ -170,7 +172,8 @@ public class MainController {
             PortfolioController controller = loader.getController();
             controller.setAuthorizationService(authorizationService);
             controller.configure(customerService, salesWorkflow, generalDebtWorkflow, currentSession);
-            controller.showPortfolio(customerService.getAllCustomers());
+            controller.showPortfolio(authorizationService.execute(currentSession, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers));
             rootPane.setCenter(portfolioView);
             selectNavigation(btnCredit);
             navigationMessage.setText("");

@@ -123,16 +123,21 @@ public class SalesController {
         requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar inventario.");
         requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         var principal = authorizationService.currentPrincipal(session);
-        productCombo.getItems().setAll(products.listAll());
+        productCombo.getItems().setAll(authorizationService.execute(session, Permission.VIEW_CATALOG,
+                products::listAll));
         productCombo.setConverter(converter(product -> product + " · "
-                + inventory.getStock(product.getId()).totalUnits() + " u"));
-        customerCombo.getItems().setAll(customers.getAllCustomers());
+                + authorizationService.execute(session, Permission.VIEW_INVENTORY,
+                    () -> inventory.getStock(product.getId()).totalUnits()) + " u"));
+        customerCombo.getItems().setAll(authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                customers::getAllCustomers));
         boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
         if (canViewSellers) {
-            sellerCombo.getItems().setAll(sellers.getAllSellers());
+            sellerCombo.getItems().setAll(authorizationService.execute(session, Permission.VIEW_SELLERS,
+                    sellers::getAllSellers));
             sellerCombo.setDisable(false);
         } else if (principal.sellerId() != null) {
-            sellers.getSellerById(principal.sellerId()).ifPresent(seller -> {
+            authorizationService.execute(session, Permission.REGISTER_SALE,
+                    () -> sellers.getSellerById(principal.sellerId())).ifPresent(seller -> {
                 sellerCombo.getItems().setAll(seller);
                 sellerCombo.setValue(seller);
             });
@@ -161,6 +166,7 @@ public class SalesController {
     @FXML
     private void handleAddLine() {
         try {
+            requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
             BeerProduct product = require(productCombo.getValue());
             SalePresentation presentation = require(presentationCombo.getValue());
             int quantity = Integer.parseInt(quantityField.getText().trim());
@@ -209,8 +215,9 @@ public class SalesController {
                         + "carrito, cliente, vendedor y pago inicial para reintentar con la referencia visible.");
             }
             submitted = true;
-            saved = sales.registerSale(requests, seller.getId(),
-                    customer == null ? null : customer.getId(), initialPayment, saleOperationKey);
+            saved = authorizationService.execute(session, Permission.REGISTER_SALE, () ->
+                    sales.registerSale(requests, seller.getId(),
+                            customer == null ? null : customer.getId(), initialPayment, saleOperationKey));
         } catch (IllegalArgumentException | SecurityException rejected) {
             messageLabel.setText("Venta no registrada: " + safeMessage(rejected) + " El carrito se conserva.");
             return;
@@ -246,7 +253,8 @@ public class SalesController {
         refreshSaleOperationKeyLabel();
         refreshTotal();
         try {
-            customerCombo.getItems().setAll(customers.getAllCustomers());
+            customerCombo.getItems().setAll(authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                    customers::getAllCustomers));
         } catch (RuntimeException failure) {
             messageLabel.setText("Venta registrada: " + saved.getId()
                     + ". No se pudo actualizar la lista de clientes; la venta no se repetirá.");
@@ -275,7 +283,7 @@ public class SalesController {
     private void refreshHistory() {
         requirePermission(Permission.VIEW_SALES, "No tiene permiso para consultar las ventas.");
         if (sales != null) {
-            List<Sale> history = sales.listAll();
+            List<Sale> history = authorizationService.execute(session, Permission.VIEW_SALES, sales::listAll);
             var principal = authorizationService.currentPrincipal(session);
             if (principal.role() != UserRole.ADMINISTRATOR) {
                 history = principal.sellerId() == null ? List.of() : history.stream()
@@ -305,7 +313,8 @@ public class SalesController {
         var principal = authorizationService.currentPrincipal(session);
         if (principal.role() == UserRole.ADMINISTRATOR) return true;
         return principal.sellerId() != null && principal.sellerId().equals(seller.getId())
-                && sellers.getSellerById(principal.sellerId()).isPresent();
+                && authorizationService.execute(session, Permission.REGISTER_SALE,
+                    () -> sellers.getSellerById(principal.sellerId())).isPresent();
     }
 
     private static String money(BigDecimal amount) {

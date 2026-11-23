@@ -107,7 +107,8 @@ public class InventoryController {
         this.session = session;
         requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
         requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar el inventario.");
-        productCombo.getItems().setAll(products.listAll());
+        productCombo.getItems().setAll(authorizationService.execute(session, Permission.VIEW_CATALOG,
+                products::listAll));
         boolean canManageEntries = authorizationService.hasPermission(session, Permission.MANAGE_INVENTORY_ENTRIES);
         boolean canManageProducts = authorizationService.hasPermission(session, Permission.MANAGE_PRODUCTS);
         stockEntryPane.setVisible(canManageEntries);
@@ -139,7 +140,7 @@ public class InventoryController {
         }
 
         try {
-            products.register(product);
+            authorizationService.execute(session, Permission.MANAGE_PRODUCTS, () -> products.register(product));
         } catch (RuntimeException failure) {
             messageLabel.setText("No se pudo confirmar el registro del producto. Use «Actualizar inventario» "
                     + "y compruebe el catálogo antes de volver a intentarlo. " + safeMessage(failure));
@@ -174,7 +175,8 @@ public class InventoryController {
         }
 
         try {
-            inventory.addStock(product.getId(), baskets, loose, reasonField.getText());
+            authorizationService.execute(session, Permission.MANAGE_INVENTORY_ENTRIES,
+                    () -> inventory.addStock(product.getId(), baskets, loose, reasonField.getText()));
         } catch (RuntimeException failure) {
             messageLabel.setText("No se pudo confirmar el resultado de la entrada. Use «Actualizar inventario» "
                     + "para verificar las existencias y movimientos antes de intentar otra entrada. "
@@ -229,11 +231,14 @@ public class InventoryController {
     private void refresh() {
         requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
         requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar el inventario.");
-        java.util.List<BeerProduct> catalog = products.listAll();
+        java.util.List<BeerProduct> catalog = authorizationService.execute(session, Permission.VIEW_CATALOG,
+                products::listAll);
         productCombo.getItems().setAll(catalog);
-        inventoryTable.getItems().setAll(catalog.stream()
-                .map(product -> new ProductStock(product, inventory.getStock(product.getId()))).toList());
-        movementTable.getItems().setAll(inventory.allMovements());
+        inventoryTable.getItems().setAll(authorizationService.execute(session, Permission.VIEW_INVENTORY,
+                () -> catalog.stream().map(product -> new ProductStock(product,
+                        inventory.getStock(product.getId()))).toList()));
+        movementTable.getItems().setAll(authorizationService.execute(session, Permission.VIEW_INVENTORY,
+                inventory::allMovements));
     }
 
     private ContainerType productType() {

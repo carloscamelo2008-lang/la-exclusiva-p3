@@ -1,0 +1,12 @@
+-- Solo prepara un esquema incompleto dentro de un cluster efímero recién creado.
+\ir guard.psql
+DO $empty$
+BEGIN
+    IF EXISTS (SELECT FROM pg_catalog.pg_class WHERE relnamespace = 'public'::regnamespace
+               AND relkind IN ('r', 'p', 'v', 'm', 'f', 'S')) THEN
+        RAISE EXCEPTION 'La prueba de rechazo requiere un laboratorio recién creado';
+    END IF;
+END;
+$empty$;
+\ir ../../migrations/V001__initial_schema.sql
+\echo 'Solo V001 aplicada para verificar que la identidad JDBC falla de forma segura.'

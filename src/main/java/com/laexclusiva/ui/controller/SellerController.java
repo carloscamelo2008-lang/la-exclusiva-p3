@@ -73,12 +73,14 @@ public class SellerController {
     private void handleRegisterSeller() {
         try {
             requirePermission(Permission.REGISTER_SELLERS, "No tiene permiso para registrar vendedores.");
-            sellerService.registerSeller(nameField.getText(), phoneField.getText(), addressField.getText());
+            authorizationService.execute(session, Permission.REGISTER_SELLERS, () ->
+                    sellerService.registerSeller(nameField.getText(), phoneField.getText(), addressField.getText()));
             messageLabel.setText("Vendedor registrado.");
             nameField.clear();
             phoneField.clear();
             addressField.clear();
-            showSellers(sellerService.getAllSellers());
+            showSellers(authorizationService.execute(session, Permission.VIEW_SELLERS,
+                    sellerService::getAllSellers));
         } catch (RuntimeException failure) {
             messageLabel.setText("No se registró el vendedor: " + safeMessage(failure));
         }

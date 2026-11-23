@@ -75,14 +75,16 @@ public class CustomerController {
     private void handleRegisterCustomer() {
         try {
             requirePermission(Permission.REGISTER_CUSTOMER, "No tiene permiso para registrar clientes.");
-            customerService.registerCustomer(idField.getText(), nameField.getText(),
-                    phoneField.getText(), addressField.getText());
+            authorizationService.execute(session, Permission.REGISTER_CUSTOMER, () ->
+                    customerService.registerCustomer(idField.getText(), nameField.getText(),
+                            phoneField.getText(), addressField.getText()));
             messageLabel.setText("Cliente registrado.");
             idField.clear();
             nameField.clear();
             phoneField.clear();
             addressField.clear();
-            showCustomers(customerService.getAllCustomers());
+            showCustomers(authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers));
         } catch (RuntimeException failure) {
             messageLabel.setText("No se registró el cliente: " + safeMessage(failure));
         }

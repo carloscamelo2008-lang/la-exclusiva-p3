@@ -1,4 +1,4 @@
-"""Laboratorio autorizado del PR22: ejecuta SQL solo mediante Docker exec verificado.
+"""Laboratorio autorizado de identidad: ejecuta SQL solo mediante Docker exec verificado.
 
 No tiene ruta de conexión a bases del host ni utiliza secretos del repositorio.
 """
@@ -15,8 +15,23 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[3]
 LAB = ROOT / "database/validation/identity"
 ENV = os.environ.copy()
-if ENV.get("GITHUB_ACTIONS") != "true" or ENV.get("IDENTITY_LAB_AUTHORIZED") != "pr22":
+AUTHORIZED_BRANCHES = {
+    "feature/daniel-identity-users": "pr22",
+    "feature/identity-app-integration": "pr24",
+}
+event = ENV.get("GITHUB_EVENT_NAME")
+branch = ENV.get("GITHUB_HEAD_REF") if event == "pull_request" else ENV.get("GITHUB_REF_NAME")
+expected_authorization = AUTHORIZED_BRANCHES.get(branch)
+if (ENV.get("GITHUB_ACTIONS") != "true" or not expected_authorization
+        or ENV.get("IDENTITY_LAB_AUTHORIZED") != expected_authorization):
     raise SystemExit("Solo el job efímero expresamente autorizado puede ejecutar este laboratorio.")
+if event == "pull_request":
+    event_file = Path(ENV["GITHUB_EVENT_PATH"])
+    payload = json.loads(event_file.read_text(encoding="utf-8"))
+    head = payload["pull_request"]["head"]
+    if (head["repo"]["full_name"] != ENV["GITHUB_REPOSITORY"]
+            or head["ref"] != branch or head["sha"] != ENV["LAB_SOURCE_HEAD"]):
+        raise SystemExit("La referencia de origen debe ser el HEAD actual de un PR del mismo repositorio.")
 if ENV.get("DOCKER_HOST") or ENV.get("DOCKER_CONTEXT"):
     raise SystemExit("No se permiten endpoints Docker alternativos.")
 BASE = Path(ENV["LAB_ROOT"]).resolve()
@@ -124,6 +139,8 @@ def psql(files=(), query=None, check=True):
 
 
 def java_tests(cycle):
+    scenario = "application" if cycle == "application" else "incomplete" if cycle == "incomplete" else "identity"
+    ENV["LAB_SCENARIO"] = scenario
     compose("--profile", "java", "create", "--no-recreate", "java")
     java = compose("--profile", "java", "ps", "-aq", "java").stdout.strip()
     save(cycle + "-java-isolation.json", json.dumps(inspect_container(java, java=True), indent=2))
@@ -137,11 +154,16 @@ def java_tests(cycle):
         suite = ET.parse(file).getroot()
         for key in totals:
             totals[key] += int(suite.attrib[key])
-    assert len(suites) == 4 and totals == {"tests": 25, "failures": 0, "errors": 0, "skipped": 0}, totals
+    expected = {
+        "identity": (4, {"tests": 26, "failures": 0, "errors": 0, "skipped": 0}),
+        "application": (14, {"tests": 52, "failures": 0, "errors": 0, "skipped": 0}),
+        "incomplete": (1, {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}),
+    }[scenario]
+    assert (len(suites), totals) == expected, {"suites": len(suites), "totals": totals}
     assert code == 0 and "BUILD SUCCESS" in output.stdout
     (EVIDENCE / "surefire-reports").rename(EVIDENCE / (cycle + "-surefire"))
     print(cycle + " Java 17: " + json.dumps(totals), flush=True)
-    report["cycles"].append({"cycle": cycle, "java": totals, "identity_integrations": 19, "seller_concurrency": 6})
+    report["cycles"].append({"cycle": cycle, "java": totals, "scenario": scenario})
 
 
 def snapshot():
@@ -172,7 +194,12 @@ def main():
                 "-w", "/workspace", ENV["LAEXCLUSIVA_JAVA17_IMAGE"], "bash", "-c",
                 "set -e; cp /source/pom.xml .; cp -a /source/src /source/database /source/docs .; java -version; mvn -version; mvn -B -ntp -Dtest=IdentityValidationPlanTest test"], timeout=600)
     save("dependency-preparation.log", warm.stdout)
-    for name in ("V001__initial_schema.sql", "V104__user_security_version.sql", "V105__unique_active_user_seller.sql", "V106__user_account_instance_identity.sql"):
+    migration_names = ("V001__initial_schema.sql", "V002__payment_idempotency.sql",
+                       "V100__sale_creation_idempotency.sql", "V101__general_debt_ledger.sql",
+                       "V102__cash_ledger.sql", "V103__enforce_sale_request_identity_coherence.sql",
+                       "V104__user_security_version.sql", "V105__unique_active_user_seller.sql",
+                       "V106__user_account_instance_identity.sql")
+    for name in migration_names:
         report["migrations"][name] = hashlib.sha256((ROOT / "database/migrations" / name).read_bytes()).hexdigest()
     for cycle in ("first", "repeat"):
         start(cycle)
@@ -202,6 +229,15 @@ def main():
     assert state.strip().endswith("t"), state
     save("recovery-catalog.log", psql(["database/validation/identity/inspect.psql"]).stdout)
     report["recovery"] = "23505 rejected; V104 preserved; scoped fixture correction; V105/V106 applied"
+    start("application")
+    save("application-schema.log", psql(["database/validation/identity/application.psql"]).stdout)
+    save("application-catalog.log", psql(["database/validation/identity/inspect.psql"]).stdout)
+    java_tests("application")
+    cleanup()
+    start("incomplete")
+    save("incomplete-schema.log", psql(["database/validation/identity/incomplete.psql"]).stdout)
+    java_tests("incomplete")
+    cleanup()
     report["completed"] = True
 
 
@@ -220,4 +256,4 @@ finally:
         if "--cleanup" not in sys.argv:
             save("summary.json", json.dumps(report, indent=2))
             if report["completed"] and report.get("destroyed"):
-                print("Laboratorio completado y destruido: 2 ciclos x (19 integraciones + 6 concurrencias), recuperación aprobada.", flush=True)
+                print("Laboratorio completado y destruido: ciclos identidad (26 pruebas x 2), aplicación (52 pruebas PostgreSQL) y esquema incompleto (1 prueba); recuperación aprobada.", flush=True)

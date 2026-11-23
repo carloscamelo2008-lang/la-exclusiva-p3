@@ -233,7 +233,8 @@ public class PortfolioController {
 
         key = pendingKey;
         try {
-            salesWorkflow.registerPayment(selected.getId(), amount, key);
+            authorizationService.execute(session, Permission.REGISTER_PAYMENT,
+                    () -> salesWorkflow.registerPayment(selected.getId(), amount, key));
         } catch (IllegalArgumentException rejected) {
             // Errores de dominio son rechazos definitivos antes de persistir el abono.
             pendingSaleId = null;
@@ -254,7 +255,8 @@ public class PortfolioController {
         String confirmedMessage = "Abono registrado correctamente.";
         messageLabel.setText(confirmedMessage);
         try {
-            showPortfolio(customerService.getAllCustomers());
+            showPortfolio(authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers));
             if (!lastQuerySucceeded) {
                 messageLabel.setText(confirmedMessage
                         + " No se pudo actualizar la consulta de cartera; use Actualizar cartera sin registrar otro abono.");
@@ -308,9 +310,13 @@ public class PortfolioController {
 
         try {
             if (payment) {
-                generalDebtWorkflow.registerPayment(selected.getId(), amount, category, description, pendingGeneralKey);
+                authorizationService.execute(session, Permission.REGISTER_PAYMENT,
+                        () -> generalDebtWorkflow.registerPayment(selected.getId(), amount, category,
+                                description, pendingGeneralKey));
             } else {
-                generalDebtWorkflow.registerDebt(selected.getId(), amount, category, description, pendingGeneralKey);
+                authorizationService.execute(session, Permission.REGISTER_GENERAL_DEBT,
+                        () -> generalDebtWorkflow.registerDebt(selected.getId(), amount, category,
+                                description, pendingGeneralKey));
             }
         } catch (IllegalArgumentException | SecurityException rejected) {
             pendingGeneralKey = null;
@@ -338,7 +344,8 @@ public class PortfolioController {
         }
         messageLabel.setText(payment ? "Abono aplicado solo a deuda general." : "Deuda general registrada.");
         try {
-            showPortfolio(customerService.getAllCustomers());
+            showPortfolio(authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers));
             if (!lastQuerySucceeded) {
                 messageLabel.setText(confirmedGeneralOperationMessage(payment)
                         + " No se pudo actualizar la consulta de cartera; use Actualizar cartera sin repetir la operación.");
@@ -359,7 +366,8 @@ public class PortfolioController {
     private void handleRefreshPortfolio() {
         try {
             requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
-            List<Customer> refreshed = customerService.getAllCustomers();
+            List<Customer> refreshed = authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers);
             showPortfolio(refreshed);
             if (lastQuerySucceeded) {
                 messageLabel.setText("Cartera actualizada.");
@@ -392,15 +400,18 @@ public class PortfolioController {
             BigDecimal salesDebt;
             BigDecimal generalDebt;
             if (generalDebtWorkflow != null) {
-                CustomerDebtBreakdown breakdown = generalDebtWorkflow.findBalance(selected.getId());
+                CustomerDebtBreakdown breakdown = authorizationService.execute(session, Permission.VIEW_PORTFOLIO,
+                        () -> generalDebtWorkflow.findBalance(selected.getId()));
                 salesDebt = breakdown.outstandingSalesDebt();
                 generalDebt = breakdown.generalDebt();
             } else {
                 salesDebt = salesWorkflow == null ? BigDecimal.ZERO
-                        : salesWorkflow.outstandingSalesDebt(selected.getId());
+                        : authorizationService.execute(session, Permission.VIEW_PORTFOLIO,
+                            () -> salesWorkflow.outstandingSalesDebt(selected.getId()));
                 generalDebt = selected.getBalance().subtract(salesDebt);
             }
-            List<Sale> pendingSales = salesWorkflow == null ? List.of() : salesWorkflow.listAll().stream()
+            List<Sale> pendingSales = salesWorkflow == null ? List.of()
+                    : authorizationService.execute(session, Permission.VIEW_SALES, salesWorkflow::listAll).stream()
                     .filter(sale -> sale.getCustomer() != null
                             && selected.getId().equals(sale.getCustomer().getId()))
                     .filter(sale -> sale.calculateBalance().signum() > 0)
@@ -411,9 +422,10 @@ public class PortfolioController {
                     ? "Inconsistencia: ventas superan el saldo agregado."
                     : "Deuda general: " + money(generalDebt));
             if (generalDebtWorkflow != null) {
-                generalDebtMovementsTable.getItems().setAll(generalDebtWorkflow.listMovements(selected.getId(),
-                        movementFromDatePicker.getValue(), movementThroughDatePicker.getValue(),
-                        movementCategoryFilterField.getText()));
+                generalDebtMovementsTable.getItems().setAll(authorizationService.execute(session,
+                        Permission.VIEW_PORTFOLIO, () -> generalDebtWorkflow.listMovements(selected.getId(),
+                                movementFromDatePicker.getValue(), movementThroughDatePicker.getValue(),
+                                movementCategoryFilterField.getText())));
             }
             return true;
         } catch (RuntimeException failure) {
