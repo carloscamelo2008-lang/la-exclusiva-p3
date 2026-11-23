@@ -400,3 +400,15 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté el refuerzo de cobertura dentro del alcance y mantuve pendientes la revisión independiente y la integración comercial. No se reconstruyeron interacciones de otras fechas sin evidencia.
 * **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9: 751 casos, 711 aprobados, cero fallos y errores y 40 integraciones PostgreSQL omitidas. Codex comprobó git diff --check y preparó el diff íntegro fuera del repositorio para revisión. No hubo PostgreSQL, migraciones, commit ni push.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+---
+
+### Interacción 21 – Publicación de 4D y preparación de entrega
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Cierre verificable de identidad (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Autoricé publicar 4D y completar las verificaciones locales y documentación para preparar el PR hacia develop.
+* **Resumen de la respuesta recibida:** Codex publicó 3e4afd7, midió PBKDF2 con fixtures sintéticos y explicitó compatibilidad y límites de la entrega independiente, sin conectar módulos comerciales.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté registrar los resultados reales y mantener pendientes la revisión de Jesús, inventario histórico, migraciones y futuras decisiones compartidas de integración. La autorización de trabajo autónomo no equivale a aprobar seguridad ni aplicar esquemas.
+* **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9 y objetivo Java 17: 751 casos, 711 aprobados, cero fallos/errores y 40 integraciones PostgreSQL omitidas. La medición secuencial usó un calentamiento y tres muestras por caso: medianas de 43,209 ms para el formato actual y 385,676 ms para un millón de iteraciones con resultado de 64 bytes; no es una garantía de capacidad. git diff --check pasó. No hubo PostgreSQL ni aplicación de V104/V105. No se reconstruyen fechas sin registros suficientes.
+* **Commit o Pull Request relacionado:** 3e4afd788d9b43187dca9ea93e41636e5ff99b2d; commit documental y PR pendientes de creación al registrar esta entrada.

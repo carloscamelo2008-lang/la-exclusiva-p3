@@ -49,3 +49,30 @@ mencionada en la propuesta inicial queda sustituida por esta numeración. V004 d
 Compras y Recepción ya está integrada en develop; las migraciones financieras
 ocupan V100–V103. Esto no constituye aprobación íntegra de los demás contratos
 pendientes. La revisión final de seguridad y SQL corresponde a Carlos y Jesús.
+## Estado de la entrega independiente — 22/11/2026
+
+La cabecera y las propuestas iniciales se conservan como contexto histórico. Carlos
+ha autorizado los desarrollos de repositorio JDBC, composición independiente,
+versionado V104, exclusividad V105, administración protegida y sesiones emitidas,
+política de contraseñas y endurecimiento PBKDF2. También autorizó su publicación y
+un PR hacia develop. La revisión independiente de Jesús sobre el conjunto no se
+considera completada por esta autorización.
+
+La entrega es una base de identidad revisable, no la integración completa en la
+aplicación. AuthenticationService y su validador deben proceder de la misma
+IdentityServices; los constructores administrativos sin emisor fallan cerrado.
+No se añadieron usuarios predeterminados ni fallback JDBC a memoria. No se afirma
+que App ya autentique usuarios PostgreSQL. Mantiene su aprovisionamiento en memoria.
+
+Quedan para acuerdos e integración posteriores: bootstrap persistente concurrente
+que no restablezca contraseñas; montaje en ApplicationServices y navegación por
+Carlos; pantalla de gestión de usuarios; UUID automático de clientes sin cambiar
+contratos compartidos; revalidación en operaciones comerciales y uso del vendedor
+actual por los responsables. No se implementaron estos cambios al cerrar 4D ni se
+decidieron firmas nuevas por el equipo. No se modificaron módulos de Carlos/Jesús.
+
+V104 y V105 están preparadas, sin aplicar. Los 40 casos PostgreSQL omitidos de la
+suite actual son pendientes, no aprobaciones. La medición PBKDF2 real y sus límites
+están en password-verification.md; no existe inventario completo de hashes reales.
+Antes de despliegue se requieren revisión de seguridad, autorización explícita de
+migraciones y pruebas aisladas. No se aprueba ni fusiona el PR desde esta entrega.
