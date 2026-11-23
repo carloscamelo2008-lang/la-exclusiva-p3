@@ -18,6 +18,7 @@ import com.laexclusiva.repository.InMemoryInventoryRepository;
 import com.laexclusiva.repository.InMemoryStockMovementRepository;
 import com.laexclusiva.repository.PurchaseOrderRepository;
 import com.laexclusiva.repository.PurchaseOrderRepository.OrderWithLines;
+import com.laexclusiva.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,6 +40,7 @@ public final class GoodsReceiptService {
     private final StockMovementRepositoryJdbc jdbcMovements;
     private final InMemoryInventoryRepository memoryStock;
     private final InMemoryStockMovementRepository memoryMovements;
+    private final UserRepository auditUsers;
 
     /** Configura JDBC con repositorios y ajustador construidos sobre el proveedor del mismo gestor. */
     public GoodsReceiptService(PurchaseOrderRepository orders, GoodsReceiptRepository receipts,
@@ -46,7 +48,27 @@ public final class GoodsReceiptService {
                                TransactionBoundary transactions, InventoryStockAdjuster stock,
                                StockMovementRepositoryJdbc movements) {
         this(orders, receipts, products, authorization, transactions,
-                Objects.requireNonNull(stock), Objects.requireNonNull(movements), null, null);
+                Objects.requireNonNull(stock), Objects.requireNonNull(movements), null, null, null);
+    }
+
+    /**
+     * Configura el repositorio de identidad compartido para auditar el usuario persistido.
+     * @param orders repositorio de pedidos que se bloquea durante la recepción
+     * @param receipts repositorio de recepciones idempotentes
+     * @param products catálogo con la capacidad histórica de cada producto
+     * @param authorization autoridad que valida la sesión y el permiso vigente
+     * @param transactions frontera JDBC compartida con inventario y movimientos
+     * @param stock ajustador atómico de existencias construido con el mismo proveedor
+     * @param movements repositorio JDBC de movimientos construido con el mismo proveedor
+     * @param auditUsers repositorio de la identidad persistida usada para completar la auditoría
+     */
+    public GoodsReceiptService(PurchaseOrderRepository orders, GoodsReceiptRepository receipts,
+                               ProductService products, AuthorizationService authorization,
+                               TransactionBoundary transactions, InventoryStockAdjuster stock,
+                               StockMovementRepositoryJdbc movements, UserRepository auditUsers) {
+        this(orders, receipts, products, authorization, transactions,
+                Objects.requireNonNull(stock), Objects.requireNonNull(movements), null, null,
+                Objects.requireNonNull(auditUsers));
     }
 
     /** Configura memoria con la frontera serializada que comparte el servicio de pedidos. */
@@ -55,14 +77,34 @@ public final class GoodsReceiptService {
                                TransactionBoundary transactions, InMemoryInventoryRepository stock,
                                InMemoryStockMovementRepository movements) {
         this(orders, receipts, products, authorization, transactions,
-                null, null, Objects.requireNonNull(stock), Objects.requireNonNull(movements));
+                null, null, Objects.requireNonNull(stock), Objects.requireNonNull(movements), null);
+    }
+
+    /**
+     * Configura el repositorio de identidad compartido para auditar el usuario de memoria vigente.
+     * @param orders repositorio de pedidos
+     * @param receipts repositorio de recepciones en memoria
+     * @param products catálogo compartido
+     * @param authorization autoridad que valida la sesión y el permiso vigente
+     * @param transactions frontera serializada de la composición en memoria
+     * @param stock existencias compartidas con inventario
+     * @param movements historial de movimientos compartido
+     * @param auditUsers repositorio de usuarios de la composición en memoria
+     */
+    public GoodsReceiptService(PurchaseOrderRepository orders, GoodsReceiptRepository receipts,
+                               ProductService products, AuthorizationService authorization,
+                               TransactionBoundary transactions, InMemoryInventoryRepository stock,
+                               InMemoryStockMovementRepository movements, UserRepository auditUsers) {
+        this(orders, receipts, products, authorization, transactions,
+                null, null, Objects.requireNonNull(stock), Objects.requireNonNull(movements),
+                Objects.requireNonNull(auditUsers));
     }
 
     private GoodsReceiptService(PurchaseOrderRepository orders, GoodsReceiptRepository receipts,
                                 ProductService products, AuthorizationService authorization,
                                 TransactionBoundary transactions, InventoryStockAdjuster stock,
                                 StockMovementRepositoryJdbc jdbcMovements, InMemoryInventoryRepository memoryStock,
-                                InMemoryStockMovementRepository memoryMovements) {
+                                InMemoryStockMovementRepository memoryMovements, UserRepository auditUsers) {
         this.orders = Objects.requireNonNull(orders);
         this.receipts = Objects.requireNonNull(receipts);
         this.products = Objects.requireNonNull(products);
@@ -72,6 +114,7 @@ public final class GoodsReceiptService {
         this.jdbcMovements = jdbcMovements;
         this.memoryStock = memoryStock;
         this.memoryMovements = memoryMovements;
+        this.auditUsers = auditUsers;
     }
 
     /** Identifica una línea de pedido y sus cantidades físicas recibidas. */
@@ -171,8 +214,9 @@ public final class GoodsReceiptService {
         boolean complete = order.lines().stream().allMatch(line ->
                 line.pendingEquivalentUnits() == deltas.getOrDefault(line.id(), 0));
         PurchaseOrderStatus status = complete ? PurchaseOrderStatus.COMPLETED : PurchaseOrderStatus.PARTIAL;
-        GoodsReceipt draft = new GoodsReceipt(null, order.order().id(), key, null,
-                session.getUserAccount().getUsername(), notes, LocalDateTime.now(), details);
+        PurchaseActorResolver.Actor actor = PurchaseActorResolver.resolve(authorization, auditUsers, session);
+        GoodsReceipt draft = new GoodsReceipt(null, order.order().id(), key, actor.userId(),
+                actor.username(), notes, LocalDateTime.now(), details);
         List<StockMovement> movements = new ArrayList<>();
         if (jdbcMovements != null) {
             draft = registerJdbcMovements(draft);

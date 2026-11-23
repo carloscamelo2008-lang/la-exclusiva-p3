@@ -9,6 +9,7 @@ BEGIN
 END;
 $empty$;
 \ir ../../migrations/V001__initial_schema.sql
+\ir ../../migrations/V004__purchase_orders.sql
 \ir ../../migrations/V002__payment_idempotency.sql
 \ir ../../migrations/V100__sale_creation_idempotency.sql
 \ir ../../migrations/V101__general_debt_ledger.sql

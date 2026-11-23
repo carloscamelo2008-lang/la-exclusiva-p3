@@ -40,6 +40,8 @@ import com.laexclusiva.service.InMemorySalesWorkflow;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.JdbcSalesWorkflow;
 import com.laexclusiva.service.ProductService;
+import com.laexclusiva.service.PurchasesModuleFactory;
+import com.laexclusiva.service.PurchasesModuleFactory.Services;
 import com.laexclusiva.service.SaleService;
 import com.laexclusiva.service.SalesWorkflow;
 import com.laexclusiva.service.SellerService;
@@ -61,12 +63,13 @@ public final class ApplicationServices {
     private final CustomerGeneralDebtWorkflow generalDebt;
     private final CashWorkflow cash;
     private final IdentityServices identity;
+    private final Services purchases;
 
     private ApplicationServices(CustomerService customers, SellerService sellers, ProductService products,
                                 InventoryService inventory, SalesWorkflow sales,
                                 CustomerDebtQuery debtQuery, boolean postgresMode,
                                 CustomerGeneralDebtWorkflow generalDebt, CashWorkflow cash,
-                                IdentityServices identity) {
+                                IdentityServices identity, Services purchases) {
         this.customers = customers;
         this.sellers = sellers;
         this.products = products;
@@ -77,6 +80,7 @@ public final class ApplicationServices {
         this.generalDebt = generalDebt;
         this.cash = cash;
         this.identity = identity;
+        this.purchases = purchases;
     }
 
     /**
@@ -114,8 +118,8 @@ public final class ApplicationServices {
         SellerService sellers = new SellerService(sellerRepository);
         IdentityServices identity = IdentityServices.inMemory(sellers);
         ProductRepository productRepository = new InMemoryProductRepository();
-        InventoryRepository inventoryRepository = new InMemoryInventoryRepository();
-        StockMovementRepository movements = new InMemoryStockMovementRepository();
+        InMemoryInventoryRepository inventoryRepository = new InMemoryInventoryRepository();
+        InMemoryStockMovementRepository movements = new InMemoryStockMovementRepository();
         SaleRepository saleRepository = new InMemorySaleRepository();
         CustomerService customers = new CustomerService(customerRepository);
         ProductService products = new ProductService(productRepository);
@@ -125,8 +129,10 @@ public final class ApplicationServices {
         SalesWorkflow sales = new InMemorySalesWorkflow(saleService, customers);
         CustomerGeneralDebtWorkflow generalDebt = new InMemoryCustomerGeneralDebtWorkflow(customers, sales);
         CashWorkflow cash = new InMemoryCashWorkflow(sales, generalDebt);
+        Services purchases = PurchasesModuleFactory.inMemory(products, inventoryRepository, movements,
+                identity.authorization(), identity.users());
         return new ApplicationServices(customers, sellers, products, inventory, sales, null, false,
-                generalDebt, cash, identity);
+                generalDebt, cash, identity, purchases);
     }
 
     private static ApplicationServices postgres(DatabaseConfig config) {
@@ -157,8 +163,10 @@ public final class ApplicationServices {
         CustomerGeneralDebtWorkflow generalDebt = new CustomerGeneralDebtWorkflowJdbc(customerRepository,
                 debtQuery, customerBalances, generalDebtRepository, cashRepository, transactions);
         CashWorkflow cash = new CashWorkflowJdbc(cashRepository, transactions);
+        Services purchases = PurchasesModuleFactory.postgres(provider, identity.authorization(), identity.users(),
+                products, transactions, inventoryAdjuster, movementRepository);
         return new ApplicationServices(customers, sellers, products, inventory, sales, debtQuery, true,
-                generalDebt, cash, identity);
+                generalDebt, cash, identity, purchases);
     }
 
     /** Servicio de clientes conectado al repositorio seleccionado. */
@@ -183,4 +191,6 @@ public final class ApplicationServices {
     public IdentityServices identity() { return identity; }
     /** Autorizador vinculado al emisor de sesiones de esta composición. */
     public com.laexclusiva.service.AuthorizationService authorization() { return identity.authorization(); }
+    /** Proveedores, pedidos y recepción conectados al mismo catálogo, inventario y autoridad. */
+    public Services purchases() { return purchases; }
 }

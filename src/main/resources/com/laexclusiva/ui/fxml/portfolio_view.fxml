@@ -10,16 +10,20 @@
 <?import javafx.scene.control.DatePicker?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.ScrollPane?>
 
-<VBox spacing="12.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.laexclusiva.ui.controller.PortfolioController">
+<ScrollPane fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" pannable="true"
+            xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.laexclusiva.ui.controller.PortfolioController">
+  <content>
+    <VBox spacing="12.0">
     <padding>
         <Insets top="20.0" right="20.0" bottom="20.0" left="20.0" />
     </padding>
     <Label text="Cartera pendiente" style="-fx-font-size: 22px;" />
     <Label fx:id="portfolioSubtitle"
            text="Consulta de saldos por cliente y registro de abonos a ventas." wrapText="true" />
-    <TableView fx:id="portfolioTable" editable="false" VBox.vgrow="ALWAYS">
+    <TableView fx:id="portfolioTable" editable="false" prefHeight="150.0">
         <columnResizePolicy>
             <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
         </columnResizePolicy>
@@ -78,4 +82,6 @@
     </TableView>
     <Label fx:id="modeLabel" wrapText="true" />
     <Label fx:id="messageLabel" wrapText="true" />
-</VBox>
+    </VBox>
+  </content>
+</ScrollPane>

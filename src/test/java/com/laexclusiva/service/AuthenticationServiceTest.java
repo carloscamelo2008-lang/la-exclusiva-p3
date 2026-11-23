@@ -22,6 +22,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.BorderPane;
 import javafx.css.PseudoClass;
 import javafx.scene.Scene;
@@ -539,7 +540,8 @@ public class AuthenticationServiceTest {
             Button portfolioButton = (Button) sidebar.lookup("#btnCredit");
             portfolioButton.fire();
 
-            TableView<?> table = (TableView<?>) menu.getCenter().lookup("#portfolioTable");
+            Node portfolioContent = scrollContent(menu.getCenter());
+            TableView<?> table = (TableView<?>) portfolioContent.lookup("#portfolioTable");
             assertNotNull(table);
             assertFalse(table.isEditable());
             assertEquals(1, table.getItems().size());
@@ -551,7 +553,7 @@ public class AuthenticationServiceTest {
             assertSame(dashboard, menu.getCenter());
             assertSame(sidebar, menu.getLeft());
             portfolioButton.fire();
-            assertNotNull(menu.getCenter().lookup("#portfolioTable"));
+            assertNotNull(scrollContent(menu.getCenter()).lookup("#portfolioTable"));
         });
     }
 
@@ -561,7 +563,7 @@ public class AuthenticationServiceTest {
         customers.registerCustomer("C-01", "Ana Pérez", "3001234567", "Calle 10");
         withMainMenu(UserRole.WORKER, customers, (menu, account) -> {
             ((Button) menu.getLeft().lookup("#btnCredit")).fire();
-            TableView<?> table = (TableView<?>) menu.getCenter().lookup("#portfolioTable");
+            TableView<?> table = (TableView<?>) scrollContent(menu.getCenter()).lookup("#portfolioTable");
             assertNotNull(table);
             assertTrue(table.getItems().isEmpty());
             assertEquals("No hay clientes con saldo pendiente", ((Label) table.getPlaceholder()).getText());
@@ -860,6 +862,10 @@ public class AuthenticationServiceTest {
         for (String id : List.of("btnDashboard", "btnCustomers", "btnSellers", "btnCredit")) {
             assertEquals(id.equals(selectedId), menu.lookup("#" + id).getPseudoClassStates().contains(active), id);
         }
+    }
+
+    private static Node scrollContent(Node view) {
+        return view instanceof ScrollPane scrollPane ? scrollPane.getContent() : view;
     }
 
     private static void onFxThread(java.util.concurrent.Callable<Void> check) throws Exception {
