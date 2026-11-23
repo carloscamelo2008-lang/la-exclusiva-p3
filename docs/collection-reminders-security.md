@@ -88,4 +88,10 @@ La entidad `purchase_order` representa pedidos a proveedores y no se reutiliza p
 
 ## Verificación y límites
 
-Las pruebas unitarias comprueban reglas, permisos, consentimiento, PDF, simulación, idempotencia y casos de error. `CustomerCollectionPostgresIntegrationTest` es optativa y exclusiva del laboratorio efímero de CI; requiere V107/V108 y su propiedad de activación. La omisión local sin URL no cuenta como prueba PostgreSQL aprobada. No ejecutar estas migraciones en bases locales existentes como parte de las pruebas.
+Las pruebas unitarias comprueban reglas, permisos, consentimiento, PDF, simulación, idempotencia y casos de error. `CustomerCollectionPostgresIntegrationTest` es optativa; en CI se ejecuta solo en el laboratorio efímero autorizado.
+
+Validación del HEAD `a8cbf6b87eb2daf97825180bfffbf89ebe2ed944` (23-11-2026): la acción [`identity-postgres` 45276566584](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45276566584) terminó correctamente con **112/112** pruebas PostgreSQL, cero fallos, errores u omisiones. Incluyó identidad 26/26 en dos ciclos, aplicación 59/59 (incluida `CustomerCollectionPostgresIntegrationTest`, 1/1) y esquema incompleto 1/1. El laboratorio efímero usó PostgreSQL 18 y Java 17 desde imágenes fijadas por digest; aplicó la ruta V001, V004, V002 y V100–V108, verificó las migraciones y destruyó el clúster al terminar. El registro sanitizado marcó `completed=true` y `destroyed=true`.
+
+La primera ejecución del mismo HEAD antes de la corrección de fixture falló al limpiar un usuario: su evento de asignación de vendedor aún referenciaba `administrative_audit_event` mediante FK `RESTRICT`. La limpieza se ajustó para borrar únicamente eventos cuyo actor/objetivo/cliente corresponde a ese fixture, dentro de la transacción acotada. La ejecución final en `a8cbf6b` pasó y el escenario posterior de bootstrap confirmó la base vacía. La verificación local omitió integraciones PostgreSQL por falta deliberada de variables de conexión; esa omisión no se cuenta como resultado PostgreSQL.
+
+No ejecutar estas migraciones en bases locales existentes como parte de esta validación. Las pruebas no enviaron correos reales; la integración SMTP real continúa sin validación operativa.

@@ -32,7 +32,7 @@ Para las pruebas automatizadas, define `LAEXCLUSIVA_TEST_DB_URL` con la base ais
 
 ## Migraciones
 
-Las migraciones son SQL versionado, no se ejecutan automáticamente al iniciar la aplicación. La secuencia actual del repositorio es `V001`, `V002`, `V004`, `V100`–`V108`; los saltos de numeración son intencionales y los requisitos de cada versión se detallan en los encabezados y en el [contrato JDBC](jdbc-integration-contract.md). Antes de aplicar una migración, verifica manualmente el servidor, el nombre de base y el estado de esquema. No repitas una versión ya aplicada. Para pruebas que puedan insertar o limpiar fixtures, utiliza exclusivamente una base ficticia y aislada `la_exclusiva_test` o el laboratorio efímero de CI.
+Las migraciones son SQL versionado, no se ejecutan automáticamente al iniciar la aplicación. El conjunto actual del repositorio incluye `V001`, `V002`, `V004` y `V100`–`V108`; los saltos de numeración son intencionales. La ruta aplicada por el laboratorio se declara en `database/validation/identity/application.psql`; los requisitos de cada versión están en sus encabezados y en el [contrato JDBC](jdbc-integration-contract.md). Antes de aplicar una migración, verifica manualmente el servidor, el nombre de base y el estado de esquema. No repitas una versión ya aplicada. Para pruebas que puedan insertar o limpiar fixtures, utiliza exclusivamente una base ficticia y aislada `la_exclusiva_test` o el laboratorio efímero de CI.
 
 Las migraciones V107 y V108 agregan respectivamente preferencias/seguimiento de cobranza y auditoría administrativa. Dependen de las tablas de cliente e identidad existentes. No alteran el historial de clientes, ventas ni pagos. No se ejecutaron migraciones locales como parte de esta implementación.
 
