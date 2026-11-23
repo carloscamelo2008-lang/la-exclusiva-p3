@@ -28,6 +28,8 @@ public final class UserManagementService {
      * @param users repositorio de cuentas compartido con la frontera
      * @param boundary frontera administrativa obligatoria
      * @param authorization mecanismo existente de permisos
+     * Este constructor conserva compatibilidad binaria, pero sus operaciones fallan cerrado
+     * al no recibir un emisor. Utilizar la sobrecarga con AuthenticationService.
      * @throws IllegalArgumentException si falta una dependencia
      */
     public UserManagementService(UserRepository users, UserAdministrationBoundary boundary,
@@ -37,6 +39,7 @@ public final class UserManagementService {
 
     /**
      * Añade consulta de vendedores existentes sin construir infraestructura adicional.
+     * Sin emisor explícito las operaciones administrativas fallan cerrado.
      * @param users repositorio compartido de cuentas
      * @param boundary frontera administrativa de ese almacenamiento
      * @param authorization mecanismo existente de permisos
@@ -45,12 +48,19 @@ public final class UserManagementService {
      */
     public UserManagementService(UserRepository users, UserAdministrationBoundary boundary,
                                  AuthorizationService authorization, SellerService sellers) {
+        this(users, boundary, authorization, sellers, null);
+    }
+
+    /** Compone administración estricta con el emisor del mismo repositorio. */
+    public UserManagementService(UserRepository users, UserAdministrationBoundary boundary,
+                                 AuthorizationService authorization, SellerService sellers,
+                                 AuthenticationService authentication) {
         if (users == null || boundary == null || authorization == null) {
             throw new IllegalArgumentException("Repositorio, frontera y autorización son obligatorios.");
         }
         this.users = users;
         this.boundary = boundary;
-        this.sessions = new AdministrativeSessionValidator(users, authorization);
+        this.sessions = new AdministrativeSessionValidator(users, authorization, authentication);
         this.sellers = sellers;
     }
 

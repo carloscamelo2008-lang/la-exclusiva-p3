@@ -47,4 +47,7 @@ public final class IdentityServices {
     public AuthenticationService authentication() {
         return authentication;
     }
+
+    /** @return validador de la misma autoridad que autentica esta composición */
+    public com.laexclusiva.service.AuthenticatedSessionValidator sessions() { return authentication.sessions(); }
 }

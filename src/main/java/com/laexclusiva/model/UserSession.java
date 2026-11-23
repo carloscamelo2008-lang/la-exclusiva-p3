@@ -13,7 +13,7 @@ public class UserSession {
     private final LocalDateTime loginTime;
     private final Long authenticatedUserId;
     private final long authenticatedSecurityVersion;
-    private boolean valid = true;
+    private volatile boolean valid = true;
 
     /**
      * Captura identidad y versión sin autenticar ni consultar el repositorio.

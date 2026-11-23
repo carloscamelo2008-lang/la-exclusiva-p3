@@ -16,9 +16,15 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AdministrativeSessionValidatorTest {
+    private static final String TEST_HASH = com.laexclusiva.security.PasswordHasher.hash("Identity-Test-Password");
+    private UserSession issued(UserAccount snapshot) {
+        repository.loginAccount = snapshot;
+        return authentication.createSession(snapshot.getUsername(), "Identity-Test-Password").orElseThrow();
+    }
     private final ReadOnlyRepository repository = new ReadOnlyRepository();
+    private final AuthenticationService authentication = new AuthenticationService(repository);
     private final AdministrativeSessionValidator validator =
-            new AdministrativeSessionValidator(repository, new AuthorizationService());
+            new AdministrativeSessionValidator(repository, new AuthorizationService(), authentication);
 
     @Test
     void rejectsMissingDependencies() {
@@ -29,7 +35,7 @@ class AdministrativeSessionValidatorTest {
     @Test
     void authorizesAnActiveAdministratorWithTheCapturedVersionWithoutMutations() {
         UserAccount snapshot = account();
-        UserSession session = new UserSession(snapshot);
+        UserSession session = issued(snapshot);
         LocalDateTime loginTime = session.getLoginTime();
         validator.validate(session);
         assertEquals(1, repository.reads);
@@ -49,7 +55,7 @@ class AdministrativeSessionValidatorTest {
 
     @Test
     void rejectsInvalidatedSessionEvenWhenThePersistedAccountIsActive() {
-        UserSession session = new UserSession(account());
+        UserSession session = issued(account());
         session.invalidate();
         assertTrue(repository.current.isActive());
         assertThrows(SecurityException.class, () -> validator.validate(session));
@@ -60,7 +66,7 @@ class AdministrativeSessionValidatorTest {
     @Test
     void rejectsMissingActor() {
         repository.current = null;
-        UserSession session = new UserSession(account());
+        UserSession session = issued(account());
         assertThrows(SecurityException.class, () -> validator.validate(session));
         assertTrue(session.isValid());
         assertEquals(1, repository.reads);
@@ -69,7 +75,7 @@ class AdministrativeSessionValidatorTest {
     @Test
     void rejectsInactivePersistedActorWithoutReactivatingIt() {
         repository.current.setActive(false);
-        UserSession session = new UserSession(account());
+        UserSession session = issued(account());
         assertThrows(SecurityException.class, () -> validator.validate(session));
         assertFalse(repository.current.isActive());
         assertTrue(session.isValid());
@@ -79,7 +85,7 @@ class AdministrativeSessionValidatorTest {
     @ValueSource(longs = {1, 2, Long.MAX_VALUE})
     void rejectsDifferentPersistedVersionWithoutRenewingSession(long version) {
         repository.current.setSecurityVersion(version);
-        UserSession session = new UserSession(account());
+        UserSession session = issued(account());
         assertThrows(SecurityException.class, () -> validator.validate(session));
         assertEquals(0, session.getAuthenticatedSecurityVersion());
         assertEquals(version, repository.current.getSecurityVersion());
@@ -91,7 +97,7 @@ class AdministrativeSessionValidatorTest {
         repository.current.setRole(UserRole.WORKER);
         UserAccount snapshot = account();
         snapshot.setRole(UserRole.WORKER);
-        assertThrows(SecurityException.class, () -> validator.validate(new UserSession(snapshot)));
+        assertThrows(SecurityException.class, () -> validator.validate(issued(snapshot)));
         assertEquals(UserRole.WORKER, repository.current.getRole());
     }
 
@@ -99,14 +105,14 @@ class AdministrativeSessionValidatorTest {
     void rejectsPersistedDemotionEvenWhenSnapshotStillSaysAdministratorAtTheSameVersion() {
         // Doble inconsistente para aislar la comprobación de permisos de la de versión.
         repository.current.setRole(UserRole.WORKER);
-        UserSession session = new UserSession(account());
+        UserSession session = issued(account());
         assertEquals(UserRole.ADMINISTRATOR, session.getUserAccount().getRole());
         assertThrows(SecurityException.class, () -> validator.validate(session));
     }
 
     @Test
     void ignoresMutatedSnapshotIdRoleActivityAndVersion() {
-        UserSession session = new UserSession(account());
+        UserSession session = issued(account());
         UserAccount snapshot = session.getUserAccount();
         snapshot.setId(99L);
         snapshot.setRole(UserRole.WORKER);
@@ -130,7 +136,7 @@ class AdministrativeSessionValidatorTest {
         AuthorizationService permissions = new AuthorizationService() {
             @Override
             public boolean hasPermission(UserAccount user, Permission permission) {
-                assertSame(repository.current, user);
+                assertEquals(repository.current.getRole(), user.getRole());
                 assertEquals(Permission.MANAGE_USERS, permission);
                 return super.hasPermission(user, permission);
             }
@@ -139,7 +145,7 @@ class AdministrativeSessionValidatorTest {
                 throw new AssertionError("No utilizar autorización sobre el snapshot de sesión.");
             }
         };
-        new AdministrativeSessionValidator(repository, permissions).validate(new UserSession(account()));
+        new AdministrativeSessionValidator(repository, permissions, authentication).validate(issued(account()));
         assertEquals(1, repository.reads);
     }
 
@@ -148,7 +154,7 @@ class AdministrativeSessionValidatorTest {
         IllegalStateException failure = new IllegalStateException("simulated repository failure");
         repository.failure = failure;
         AtomicBoolean authorized = new AtomicBoolean();
-        UserSession session = new UserSession(account());
+        UserSession session = issued(account());
         assertSame(failure, assertThrows(IllegalStateException.class, () -> {
             validator.validate(session);
             authorized.set(true);
@@ -162,18 +168,18 @@ class AdministrativeSessionValidatorTest {
     @Test
     void rejectsMismatchedReturnedIdentity() {
         repository.current.setId(2L);
-        assertThrows(SecurityException.class, () -> validator.validate(new UserSession(account())));
+        assertThrows(SecurityException.class, () -> validator.validate(issued(account())));
     }
 
     @Test
     void rejectsNullPersistedRole() {
         repository.current.setRole(null);
-        assertThrows(SecurityException.class, () -> validator.validate(new UserSession(account())));
+        assertThrows(SecurityException.class, () -> validator.validate(issued(account())));
     }
 
     @Test
     void doesNotAuthorizeASessionInvalidatedDuringReload() {
-        UserSession session = new UserSession(account());
+        UserSession session = issued(account());
         repository.onRead = session::invalidate;
         assertThrows(SecurityException.class, () -> validator.validate(session));
         assertFalse(session.isValid());
@@ -184,9 +190,10 @@ class AdministrativeSessionValidatorTest {
     void integratesInsideMemoryBoundaryAndRejectsARealRepositorySecurityChange() {
         InMemoryUserRepository users = new InMemoryUserRepository();
         users.save(account());
-        UserSession session = new UserSession(users.findById("1").orElseThrow());
+        AuthenticationService emitter = new AuthenticationService(users);
+        UserSession session = emitter.createSession("fixture", "Identity-Test-Password").orElseThrow();
         var boundary = new InMemoryUserAdministrationBoundary(users);
-        var revalidator = new AdministrativeSessionValidator(users, new AuthorizationService());
+        var revalidator = new AdministrativeSessionValidator(users, new AuthorizationService(), emitter);
         boundary.execute(() -> {
             assertTrue(Thread.holdsLock(users));
             revalidator.validate(session);
@@ -208,7 +215,7 @@ class AdministrativeSessionValidatorTest {
     }
 
     private static UserAccount account() {
-        UserAccount account = new UserAccount(1L, "fixture", "opaque-test-hash", UserRole.ADMINISTRATOR, null);
+        UserAccount account = new UserAccount(1L, "fixture", TEST_HASH, UserRole.ADMINISTRATOR, null);
         account.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
         return account;
     }
@@ -216,7 +223,7 @@ class AdministrativeSessionValidatorTest {
     private static void assertAccountUnchanged(UserAccount account) {
         assertEquals(1L, account.getId());
         assertEquals("fixture", account.getUsername());
-        assertEquals("opaque-test-hash", account.getPasswordHash());
+        assertEquals(TEST_HASH, account.getPasswordHash());
         assertEquals(UserRole.ADMINISTRATOR, account.getRole());
         assertTrue(account.isActive());
         assertNull(account.getSellerId());
@@ -227,6 +234,7 @@ class AdministrativeSessionValidatorTest {
     /** Solo findById está permitido; cualquier escritura o consulta alternativa hace fallar la prueba. */
     private static final class ReadOnlyRepository implements UserRepository {
         UserAccount current = account();
+        UserAccount loginAccount = account();
         int reads;
         String requestedId;
         RuntimeException failure;
@@ -242,6 +250,6 @@ class AdministrativeSessionValidatorTest {
         @Override public void update(UserAccount user) { throw new AssertionError("No escribir."); }
         @Override public void delete(String id) { throw new AssertionError("No escribir."); }
         @Override public List<UserAccount> findAll() { throw new AssertionError("No listar."); }
-        @Override public Optional<UserAccount> findByUsername(String username) { throw new AssertionError("No buscar por snapshot."); }
+        @Override public Optional<UserAccount> findByUsername(String username) { return Optional.of(loginAccount); }
     }
 }

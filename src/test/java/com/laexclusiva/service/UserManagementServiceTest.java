@@ -59,7 +59,8 @@ class UserManagementServiceTest {
             }
         }
     };
-    private final UserManagementService service = new UserManagementService(users, boundary, new AuthorizationService());
+    private final AuthenticationService authentication = new AuthenticationService(users);
+    private final UserManagementService service = new UserManagementService(users, boundary, new AuthorizationService(), null, authentication);
 
     UserManagementServiceTest() {
         storage.save(account(1, UserRole.ADMINISTRATOR));
@@ -297,9 +298,9 @@ class UserManagementServiceTest {
     @ValueSource(booleans = {false, true})
     void twoServicesCannotRemoveBothAdministratorsConcurrently(boolean roleChange) throws Exception {
         UserManagementService first = new UserManagementService(users,
-                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), null, authentication);
         UserManagementService second = new UserManagementService(users,
-                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), null, authentication);
         UserSession actor1 = session("1");
         UserSession actor2 = session("2");
         CyclicBarrier start = new CyclicBarrier(3);
@@ -497,9 +498,9 @@ class UserManagementServiceTest {
     void twoServicesCreatingTheSameUsernameLeaveExactlyOneNewAccount() throws Exception {
         users.allowCreate = true;
         UserManagementService first = new UserManagementService(users,
-                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), null, authentication);
         UserManagementService second = new UserManagementService(users,
-                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), null, authentication);
         UserSession actor = session("1");
         CyclicBarrier start = new CyclicBarrier(3);
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -646,7 +647,7 @@ class UserManagementServiceTest {
         UserAccount admin = stored("1");
         admin.setPasswordHash(PasswordHasher.hash("Original-Admin-Test-Only"));
         storage.update(admin);
-        AuthenticationService authentication = new AuthenticationService(storage);
+        AuthenticationService authentication = this.authentication;
         UserSession actor = authentication.createSession("fixture-1", "Original-Admin-Test-Only").orElseThrow();
         long captured = actor.getAuthenticatedSecurityVersion();
         var result = service.changePassword(actor, "1", captured, "Replacement-Admin-Test-Only");
@@ -679,9 +680,9 @@ class UserManagementServiceTest {
     void twoPasswordResetsWithTheSameVersionHaveOneWinnerWithoutRevokingTheActors() throws Exception {
         UserAccount before = preparePasswordTarget();
         UserManagementService first = new UserManagementService(users,
-                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), null, authentication);
         UserManagementService second = new UserManagementService(users,
-                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService());
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), null, authentication);
         UserSession actor1 = session("1");
         UserSession actor2 = session("2");
         CyclicBarrier start = new CyclicBarrier(3);
@@ -958,9 +959,9 @@ class UserManagementServiceTest {
         long version4 = stored("4").getSecurityVersion();
         SellerLookup lookup = new SellerLookup();
         UserManagementService first = new UserManagementService(users,
-                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), lookup);
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), lookup, authentication);
         UserManagementService second = new UserManagementService(users,
-                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), lookup);
+                new InMemoryUserAdministrationBoundary(storage), new AuthorizationService(), lookup, authentication);
         UserSession actor1 = session("1");
         UserSession actor2 = session("2");
         CyclicBarrier start = new CyclicBarrier(3);
@@ -1000,7 +1001,7 @@ class UserManagementServiceTest {
     }
 
     private UserManagementService withSellers(SellerLookup lookup) {
-        return new UserManagementService(users, boundary, new AuthorizationService(), lookup);
+        return new UserManagementService(users, boundary, new AuthorizationService(), lookup, authentication);
     }
 
     private static Seller seller(String id) {
@@ -1061,14 +1062,14 @@ class UserManagementServiceTest {
     }
 
     private UserAccount stored(String id) { return storage.findById(id).orElseThrow(); }
-    private UserSession session(String id) { return new UserSession(stored(id)); }
+    private UserSession session(String id) { return authentication.createSession(stored(id).getUsername(), "Identity-Test-Password").orElseThrow(); }
     private long activeAdministrators() {
         return storage.findAll().stream().filter(account -> account.isActive()
                 && account.getRole() == UserRole.ADMINISTRATOR).count();
     }
 
     private static UserAccount account(long id, UserRole role) {
-        UserAccount result = new UserAccount(id, "fixture-" + id, "opaque-test-hash", role, "SELLER-" + id);
+        UserAccount result = new UserAccount(id, "fixture-" + id, PasswordHasher.hash("Identity-Test-Password"), role, "SELLER-" + id);
         result.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
         return result;
     }
@@ -1120,6 +1121,6 @@ class UserManagementServiceTest {
             storage.save(user);
         }
         @Override public void delete(String id) { throw new AssertionError("No eliminar cuentas."); }
-        @Override public Optional<UserAccount> findByUsername(String name) { throw new AssertionError("No usar username para autorizar."); }
+        @Override public Optional<UserAccount> findByUsername(String name) { return storage.findByUsername(name); }
     }
 }

@@ -378,3 +378,25 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté mejorar solo las pruebas y documentar que PBEKeySpec y el resultado esperado se revisan por inspección, sin prometer una observación de memoria inexistente. No se cambió producción.
 * **Verificación realizada:** Codex ejecutó 404 pruebas dirigidas con Temurin 17.0.21+9 y objetivo Java 17: 28 del hasher y 376 regresiones, sin fallos, errores u omisiones. git diff --check pasó. No ejecutó PostgreSQL, V104/V105 ni la suite completa.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+---
+
+### Interacción 20 – Sesiones auténticas y vigentes (4D)
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Emisión y revalidación de sesiones (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para distinguir sesiones emitidas después de autenticar y comprobar su vigencia sin exigir permisos administrativos a todos los usuarios.
+* **Resumen de la respuesta recibida:** Codex inspeccionó el modelo de confianza e implementó autoridad privada por composición, principal inmutable y revalidación administrativa estricta, con revocación y pruebas concurrentes.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté el alcance autorizado por Carlos: sesiones manuales rechazadas y constructores antiguos sin autoridad cerrados. Dejé navegación e integración comercial para sus responsables y la revisión independiente para Jesús. No se reconstruyen conversaciones o fechas sin evidencia; las posibles fechas adicionales de trabajo deben confirmarse antes del PR.
+* **Verificación realizada:** Codex ejecutó la suite con Temurin 17.0.21+9 y objetivo Java 17. El verify final contabilizó 748 casos: 708 aprobados, 0 fallos, 0 errores y 40 integraciones PostgreSQL omitidas, incluidos 16 casos nuevos del validador. git diff --check pasó. No se conectó a PostgreSQL ni aplicó V104/V105. No se hizo commit o publicación.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
+#### Continuación de la Interacción 20 – Auditoría y entrega de 4D
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Auditoría de sesiones (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Pedí auditar emisión, revocación y compatibilidad y preparar el diff para Carlos y Jesús.
+* **Resumen de la respuesta recibida:** Codex revisó los doce archivos y reforzó pruebas de subclases hostiles, fábrica sobrescrita, revocación ajena y cierre directo durante la lectura, sin corregir producción.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté el refuerzo de cobertura dentro del alcance y mantuve pendientes la revisión independiente y la integración comercial. No se reconstruyeron interacciones de otras fechas sin evidencia.
+* **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9: 751 casos, 711 aprobados, cero fallos y errores y 40 integraciones PostgreSQL omitidas. Codex comprobó git diff --check y preparó el diff íntegro fuera del repositorio para revisión. No hubo PostgreSQL, migraciones, commit ni push.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
