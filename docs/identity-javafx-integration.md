@@ -112,13 +112,13 @@ histórico de solo lectura de `la_exclusiva_test` detectó V104/V105/V106 ausent
 y no se conectó a `la_exclusiva`. La suite especializada también comprobó que la
 composición JDBC falla de forma segura ante un esquema incompleto.
 
-Las 6 pruebas de `PurchaseWorkflowPostgresIntegrationTest` no forman parte del
-laboratorio especializado (dependen de V004, fuera del alcance de esta integración)
-y quedaron entre las pruebas PostgreSQL optativas omitidas por Maven local. No se
-presentan como validadas. El primer intento más reciente del job del laboratorio
-se detuvo antes de crear la base por una respuesta HTTP 429 de Maven Central; la
-repetición del mismo HEAD completó los 105 casos. Los checks finales de GitHub
-Actions para el HEAD publicado terminaron correctamente.
+En la validación del PR #24, las 6 pruebas de
+`PurchaseWorkflowPostgresIntegrationTest` no formaban parte del laboratorio y
+quedaron omitidas localmente al depender de V004. La rama de integración de
+Compras añade V004 al esquema efímero de aplicación e incorpora esa suite al
+laboratorio; su resultado se documenta en
+[`purchases-javafx-integration.md`](purchases-javafx-integration.md) y en la
+bitácora cuando termine la ejecución de Actions del HEAD del PR.
 
 Esta evidencia es automatizada. No se afirma haber realizado un recorrido manual
 visual completo de JavaFX. La inspección del laboratorio y los conteos detallados
