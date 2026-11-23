@@ -8,6 +8,9 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.Base64;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.security.MessageDigest;
+import java.security.ProviderException;
+import java.util.Arrays;
 
 /**
  * Utilidad de seguridad para el cifrado y verificación de contraseñas
@@ -40,43 +43,68 @@ public class PasswordHasher {
     }
 
     public static boolean verify(String password, String storedHash) {
-        if (password == null || storedHash == null) {
-            return false;
-        }
+        return verify(password, storedHash, PasswordHasher::derive);
+    }
+
+    // Inyección acotada para comprobar límites y fallos sin cambiar proveedores globales.
+    @FunctionalInterface
+    interface Derivation {
+        byte[] apply(char[] password, byte[] salt, int iterations, int bits)
+                throws NoSuchAlgorithmException, InvalidKeySpecException;
+    }
+
+    static boolean verify(String password, String storedHash, Derivation derivation) {
+        if (password == null || storedHash == null || storedHash.length() > 255) return false;
+        String[] parts = storedHash.split("\\$", -1);
+        if (parts.length != 5 || !parts[0].isEmpty() || !parts[1].equals("pbkdf2-sha256")
+                || !parts[2].matches("i=[1-9][0-9]{0,6}")) return false;
+        int iterations = Integer.parseInt(parts[2].substring(2));
+        if (iterations < 1000 || iterations > 1000000
+                || parts[3].length() < 11 || parts[3].length() > 88
+                || parts[4].length() < 22 || parts[4].length() > 88) return false;
+        byte[] salt = null;
+        byte[] expected = null;
+        byte[] actual = null;
+        char[] secret = null;
         try {
-            String[] parts = storedHash.split("\\$");
-            if (parts.length != 5 || !parts[1].equals("pbkdf2-sha256")) {
+            try {
+                salt = Base64.getDecoder().decode(parts[3]);
+                expected = Base64.getDecoder().decode(parts[4]);
+            } catch (IllegalArgumentException malformed) {
                 return false;
             }
-            
-            int iterations = Integer.parseInt(parts[2].replace("i=", ""));
-            byte[] salt = Base64.getDecoder().decode(parts[3]);
-            byte[] expectedHash = Base64.getDecoder().decode(parts[4]);
-            
-            byte[] actualHash = pbkdf2(password.toCharArray(), salt, iterations, expectedHash.length * 8);
-            
-            return slowEquals(expectedHash, actualHash);
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error al verificar la contraseña debido a un formato malformado.", e);
+            if (salt.length < 8 || salt.length > 64 || expected.length < 16 || expected.length > 64) return false;
+            secret = password.toCharArray();
+            actual = derivation.apply(secret, salt, iterations, expected.length * 8);
+            return MessageDigest.isEqual(expected, actual);
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException | ProviderException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo completar la verificación criptográfica.");
             return false;
+        } finally {
+            if (secret != null) Arrays.fill(secret, '\0');
+            if (salt != null) Arrays.fill(salt, (byte) 0);
+            if (expected != null) Arrays.fill(expected, (byte) 0);
+            if (actual != null) Arrays.fill(actual, (byte) 0);
         }
     }
 
     private static byte[] pbkdf2(char[] password, byte[] salt, int iterations, int keyLength) {
         try {
-            PBEKeySpec spec = new PBEKeySpec(password, salt, iterations, keyLength);
-            SecretKeyFactory factory = SecretKeyFactory.getInstance(ALGORITHM);
-            return factory.generateSecret(spec).getEncoded();
+            return derive(password, salt, iterations, keyLength);
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             throw new RuntimeException("Error crítico en el algoritmo de cifrado de contraseñas.", e);
+        } finally {
+            Arrays.fill(password, '\0');
         }
     }
 
-    private static boolean slowEquals(byte[] a, byte[] b) {
-        int diff = a.length ^ b.length;
-        for (int i = 0; i < a.length && i < b.length; i++) {
-            diff |= a[i] ^ b[i];
+    private static byte[] derive(char[] password, byte[] salt, int iterations, int keyLength)
+            throws NoSuchAlgorithmException, InvalidKeySpecException {
+        PBEKeySpec spec = new PBEKeySpec(password, salt, iterations, keyLength);
+        try {
+            return SecretKeyFactory.getInstance(ALGORITHM).generateSecret(spec).getEncoded();
+        } finally {
+            spec.clearPassword();
         }
-        return diff == 0;
     }
 }

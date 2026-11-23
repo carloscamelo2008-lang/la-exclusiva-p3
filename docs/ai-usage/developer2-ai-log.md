@@ -356,3 +356,25 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté el ajuste mínimo autorizado por Carlos, sin cambiar autenticación, hashes o navegación. La lista permanece ilustrativa y pendiente de revisión de Jesús.
 * **Verificación realizada:** Codex ejecutó 376 pruebas dirigidas con Temurin 17.0.21+9 y objetivo Java 17: cero fallos, errores u omisiones. Comprobó Login con espacios y contraseña histórica, dos llamadas tras fallo de carga y lectura acotada. `git diff --check` pasó. No ejecutó la suite completa, consola interactiva ni PostgreSQL.
 * **Commit o Pull Request relacionado:** Pendiente de creación.
+---
+
+### Interacción 19 – Verificación segura de contraseñas (4C)
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Verificación PBKDF2 (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Me apoyé en Codex para revisar y endurecer verify sin cambiar su contrato ni los hashes existentes.
+* **Resumen de la respuesta recibida:** Codex validó formato y límites antes de derivar, eliminó registros sensibles y limpió datos temporales, con pruebas históricas y fallos simulados.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté los límites autorizados por Carlos y mantener false ante rechazo o fallo criptográfico recuperable. No cambié la política ni inicié 4D; la revisión técnica de Jesús para 4C sigue pendiente.
+* **Verificación realizada:** Codex ejecutó 403 pruebas dirigidas con Temurin 17.0.21+9 y objetivo Java 17: 27 nuevas y 376 regresiones, sin fallos, errores u omisiones. Verificó el fixture histórico; el máximo de iteraciones se comprobó con derivación simulada. git diff --check pasó. No ejecutó la suite completa ni PostgreSQL, V104 o V105.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
+#### Continuación de la Interacción 19 – Refuerzo de pruebas de 4C
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Fase 3 – Pruebas de memoria y Base64 (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Pedí reforzar las dos observaciones de auditoría antes de la revisión externa.
+* **Resumen de la respuesta recibida:** Codex comprobó borrado de arreglos accesibles con datos no nulos en éxito y fallo recuperable, y construyó el Base64 sin padding explícitamente.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté mejorar solo las pruebas y documentar que PBEKeySpec y el resultado esperado se revisan por inspección, sin prometer una observación de memoria inexistente. No se cambió producción.
+* **Verificación realizada:** Codex ejecutó 404 pruebas dirigidas con Temurin 17.0.21+9 y objetivo Java 17: 28 del hasher y 376 regresiones, sin fallos, errores u omisiones. git diff --check pasó. No ejecutó PostgreSQL, V104/V105 ni la suite completa.
+* **Commit o Pull Request relacionado:** Pendiente de creación.
