@@ -81,19 +81,32 @@ JavaFX indicó en las pruebas que sus clases se cargaron desde un módulo sin
 nombre. Las trazas de fallo de consulta/logout de las pruebas son escenarios
 simulados; todas las pruebas correspondientes pasaron.
 
-El laboratorio se ejecuta en GitHub Actions para el HEAD del PR. En el primer
-run, ambos ciclos de identidad aprobaron 26/26 cada uno y las comprobaciones SQL
-de recuperación/migraciones pasaron. `PurchaseWorkflowPostgresIntegrationTest`
-aprobó sus **6/6** pruebas PostgreSQL reales. El escenario de aplicación obtuvo
-57/58: una prueba intentó usar la sesión de administrador anterior a
-`assignSeller`, operación que incrementa la versión de seguridad y la revoca.
-El servicio de compras la rechazó correctamente. La regresión ahora comprueba
-ese rechazo y el fixture vuelve a autenticar antes de continuar. El run fue
-[45215633632](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45215633632)
-y publicó el artefacto sanitizado `identity-postgres-45215633632-1` (ID
-`14839235235`). La corrección está en el commit `2dd0eb5`; el laboratorio se
-repetirá al publicar ese commit y se añadirá el resultado final cuando concluya
-Actions.
+El laboratorio efímero se ejecutó en GitHub Actions sobre el HEAD
+`596db429e965976ac59b4a86b7a25b364a3d9b5d`. Usó PostgreSQL 18 con la imagen
+fijada por digest `postgres:18-bookworm@sha256:194e55feb2597b1465dbee81cc9fd8d204566cd2eb42c8d22fd6c931a38781b1`, Temurin Java 17.0.20.1 y Maven 3.9.16. Resultado: **111/111 pruebas
+aprobadas, 0 fallidas, 0 errores y 0 omitidas**:
+
+- Identidad: 26/26 en el primer ciclo y 26/26 en la repetición.
+- Aplicación y flujos comerciales: 58/58 en 15 suites, incluyendo las 6 pruebas
+  reales de `PurchaseWorkflowPostgresIntegrationTest`.
+- Esquema de identidad incompleto: 1/1; la composición rechaza el esquema.
+- Las comprobaciones SQL de recuperación, restricciones y reintento de
+  migraciones también pasaron.
+
+El escenario comercial aplicó solo en el contenedor temporal V001, V004, V002,
+V100, V101, V102, V103, V104, V105 y V106. Verificó altas de proveedores y
+pedidos, recepciones, stock/movimientos, actor persistido, idempotencia,
+concurrencia, rollback, compatibilidad de caja y rechazo de la sesión anterior
+después de cambiar la asignación de vendedor. La prueba autentica una sesión
+nueva para continuar el flujo; no se debilitó la revocación. El primer intento
+había obtenido 57/58 en aplicación porque usaba esa sesión revocada; se corrigió
+el fixture y el segundo run pasó completo.
+
+El job confirmó `completed=true` y `destroyed=true`. Evidencia:
+[run 45217400054](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45217400054), artefacto sanitizado `identity-postgres-45217400054-1` (ID
+`14840065283`). El artefacto confirma `source_head` igual al HEAD probado y los
+totales Surefire. El run de aplicación anterior y su corrección se conservan en
+la bitácora de IA.
 
 ## Lista breve de revisión manual en Windows
 

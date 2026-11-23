@@ -115,10 +115,12 @@ composición JDBC falla de forma segura ante un esquema incompleto.
 En la validación del PR #24, las 6 pruebas de
 `PurchaseWorkflowPostgresIntegrationTest` no formaban parte del laboratorio y
 quedaron omitidas localmente al depender de V004. La rama de integración de
-Compras añade V004 al esquema efímero de aplicación e incorpora esa suite al
-laboratorio; su resultado se documenta en
-[`purchases-javafx-integration.md`](purchases-javafx-integration.md) y en la
-bitácora cuando termine la ejecución de Actions del HEAD del PR.
+Compras añadió V004 al esquema efímero e incorporó esa suite: el run
+[45217400054](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45217400054)
+ejecutó 111/111 pruebas reales PostgreSQL sin fallos, errores ni omisiones sobre
+el HEAD `596db429e965976ac59b4a86b7a25b364a3d9b5d`. El detalle, la imagen
+utilizada y la evidencia de las suites se mantienen en
+[`purchases-javafx-integration.md`](purchases-javafx-integration.md).
 
 Esta evidencia es automatizada. No se afirma haber realizado un recorrido manual
 visual completo de JavaFX. La inspección del laboratorio y los conteos detallados
