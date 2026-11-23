@@ -61,7 +61,7 @@ contenido se conserva igual al de `8be2051`.
 Mejoras comprobables de esta continuación:
 
 - Inventario: se amplían volumen, unidades por canasta, grupo de envase y unidades
-  sueltas porque la medición con la fuente real detectó cuatro ayudas recortadas.
+  sueltas porque la medición con la fuente real detectó cuatro ayudas recortadas. La CI de Linux detectó además cortes en ID del producto y precio de media canasta; se ampliaron a 155 y 185 px respectivamente, sin debilitar las aserciones.
   El selector de envase pasa de 175 a 250 px para que quepan los tres valores
   del conversor actual, que se conserva sin traducir ni cambiar su lógica.
 - Ambas tablas de Inventario reciben altura preferida de 200 px, con mínimo de
@@ -96,3 +96,29 @@ Compras y repetir el recorrido compacto de Cartera, compras/recepciones, permiso
 y logout. La observación funcional sobre selección de ventas/abonos descrita en
 el PR #26 corresponde a su integración y no se presenta como resuelta por estos
 ajustes visuales. App.java, launcher, iconos y servicios siguen fuera del alcance.
+
+### Actualización de base durante la validación final
+
+El PR #26 se fusionó **durante esta tarea**, el 23/11/2026 a las 15:12:38 de
+America/Bogota, mediante `6e6db096ce0ba044e2890da02a902c302ffea579`.
+La comprobación anterior de que estaba abierto correspondía a la inspección
+inicial. Se actualizó únicamente `origin/develop` con fetch; no se integró la
+rama ni se modificó el árbol de trabajo para resolver conflictos.
+
+La simulación de solo lectura con `git merge-tree` identificó conflictos en:
+
+- `src/main/resources/com/laexclusiva/ui/fxml/main_menu_view.fxml`.
+- `src/main/resources/com/laexclusiva/ui/fxml/portfolio_view.fxml`.
+- `src/test/java/com/laexclusiva/service/AuthenticationServiceTest.java`.
+
+Estos solapamientos provienen de las integraciones previas de ambos PR, no de
+los ajustes compactos de `7100748`. Resolverlos requiere coordinación con Carlos
+para conservar Compras, el contenedor/tabla de Cartera y las regresiones de
+sesión. No se hizo merge ni se resolvieron automáticamente archivos compartidos.
+El PR #25 continúa en Draft y no está listo para merge mientras persista ese bloqueo.
+
+La CI del push `7100748` ejecutó 833 casos y falló en la prueba de métricas por
+los dos textos de Inventario indicados arriba (1 caso con error, 59 omitidos).
+La corrección conserva las pruebas estrictas y solo aumenta esos dos anchos;
+la CI posterior se informa con su ejecución real, sin atribuir éxito a la
+integración del PR mientras su base siga en conflicto.

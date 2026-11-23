@@ -28,7 +28,7 @@
     <VBox fx:id="productRegistrationPane" spacing="5.0">
         <Label text="Registrar producto y precios" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
         <FlowPane hgap="6.0" vgap="8">
-            <TextField fx:id="productIdField" promptText="ID del producto" prefWidth="125.0" />
+            <TextField fx:id="productIdField" promptText="ID del producto" prefWidth="155.0" />
             <TextField fx:id="productNameField" promptText="Nombre" prefWidth="190.0" />
             <TextField fx:id="volumeField" promptText="Volumen ml" prefWidth="115.0" />
             <TextField fx:id="unitsPerBasketField" promptText="Unidades/canasta" prefWidth="150.0" />
@@ -37,7 +37,7 @@
         <FlowPane hgap="6.0" vgap="8">
             <TextField fx:id="containerGroupField" promptText="Grupo de envase retornable" prefWidth="220.0" />
             <TextField fx:id="unitPriceField" promptText="Precio unidad" prefWidth="120.0" />
-            <TextField fx:id="halfBasketPriceField" promptText="Precio media canasta" prefWidth="150.0" />
+            <TextField fx:id="halfBasketPriceField" promptText="Precio media canasta" prefWidth="185.0" />
             <TextField fx:id="fullBasketPriceField" promptText="Precio canasta" prefWidth="125.0" />
             <Button fx:id="registerProductButton" text="Registrar producto" onAction="#handleRegisterProduct" />
         </FlowPane>
