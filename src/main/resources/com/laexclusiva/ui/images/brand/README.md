@@ -9,3 +9,5 @@ Ubicaciones reservadas, todavía sin archivos gráficos:
 Usar `/com/laexclusiva/ui/images/brand/…` desde el classpath. No añadir referencias
 FXML a archivos ausentes. La integración en Stage/App.java y en el launcher se
 coordina con Carlos; estas rutas no significan que el icono ya esté integrado.
+
+La mascota aprobada no sustituye este logo ni debe usarse para extraerlo del delantal. La propuesta de integración para Carlos está en docs/desktop-identity-integration.md del repositorio.

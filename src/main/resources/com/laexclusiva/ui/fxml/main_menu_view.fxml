@@ -8,6 +8,8 @@
 <?import javafx.scene.text.Font?>
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
 
 
 
@@ -74,12 +76,15 @@
                <padding><Insets top="24" right="24" bottom="24" left="24" /></padding>
                <Label text="La Exclusiva · Panel de gestión" styleClass="page-heading" />
                <Label fx:id="roleLabel" text="Rol actual" styleClass="muted" />
-               <FlowPane hgap="24" vgap="16" styleClass="hero" prefWrapLength="750">
-                  <VBox spacing="15" prefWidth="420">
+               <FlowPane fx:id="welcomeBanner" minWidth="0" hgap="40" vgap="16" alignment="CENTER_LEFT" styleClass="hero" prefWrapLength="750">
+                  <VBox spacing="15" prefWidth="420" minWidth="0" maxWidth="${welcomeBanner.width - 56}" alignment="CENTER_LEFT">
                      <Label fx:id="welcomeLabel" text="¡Bienvenido a La Exclusiva!" wrapText="true" styleClass="hero-title" />
                      <Label text="Tu comercio, en un solo lugar." styleClass="hero-copy" wrapText="true" />
                      <Label text="Consulta clientes, inventario y operaciones con los permisos de tu cuenta." wrapText="true" styleClass="hero-copy" />
                   </VBox>
+                  <ImageView fx:id="mascotImage" fitHeight="300" fitWidth="190" preserveRatio="true" smooth="true" mouseTransparent="true" accessibleText="Mascota de La Exclusiva: botella ámbar con corona dorada y delantal azul">
+                     <image><Image url="@../images/mascot/mascot-blue-transparent.png" backgroundLoading="false" /></image>
+                  </ImageView>
                </FlowPane>
                <VBox styleClass="card">
                   <Label text="Accesos rápidos" styleClass="section-title" />

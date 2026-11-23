@@ -268,6 +268,50 @@ class VisualRefreshTest {
     }
 
     @Test
+    void approvedMascotLoadsUnchangedWithRealTransparency() throws Exception {
+        try (var input = getClass().getResourceAsStream("/com/laexclusiva/ui/images/mascot/mascot-blue-transparent.png")) {
+            assertNotNull(input);
+            byte[] bytes = input.readAllBytes();
+            String digest = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+            assertEquals("cd1baeb2f29aa6631d5fb47622809adc9a38a8a13779bc59fda9aa4616d7a315", digest,
+                    "El recurso debe ser exactamente el original aprobado, sin reconstrucciones");
+            javafx.scene.image.Image image = new javafx.scene.image.Image(new java.io.ByteArrayInputStream(bytes));
+            assertFalse(image.isError());
+            assertEquals(931, image.getWidth()); assertEquals(1690, image.getHeight());
+            assertEquals(0, image.getPixelReader().getColor(0, 800).getOpacity());
+            assertTrue(image.getPixelReader().getColor(465, 845).getOpacity() > .9);
+        }
+    }
+
+    @Test
+    void mascotFitsWideAndCompactBannersWithoutCroppingOrCoveringText() throws Exception {
+        onFx(() -> {
+            ApplicationServices services = ApplicationServices.create("memory", Map.of());
+            UserSession session = issue(services, UserRole.ADMINISTRATOR);
+            for (int width : new int[]{1280, 800, 700}) {
+                FXMLLoader loader = loader("main_menu_view.fxml");
+                BorderPane root = loader.load();
+                MainController controller = loader.getController();
+                controller.setApplicationServices(services); controller.initSession(session);
+                new Scene(root, width, 820); root.applyCss(); root.layout();
+                javafx.scene.image.ImageView mascot = (javafx.scene.image.ImageView) loader.getNamespace().get("mascotImage");
+                javafx.scene.layout.FlowPane banner = (javafx.scene.layout.FlowPane) loader.getNamespace().get("welcomeBanner");
+                assertNotNull(mascot.getImage()); assertFalse(mascot.getImage().isError());
+                assertTrue(mascot.isPreserveRatio()); assertNull(mascot.getViewport()); assertNull(mascot.getClip());
+                var bounds = mascot.getBoundsInParent();
+                assertEquals(931.0 / 1690, bounds.getWidth() / bounds.getHeight(), .001);
+                assertTrue(bounds.getMinX() >= 0 && bounds.getMinY() >= 0);
+                assertTrue(bounds.getMaxX() <= banner.getWidth() + .5);
+                assertTrue(bounds.getMaxY() <= banner.getHeight() + .5);
+                assertFalse(bounds.intersects(banner.getChildren().get(0).getBoundsInParent()), "No debe tapar el texto");
+                assertFalse(mascot.getAccessibleText().isBlank());
+                snapshot(root, "dashboard-mascot-" + width);
+            }
+            return null;
+        });
+    }
+
+    @Test
     void customerFormWrapsAtNarrowWidthWithoutChangingInjectedContainer() throws Exception {
         onFx(() -> {
             FXMLLoader loader = loader("customers_view.fxml");
