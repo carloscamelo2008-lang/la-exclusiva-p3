@@ -1,0 +1,23 @@
+-- Evidencia de metadatos y conteos exclusivamente, nunca credenciales ni filas completas.
+\ir guard.psql
+SELECT current_database(), current_user, current_setting('server_version'), current_setting('cluster_name');
+SELECT a.attname, format_type(a.atttypid,a.atttypmod) AS type, a.attnotnull,
+       pg_get_expr(d.adbin,d.adrelid) AS default_expression
+FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+WHERE a.attrelid=to_regclass('public.user_account') AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum;
+SELECT conname, contype, convalidated, pg_get_constraintdef(oid)
+FROM pg_constraint WHERE conrelid=to_regclass('public.user_account') ORDER BY conname;
+SELECT indexrelid::regclass, indisunique, indisvalid, indisready, pg_get_indexdef(indexrelid)
+FROM pg_index WHERE indrelid=to_regclass('public.user_account') ORDER BY indexrelid;
+SELECT t.tgname, pg_get_triggerdef(t.oid), t.tgenabled, p.prosecdef, p.proconfig, p.prosrc
+FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+WHERE t.tgrelid=to_regclass('public.user_account') AND NOT t.tgisinternal ORDER BY t.tgname;
+SELECT count(*) AS historical_fixture_count FROM public.user_account
+WHERE username IN ('iv_pre_a','iv_pre_b','iv_duplicate_a','iv_duplicate_b');
+SELECT EXISTS (SELECT FROM pg_attribute WHERE attrelid=to_regclass('public.user_account')
+               AND attname='account_instance_id' AND NOT attisdropped) AS instance_installed \gset
+\if :instance_installed
+SELECT count(*) AS accounts, count(account_instance_id) AS nonnull_instances,
+       count(DISTINCT account_instance_id) AS unique_instances
+FROM public.user_account;
+\endif

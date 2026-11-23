@@ -423,3 +423,14 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté la implementación y regresiones dentro de identidad; V106 queda preparada, sin aplicar, y su revisión y validación PostgreSQL siguen pendientes. No se integraron los cambios ajenos de develop.
 * **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9: 760 casos, 720 aprobados, 40 integraciones PostgreSQL omitidas, cero fallos y errores. Incluye reutilización de ID con ambos roles, revocación y sesiones hostiles, 82 pruebas JDBC simuladas y dos inspecciones estáticas de V106. Se comprobó que V106 no aparece en las 20 ramas remotas consultadas. No hubo SQL, conexión PostgreSQL ni ejecución de migraciones.
 * **Commit o Pull Request relacionado:** PR #22; commits de corrección pendientes de creación al registrar esta entrada.
+
+### Interacción 23 – Preparación de validación PostgreSQL aislada
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Validación pendiente de identidad (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Pedí preparar entorno, scripts y pruebas reproducibles de V104/V105/V106 sin ejecutar SQL.
+* **Resumen de la respuesta recibida:** Codex preparó Compose sin puertos ni datos persistentes, Java en la misma red loopback, scripts de backfill/rollback y fallo por duplicados, captura de catálogos y tres integraciones nuevas opt-in. Documentó 19 casos Java propuestos y seis escenarios concurrentes de vendedor.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté preparar el laboratorio y mantener pendiente su ejecución específica. No se encontró Docker en PATH ni se instalaron herramientas; imágenes por digest, caché Linux, recursos y permiso de crear/desechar el laboratorio deben confirmarse con Carlos. Una aserción estática que confundía un comentario con tracing se corrigió, sin cambiar producción.
+* **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9: 768 casos, 725 aprobados, 43 PostgreSQL omitidos, cero fallos/errores; incluye cinco pruebas estáticas nuevas y tres integraciones nuevas omitidas. bash -n pasó sin ejecutar el runner. Compose y SQL solo se inspeccionaron estáticamente. No hubo conexiones, SQL ni migraciones; las entradas anteriores se conservan.
+* **Commit o Pull Request relacionado:** PR #22; commit de preparación pendiente de creación al registrar esta entrada.

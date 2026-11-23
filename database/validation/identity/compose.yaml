@@ -1,0 +1,63 @@
+# Preparación únicamente. No iniciar sin autorización de ejecución registrada.
+name: laexclusiva-identity-validation
+services:
+  postgres:
+    image: ${LAEXCLUSIVA_PG18_IMAGE:?Especificar postgres:18@sha256 aprobado}
+    pull_policy: never
+    environment:
+      POSTGRES_DB: la_exclusiva_test
+      POSTGRES_USER: identity_validation_owner
+      POSTGRES_PASSWORD_FILE: /run/secrets/lab_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    command: [postgres, -c, cluster_name=laexclusiva-identity-validation, -c, listen_addresses=127.0.0.1]
+    tmpfs:
+      - /var/lib/postgresql
+    volumes:
+      - type: bind
+        source: ../../..
+        target: /workspace
+        read_only: true
+    secrets:
+      - lab_password
+    networks: [isolated]
+    labels:
+      com.laexclusiva.purpose: identity-disposable-validation
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U identity_validation_owner -d la_exclusiva_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: "no"
+  java:
+    profiles: [java]
+    image: ${LAEXCLUSIVA_JAVA17_IMAGE:?Especificar imagen Maven Temurin 17 por digest}
+    pull_policy: never
+    network_mode: service:postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /workspace
+    entrypoint: [bash, /source/database/validation/identity/run-java.sh]
+    environment:
+      LAEXCLUSIVA_TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/la_exclusiva_test
+      LAEXCLUSIVA_DB_USER: identity_validation_owner
+    secrets: [lab_password]
+    tmpfs:
+      - /workspace
+      - /root/.m2
+    volumes:
+      - type: bind
+        source: ../../..
+        target: /source
+        read_only: true
+      - type: bind
+        source: ${LAEXCLUSIVA_MAVEN_REPOSITORY:?Cache Maven Linux Java 17 completo requerido}
+        target: /seed-repository
+        read_only: true
+    restart: "no"
+networks:
+  isolated:
+    internal: true
+secrets:
+  lab_password:
+    file: ${LAEXCLUSIVA_LAB_SECRET_FILE:?Archivo temporal externo requerido}
