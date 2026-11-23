@@ -251,3 +251,15 @@ No se modifican Java de producción, App.java, launcher, iconos, servicios, SQL,
 migraciones, permisos ni el archivo original de mascota. Siguen pendientes el logo
 independiente y la integración de escritorio coordinada con Carlos. El PR #25 sigue
 Draft; la CI del nuevo commit se comprobará después de publicar.
+### Hallazgo adicional de CI: ayuda tributaria en Compras
+
+Las dos ejecuciones de Ubuntu del commit f278ee1 detectaron un único recorte en
+supplierTaxId al ampliar la prueba compacta a Compras (841 casos, 1 error, 60
+omitidos; run 45291073097). Se mantiene la aserción estricta y se reserva un ancho
+preferido de 210 px mediante CSS, sin cambiar FXML de Compras ni su controlador.
+El FlowPane redistribuye los campos; las capturas de Compras se renovaron.
+La repetición local de `mvn -o clean verify` con Temurin 17.0.21+9 pasa 841 casos:
+781 aprobados, 60 PostgreSQL omitidos y cero fallos/errores, incluidas 18 visuales.
+Este hallazgo amplía las correcciones anteriores: la revisión local de Windows
+no había reproducido ese recorte de fuente. La CI de la corrección se comprobará
+tras publicar, sin presentar los resultados anteriores fallidos como aprobados.

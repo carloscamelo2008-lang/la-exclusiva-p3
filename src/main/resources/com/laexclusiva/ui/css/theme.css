@@ -90,3 +90,6 @@
 
 /* Evita recortar la ayuda del campo sin tocar el FXML que modifica el PR #26. */
 .workspace #generalDebtDescriptionField { -fx-pref-width: 230; }
+
+/* La ayuda tributaria debe caber también con las fuentes de Linux. */
+.workspace #supplierTaxId { -fx-pref-width: 210; }

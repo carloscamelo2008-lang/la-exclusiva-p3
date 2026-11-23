@@ -730,3 +730,13 @@ los resultados; no se usan por sí solos para atribuir uso de IA.
 * **Qué se acepta, modifica o descarta y por qué:** Se conservan los controles, eventos, sesiones, permisos, servicios y mascota original. No se aplican ajustes cosméticos a formularios que ya pasan las comprobaciones. Tab/MAYÚS+Tab conserva el orden y el botón predeterminado. El foco y estado deshabilitado se verifican sin modificar controladores. No se integra Alertas ni se inventa logo o información comercial.
 * **Verificación realizada:** Primera dirigida: 18 casos, dos errores agregados por contraste/nombres accesibles; repetición 18/18. Suite final con Temurin 17.0.21+9 y Maven offline clean verify: 841 casos, 781 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores, incluidas 18 visuales. Capturas JavaFX reales inspeccionadas y documentadas; recorridos heredados a 1280×800, 1024×768 y 800×600 conservados. Sin SQL, migraciones o cambios Java de producción. Entradas anteriores preservadas byte por byte.
 * **Commit o Pull Request relacionado:** PR #25 en Draft; commit y CI pendientes de publicación al registrar esta entrada.
+### Continuación de la Interacción 46 – Ayuda tributaria legible en Ubuntu
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Validación de GitHub Actions del commit f278ee1; feature/ui-modernization.
+* **Objetivo de la consulta:** Completar la revisión multiplataforma y corregir únicamente defectos demostrados antes de cerrar la entrega.
+* **Resumen de la respuesta recibida:** La CI 45291073097 detectó recorte de la ayuda de supplierTaxId en el formulario compacto de Compras. Se añadió un ancho CSS preferido de 210 px y se renovaron cinco capturas de Compras, sin tocar su FXML, controlador o servicio.
+* **Qué se acepta, modifica o descarta y por qué:** Se conserva la aserción estricta de legibilidad y se permite que el FlowPane redistribuya sus campos. No se integra el PR #27, no se altera la mascota ni los contratos funcionales.
+* **Verificación realizada:** CI inicial: 841 casos, 1 error, 60 omitidos. Repetición local con Temurin 17.0.21+9 y Maven offline clean verify: 841 casos, 781 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores; 18 visuales aprobadas. Captura a 560×600 inspeccionada tras ampliar el campo. git diff --check correcto; sin SQL ni migraciones. Entradas anteriores conservadas byte por byte. CI de la corrección pendiente de publicación al registrar esta continuación.
+* **Commit o Pull Request relacionado:** PR #25 en Draft; corrección posterior a f278ee1.
