@@ -31,12 +31,16 @@ no admiten sesiones sintéticas. La sobrecarga nueva recibe AuthenticationServic
 y exige exactamente el mismo objeto UserRepository. UserManagementService incorpora
 la sobrecarga (users, boundary, authorization, sellers, authentication).
 
-IdentityServices comparte su authentication() y sessions(). No conecta App,
-ApplicationServices ni controladores comerciales. Quien integre no debe crear
-otro emisor para validar sesiones del primero. Tampoco debe duplicar repositorios
-o proveedores JDBC. El constructor público UserSession se conserva, pero por sí
-solo no acredita autenticación. AuthorizationService conserva su API anterior:
-los consumidores que solo lo usan sobre snapshots no quedan protegidos por 4D.
+IdentityServices conserva una sola instancia de authentication() y sessions().
+La integración JavaFX de `feature/identity-app-integration` la compone en
+ApplicationServices y la comparte con App y controladores. En memoria, emisor y
+servicio administrativo usan el mismo InMemoryUserRepository; en PostgreSQL,
+UserRepositoryJdbc y JdbcUserAdministrationBoundary usan el JdbcConnectionProvider
+de la composición comercial. El constructor público UserSession se conserva, pero
+por sí solo no acredita autenticación. La sobrecarga productiva de
+AuthorizationService recibe el validador de esa misma autoridad y decide con el
+rol actual; el constructor sin validador permanece solo para consumidores legacy
+y pruebas sintéticas, no se inyecta en el flujo JavaFX.
 
 ## Revocación, concurrencia y ciclo de vida
 
@@ -66,25 +70,51 @@ transaccional correspondiente. Una revocación/cambio posterior a la lectura no
 revierte una operación en curso. Los escritores que omitan versionado o bloqueos
 siguen fuera del protocolo; V104/V105 no se aplicaron en esta actividad.
 
-## Integración pendiente
+## Integración JavaFX
 
-Carlos debe conectar el emisor, validador y principal en ApplicationServices y
-operaciones comerciales, con sus permisos y transacciones. Jesús debe revisar
-seguridad y coordinar compras/recepción. No se modificaron esos módulos ni se
-conectó logout a navegación. Los valores de rol/vendedor cacheados por vistas
-antiguas no se actualizan mágicamente; deben utilizar el resultado vigente o exigir
-nuevo login. Las pruebas sintéticas de administración se adaptaron a emisión con
-credenciales reales de fixture; no se añadió un bypass de producción para tests.
+`App` obtiene el repositorio de usuarios y AuthenticationService de
+ApplicationServices; ya no construye un repositorio paralelo en memoria cuando el
+modo seleccionado es PostgreSQL. Login usa ese emisor, presenta un error genérico
+para fallos de autenticación/persistencia y limpia el campo de contraseña. Logout
+llama a `AuthenticationService.revoke()` antes de volver al login, incluso si la
+navegación posterior falla.
 
-## Evidencia y límites
+MainController entrega el mismo AuthorizationService a Clientes, Vendedores,
+Inventario, Ventas, Cartera y Caja. Los handlers y consultas vuelven a comprobar
+los permisos antes de acceder a datos o ejecutar escrituras; ocultar botones solo
+mejora la navegación y no es el control de acceso. La pantalla de administración
+consulta resúmenes sin hashes y delega creación, rol, estado, restablecimiento de
+contraseña y asignación de vendedor en UserManagementService, que vuelve a
+validar MANAGE_USERS dentro de UserAdministrationBoundary.
+
+Los servicios comerciales existentes conservan sus contratos compatibles con la
+consola y pruebas antiguas; varios no reciben UserSession directamente. Por ello
+la frontera autorizada de esos flujos es la operación JavaFX, cuyos handlers usan
+el validador actual, mientras UserManagementService protege internamente sus
+operaciones. Si se expone un caso de uso comercial desde otra entrada nueva, esa
+entrada debe repetir la autorización con la misma autoridad o evolucionar el
+contrato para recibir un contexto de operación; no debe confiar en la visibilidad
+de controles.
+
+El administrador inicial se crea solo si el repositorio está vacío, con
+`LAEXCLUSIVA_INITIAL_ADMIN_USERNAME` (por defecto `admin`) y
+`LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD`, validada por PasswordPolicy. Las cuentas
+existentes nunca se reescriben. `--demo` se limita a `memory`, requiere las dos
+contraseñas seguras y solo inserta ambas cuentas cuando el repositorio está vacío.
+Con PostgreSQL, falta de conexión, tabla o columnas V104/V105/V106 detiene el
+arranque: no existe fallback a usuarios en memoria. No se aplican migraciones al
+arrancar.
+
+## Evidencia histórica de la incorporación del módulo
 
 Las ejecuciones iniciales y finales se registran en la bitácora. Las integraciones
 PostgreSQL permanecen omitidas, sin URL de pruebas y sin aplicar migraciones. La
 prueba concurrente controla con latches una lectura en curso y una revocación;
 otra comprueba repetidamente el rechazo después de completarse la revocación.
 La eliminación por GC se apoya en las garantías de claves débiles del contenedor,
-no en un test dependiente de forzar System.gc(). Persistencia real, integración
-comercial y revisión independiente siguen pendientes.
+no en un test dependiente de forzar System.gc(). Los conteos siguientes pertenecen
+a la fase de identidad previa a su conexión con JavaFX; para la evidencia actual
+véase la sección de integración agregada al final de este documento.
 Resultado final observado: mvn -o verify con Temurin 17.0.21+9 y release 17,
 748 casos contabilizados, 708 aprobados, 0 fallos, 0 errores y 40 omitidos de
 integración PostgreSQL. Incluye 16 casos del validador general, 18 administrativos,
