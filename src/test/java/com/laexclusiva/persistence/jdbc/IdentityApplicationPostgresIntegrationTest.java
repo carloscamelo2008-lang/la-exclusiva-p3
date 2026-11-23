@@ -128,6 +128,10 @@ class IdentityApplicationPostgresIntegrationTest {
             adminId = account.getId();
             app.identity().userManagement().assignSeller(adminSession, account.getId().toString(),
                     account.getSecurityVersion(), registeredSellerId);
+            assertThrows(SecurityException.class, () -> app.purchases().suppliers().findAll(adminSession),
+                    "El cambio de asignación debe invalidar la sesión anterior también en Compras.");
+            var purchasesSession = app.identity().authentication()
+                    .createSession(adminName, adminPassword).orElseThrow();
 
             List<StockRequest> lines = List.of(new StockRequest(productId, SalePresentation.UNIT, 2));
             Sale sale = app.sales().registerSale(lines, registeredSellerId, customerId,
@@ -175,14 +179,14 @@ class IdentityApplicationPostgresIntegrationTest {
             assertEquals(new BigDecimal("2300.00"), app.customers().getCustomerById(customerId).getBalance());
             assertEquals(before, app.cash().summarize(from, through));
 
-            var supplier = app.purchases().suppliers().create(adminSession,
+            var supplier = app.purchases().suppliers().create(purchasesSession,
                     "Proveedor ficticio " + suffix.substring(0, 6), null, null);
             supplierId = supplier.id();
-            var order = app.purchases().orders().create(adminSession, supplier.id(), "Fixture de laboratorio",
+            var order = app.purchases().orders().create(purchasesSession, supplier.id(), "Fixture de laboratorio",
                     List.of(new PurchaseOrderService.OrderLineRequest(productId, 1, 0)));
             assertEquals(adminId, order.order().createdByUserId(), "El pedido debe guardar el ID persistido del actor.");
             var receiptLine = order.lines().get(0);
-            var receipt = app.purchases().receipts().receive(adminSession, order.order().id(),
+            var receipt = app.purchases().receipts().receive(purchasesSession, order.order().id(),
                     "identity-app-receipt-" + suffix, "Recepción ficticia",
                     List.of(new GoodsReceiptService.ReceiptLineRequest(receiptLine.id(), 1, 0)));
             assertEquals(adminId, receipt.receivedByUserId(), "La recepción debe guardar el ID persistido del actor.");
