@@ -81,12 +81,19 @@ JavaFX indicó en las pruebas que sus clases se cargaron desde un módulo sin
 nombre. Las trazas de fallo de consulta/logout de las pruebas son escenarios
 simulados; todas las pruebas correspondientes pasaron.
 
-Estado del laboratorio PostgreSQL de esta rama: pendiente de ejecución en
-GitHub Actions cuando exista el PR. El escenario de aplicación exige 15 suites y
-58 pruebas reales aprobadas; el workflow además repite identidad (26 pruebas
-por ciclo), verifica recuperación y comprueba el rechazo de un esquema de
-identidad incompleto. Se actualizará esta evidencia con el resultado y el
-artefacto del HEAD real del PR; las cifras locales no sustituyen esa ejecución.
+El laboratorio se ejecuta en GitHub Actions para el HEAD del PR. En el primer
+run, ambos ciclos de identidad aprobaron 26/26 cada uno y las comprobaciones SQL
+de recuperación/migraciones pasaron. `PurchaseWorkflowPostgresIntegrationTest`
+aprobó sus **6/6** pruebas PostgreSQL reales. El escenario de aplicación obtuvo
+57/58: una prueba intentó usar la sesión de administrador anterior a
+`assignSeller`, operación que incrementa la versión de seguridad y la revoca.
+El servicio de compras la rechazó correctamente. La regresión ahora comprueba
+ese rechazo y el fixture vuelve a autenticar antes de continuar. El run fue
+[45215633632](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45215633632)
+y publicó el artefacto sanitizado `identity-postgres-45215633632-1` (ID
+`14839235235`). La corrección está en el commit `2dd0eb5`; el laboratorio se
+repetirá al publicar ese commit y se añadirá el resultado final cuando concluya
+Actions.
 
 ## Lista breve de revisión manual en Windows
 
