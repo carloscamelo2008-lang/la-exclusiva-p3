@@ -56,7 +56,14 @@ public final class CashController {
     @FXML private Label netCashLabel;
     @FXML private Label messageLabel;
 
-    private final AuthorizationService authorization = new AuthorizationService();
+    private AuthorizationService authorization;
+
+    /** Inyecta la autoridad actual compartida con la aplicación. */
+    public void setAuthorizationService(AuthorizationService authorization) {
+        if (authorization == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorization.requireSessionAuthority();
+        this.authorization = authorization;
+    }
     private CashWorkflow cash;
     private UserSession session;
     private String operationKey = UUID.randomUUID().toString();
@@ -88,6 +95,7 @@ public final class CashController {
 
     /** Configura el caso de uso y limita la captura financiera a usuarios autorizados. */
     public void configure(CashWorkflow cash, UserSession session) {
+        requireSessionAuthority();
         if (cash == null || session == null) throw new IllegalArgumentException("Caja y sesión son obligatorias.");
         this.cash = cash;
         this.session = session;
@@ -144,8 +152,8 @@ public final class CashController {
         }
 
         try {
-            cash.registerMovement(direction, category, amount, occurredAt,
-                    description, operationKey);
+            authorization.execute(session, Permission.REGISTER_CASH_MOVEMENT, () ->
+                    cash.registerMovement(direction, category, amount, occurredAt, description, operationKey));
         } catch (IllegalArgumentException | SecurityException rejected) {
             if (uncertainFingerprint == null) pendingOccurredAt = null;
             messageLabel.setText("Movimiento rechazado: " + safeMessage(rejected));
@@ -186,8 +194,9 @@ public final class CashController {
     }
 
     private void refresh() {
-        CashSnapshot snapshot = cash.loadSnapshot(fromDatePicker.getValue(),
-                throughDatePicker.getValue(), categoryFilterCombo.getValue());
+        CashSnapshot snapshot = authorization.execute(session, Permission.VIEW_CASH,
+                () -> cash.loadSnapshot(fromDatePicker.getValue(),
+                        throughDatePicker.getValue(), categoryFilterCombo.getValue()));
         CashSummary summary = snapshot.summary();
         // La tabla y los indicadores se publican juntos solo después de una lectura completa.
         movementsTable.getItems().setAll(snapshot.movements());
@@ -222,7 +231,13 @@ public final class CashController {
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorization.hasPermission(session, permission)) throw new SecurityException(message);
+    }
+
+    private void requireSessionAuthority() {
+        if (authorization == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorization.requireSessionAuthority();
     }
 
     private static String money(BigDecimal value) {
@@ -243,7 +258,7 @@ public final class CashController {
     }
 
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank() ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 
     private static <T> StringConverter<T> converter(java.util.function.Function<T, String> label) {

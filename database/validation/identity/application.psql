@@ -1,0 +1,20 @@
+-- Este archivo se ejecuta únicamente en el PostgreSQL efímero del job autorizado.
+\ir guard.psql
+DO $empty$
+BEGIN
+    IF EXISTS (SELECT FROM pg_catalog.pg_class WHERE relnamespace = 'public'::regnamespace
+               AND relkind IN ('r', 'p', 'v', 'm', 'f', 'S')) THEN
+        RAISE EXCEPTION 'La composición de aplicación exige un laboratorio recién creado';
+    END IF;
+END;
+$empty$;
+\ir ../../migrations/V001__initial_schema.sql
+\ir ../../migrations/V002__payment_idempotency.sql
+\ir ../../migrations/V100__sale_creation_idempotency.sql
+\ir ../../migrations/V101__general_debt_ledger.sql
+\ir ../../migrations/V102__cash_ledger.sql
+\ir ../../migrations/V103__enforce_sale_request_identity_coherence.sql
+\ir ../../migrations/V104__user_security_version.sql
+\ir ../../migrations/V105__unique_active_user_seller.sql
+\ir ../../migrations/V106__user_account_instance_identity.sql
+\echo 'Esquema completo aplicado al cluster temporal aislado.'

@@ -4,6 +4,7 @@ import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
+import java.util.function.Supplier;
 
 /**
  * Servicio encargado de la autorización y validación de permisos de usuario o sesión.
@@ -12,12 +13,57 @@ import com.laexclusiva.model.UserSession;
  */
 public class AuthorizationService {
 
+    private final AuthenticatedSessionValidator sessions;
+
+    /**
+     * Crea un autorizador de compatibilidad para consumidores antiguos que solo reciben sesiones
+     * sintéticas. La composición JavaFX productiva debe usar el constructor con validador.
+     */
+    public AuthorizationService() {
+        this.sessions = null;
+    }
+
+    /**
+     * Crea un autorizador respaldado por la autoridad que emitió las sesiones.
+     * Las decisiones se toman con el rol actual del repositorio y fallan cerradas si la sesión
+     * fue revocada, desactivada o su cuenta cambió desde el inicio de sesión.
+     *
+     * @param sessions validador compartido con AuthenticationService
+     * @throws IllegalArgumentException si falta el validador
+     */
+    public AuthorizationService(AuthenticatedSessionValidator sessions) {
+        if (sessions == null) throw new IllegalArgumentException("El validador de sesiones es obligatorio.");
+        this.sessions = sessions;
+    }
+
+    /** Indica si este servicio valida sesiones emitidas por una autoridad concreta. */
+    public boolean hasSessionAuthority() {
+        return sessions != null;
+    }
+
+    /**
+     * Rechaza el uso de este autorizador como frontera de una ruta productiva.
+     * El constructor sin validador permanece disponible para consumidores de compatibilidad,
+     * pero solo puede evaluar snapshots y nunca habilita operaciones protegidas.
+     *
+     * @throws SecurityException si no se inyectó el validador de la autoridad actual
+     */
+    public void requireSessionAuthority() {
+        if (sessions == null) {
+            throw new SecurityException("La operación requiere una autoridad de sesiones vigente.");
+        }
+    }
+
     public boolean isAdministrator(UserAccount user) {
         return user != null && user.isActive() && user.getRole() == UserRole.ADMINISTRATOR;
     }
 
     public boolean isAdministrator(UserSession session) {
-        return session != null && session.isActive() && isAdministrator(session.getUserAccount());
+        try {
+            return currentPrincipal(session).role() == UserRole.ADMINISTRATOR;
+        } catch (RuntimeException deniedOrUnavailable) {
+            return false;
+        }
     }
 
     public boolean hasRole(UserAccount user, UserRole requiredRole) {
@@ -25,7 +71,12 @@ public class AuthorizationService {
     }
 
     public boolean hasRole(UserSession session, UserRole requiredRole) {
-        return session != null && session.isActive() && hasRole(session.getUserAccount(), requiredRole);
+        if (requiredRole == null) return false;
+        try {
+            return currentPrincipal(session).role() == requiredRole;
+        } catch (RuntimeException deniedOrUnavailable) {
+            return false;
+        }
     }
 
     public boolean hasPermission(UserAccount user, Permission permission) {
@@ -33,6 +84,65 @@ public class AuthorizationService {
     }
 
     public boolean hasPermission(UserSession session, Permission permission) {
-        return session != null && session.isActive() && hasPermission(session.getUserAccount(), permission);
+        if (permission == null) return false;
+        try {
+            return currentPrincipal(session).role().hasPermission(permission);
+        } catch (RuntimeException deniedOrUnavailable) {
+            return false;
+        }
+    }
+
+    /**
+     * Ejecuta una operación comercial solo después de validar la sesión y el permiso vigente.
+     * La validación y la invocación quedan en un mismo punto de aplicación; conserva intactos
+     * los contratos de los servicios legacy que también consumen la consola.
+     *
+     * @param session sesión emitida por la autoridad activa
+     * @param permission permiso requerido en el instante de la operación
+     * @param operation operación de lectura o escritura que no debe iniciarse si se deniega
+     * @param <T> resultado de la operación
+     * @return resultado producido por la operación
+     * @throws SecurityException si la sesión no fue emitida por la autoridad vigente, está revocada,
+     *                           la cuenta cambió o el permiso no corresponde al rol actual
+     * @throws IllegalArgumentException si falta el permiso o la operación
+     */
+    public <T> T execute(UserSession session, Permission permission, Supplier<T> operation) {
+        if (permission == null || operation == null) {
+            throw new IllegalArgumentException("El permiso y la operación son obligatorios.");
+        }
+        requireSessionAuthority();
+        if (!hasPermission(session, permission)) {
+            throw new SecurityException("La sesión no permite ejecutar esta operación.");
+        }
+        return operation.get();
+    }
+
+    /** Variante para operaciones que no devuelven resultado. */
+    public void execute(UserSession session, Permission permission, Runnable operation) {
+        if (operation == null) throw new IllegalArgumentException("La operación es obligatoria.");
+        execute(session, permission, () -> {
+            operation.run();
+            return null;
+        });
+    }
+
+    /**
+     * Obtiene la identidad que debe usarse para decisiones de una operación.
+     * Con validador consulta la autoridad vigente; el modo sin validador solo se conserva
+     * para compatibilidad con pruebas y consumidores anteriores.
+     *
+     * @param session sesión recibida por la operación
+     * @return principal actual sin secretos
+     * @throws SecurityException si la sesión no está autenticada o ya no está vigente
+     */
+    public AuthenticatedPrincipal currentPrincipal(UserSession session) {
+        if (sessions != null) return sessions.validate(session);
+        if (session == null || !session.isActive() || session.getUserAccount().getId() == null
+                || session.getUserAccount().getRole() == null) {
+            throw new SecurityException("La sesión no está activa.");
+        }
+        var account = session.getUserAccount();
+        return new AuthenticatedPrincipal(account.getId(), account.getRole(), account.getSellerId(),
+                account.getSecurityVersion(), account.getAccountInstanceId());
     }
 }

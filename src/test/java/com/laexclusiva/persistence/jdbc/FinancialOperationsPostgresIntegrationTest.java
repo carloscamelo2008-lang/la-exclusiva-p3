@@ -252,20 +252,21 @@ class FinancialOperationsPostgresIntegrationTest {
 
     @Test
     void cashSummarySeparatesInvoiceFromReceiptsAndManualMovementsAreAuditable() {
-        LocalDate today = LocalDate.now();
+        LocalDateTime occurredAt = LocalDateTime.now().minusMinutes(1);
+        LocalDate today = occurredAt.toLocalDate();
         var baseline = cash.summarize(today, today);
         assertEquals(new BigDecimal("20.00"), decimal(
                 "SELECT amount FROM cash_movement WHERE source_type = 'SALE_INITIAL' AND source_reference = ?", saleId));
         String incomeKey = manualKeyPrefix + "-income";
         CashMovement income = cash.registerMovement(CashDirection.INCOME, CashCategory.OTHER_INCOME,
-                new BigDecimal("15.00"), today.atTime(10, 0), "Ingreso ficticio", incomeKey);
+                new BigDecimal("15.00"), occurredAt, "Ingreso ficticio", incomeKey);
         CashMovement replay = cash.registerMovement(CashDirection.INCOME, CashCategory.OTHER_INCOME,
-                new BigDecimal("15.00"), today.atTime(10, 0), "Ingreso ficticio", incomeKey);
+                new BigDecimal("15.00"), occurredAt, "Ingreso ficticio", incomeKey);
         cash.registerMovement(CashDirection.EXPENSE, CashCategory.ICE, new BigDecimal("10.00"),
-                today.atTime(11, 0), "Compra de hielo ficticia", manualKeyPrefix + "-expense");
+                occurredAt.plusSeconds(1), "Compra de hielo ficticia", manualKeyPrefix + "-expense");
         assertEquals(income.id(), replay.id());
         assertThrows(IllegalArgumentException.class, () -> cash.registerMovement(CashDirection.INCOME,
-                CashCategory.OTHER_INCOME, new BigDecimal("16.00"), today.atTime(10, 0),
+                CashCategory.OTHER_INCOME, new BigDecimal("16.00"), occurredAt,
                 "Datos distintos", incomeKey));
         assertEquals(1, cash.listMovements(today, today, CashCategory.OTHER_INCOME).size());
         var summary = cash.summarize(today, today);

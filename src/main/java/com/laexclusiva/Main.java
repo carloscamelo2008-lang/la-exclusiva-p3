@@ -2,6 +2,7 @@ package com.laexclusiva;
 
 import com.laexclusiva.demo.DemoDataInitializer;
 import com.laexclusiva.model.InitialCatalog;
+import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
@@ -10,6 +11,8 @@ import com.laexclusiva.security.PasswordHasher;
 import com.laexclusiva.security.PasswordPolicy;
 import com.laexclusiva.service.*;
 import com.laexclusiva.ui.ConsoleMenu;
+import com.laexclusiva.ui.IdentityServices;
+import com.laexclusiva.ui.ApplicationServices;
 import java.util.Scanner;
 
 /** Punto de entrada y composición de dependencias de La Exclusiva. */
@@ -23,6 +26,14 @@ public final class Main {
         if (!consoleMode) {
             // Si no se pasa --console, lanza inmediatamente JavaFX y sale del main
             com.laexclusiva.ui.App.launch(com.laexclusiva.ui.App.class, args);
+            return;
+        }
+
+        String persistenceMode = System.getenv().getOrDefault(ApplicationServices.MODE_ENV,
+                ApplicationServices.MEMORY_MODE).trim();
+        if (!ApplicationServices.MEMORY_MODE.equalsIgnoreCase(persistenceMode)) {
+            System.err.println("El modo --console solo admite LAEXCLUSIVA_PERSISTENCE_MODE=memory; "
+                    + "no se cambiará a almacenamiento en memoria automáticamente.");
             return;
         }
 
@@ -42,9 +53,10 @@ public final class Main {
         SellerService sellerService = new SellerService(sellerRepository);
         SaleService saleService = new SaleService(saleRepository, productService, inventoryService, customerService, sellerService);
         
-        UserRepository userRepository = new InMemoryUserRepository();
-        AuthenticationService authenticationService = new AuthenticationService(userRepository);
-        AuthorizationService authorizationService = new AuthorizationService();
+        IdentityServices identity = IdentityServices.inMemory(sellerService);
+        UserRepository userRepository = identity.users();
+        AuthenticationService authenticationService = identity.authentication();
+        AuthorizationService authorizationService = identity.authorization();
         Scanner scanner = new Scanner(System.in);
         
         boolean demo = java.util.Arrays.asList(args).contains("--demo");
@@ -89,7 +101,7 @@ public final class Main {
             System.err.println("Credenciales incorrectas."); 
             return; 
         }
-        if (!authorizationService.hasRole(session, session.getUserAccount().getRole())) return;
+        if (!authorizationService.hasPermission(session, Permission.VIEW_CATALOG)) return;
         ConsoleMenu menu = new ConsoleMenu(productService, inventoryService, customerService, sellerService,
                 saleService, scanner, System.out, session, authorizationService);
         menu.start();

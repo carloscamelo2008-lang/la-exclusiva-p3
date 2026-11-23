@@ -41,6 +41,7 @@ services:
     environment:
       LAEXCLUSIVA_TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/la_exclusiva_test
       LAEXCLUSIVA_DB_USER: identity_validation_owner
+      LAB_SCENARIO: ${LAB_SCENARIO:-identity}
     secrets: [lab_password]
     tmpfs:
       - /workspace

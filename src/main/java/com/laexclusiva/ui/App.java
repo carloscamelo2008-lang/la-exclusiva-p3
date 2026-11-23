@@ -1,11 +1,6 @@
 package com.laexclusiva.ui;
 
-import com.laexclusiva.model.UserAccount;
-import com.laexclusiva.model.UserRole;
-import com.laexclusiva.repository.InMemoryUserRepository;
 import com.laexclusiva.repository.UserRepository;
-import com.laexclusiva.security.PasswordHasher;
-import com.laexclusiva.security.PasswordPolicy;
 import com.laexclusiva.service.AuthenticationService;
 import com.laexclusiva.ui.controller.LoginController;
 import javafx.application.Application;
@@ -15,53 +10,76 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Map;
 
 public class App extends Application {
 
-    private final UserRepository userRepository = new InMemoryUserRepository();
-    private final AuthenticationService authenticationService = new AuthenticationService(userRepository);
     private ApplicationServices applicationServices;
+    private boolean compositionSelectedForStartup;
 
     public UserRepository getUserRepository() {
-        return userRepository;
+        return services().identity().users();
+    }
+
+    /** Reutiliza la autoridad compartida para todo el ciclo JavaFX. */
+    public AuthenticationService getAuthenticationService() {
+        return services().identity().authentication();
     }
 
     public void initializeDemoAccounts(String adminPass, String workerPass) {
+        ApplicationServices selected = services();
+        if (selected.postgresMode()) {
+            throw new IllegalStateException("Las cuentas demo solo se pueden inicializar en modo memory.");
+        }
         try {
-            PasswordPolicy.validate(adminPass);
-            PasswordPolicy.validate(workerPass);
-        } catch (IllegalArgumentException invalid) {
+            selected.identity().bootstrapDemoAccounts(adminPass, workerPass);
+            compositionSelectedForStartup = true;
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
             throw new IllegalStateException("Las contraseñas demo deben cumplir la política de contraseñas.");
         }
-        userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
-        userRepository.save(new UserAccount(2L, "worker", PasswordHasher.hash(workerPass), UserRole.WORKER, null));
     }
 
     public void initializeInitialAdmin(String adminPass) {
         try {
-            PasswordPolicy.validate(adminPass);
-        } catch (IllegalArgumentException invalid) {
+            services().identity().bootstrapInitialAdministrator("admin", adminPass);
+            compositionSelectedForStartup = true;
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
             throw new IllegalStateException("Defina LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD con una contraseña que cumpla la política.");
         }
-        userRepository.save(new UserAccount(1L, "admin", PasswordHasher.hash(adminPass), UserRole.ADMINISTRATOR, null));
     }
 
     public void processInitialization(Parameters params) {
+        if (applicationServices == null) {
+            applicationServices = ApplicationServices.fromEnvironment();
+        }
         boolean isDemo = params != null && params.getRaw().contains("--demo");
+        ApplicationServices selected = applicationServices;
         if (isDemo) {
+            if (selected.postgresMode()) {
+                throw new IllegalStateException("El modo --demo solo está disponible con LAEXCLUSIVA_PERSISTENCE_MODE=memory.");
+            }
             String adminPass = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
             String workerPass = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
             initializeDemoAccounts(adminPass, workerPass);
-        } else if (userRepository.findAll().isEmpty()) {
+        } else if (selected.identity().users().findAll().isEmpty()) {
             String initialAdminPass = System.getenv("LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD");
-            initializeInitialAdmin(initialAdminPass);
+            String initialUsername = System.getenv().getOrDefault("LAEXCLUSIVA_INITIAL_ADMIN_USERNAME", "admin");
+            try {
+                selected.identity().bootstrapInitialAdministrator(initialUsername, initialAdminPass);
+            } catch (IllegalArgumentException | IllegalStateException failure) {
+                throw new IllegalStateException("Configure un usuario administrador y una contraseña inicial que cumpla la política.");
+            }
         }
     }
 
     @Override
     public void start(Stage primaryStage) throws Exception {
+        if (!compositionSelectedForStartup) {
+            // En PostgreSQL no hay alternativa en memoria: los errores de esquema o conexión fallan cerrados.
+            applicationServices = ApplicationServices.fromEnvironment();
+            compositionSelectedForStartup = true;
+        }
         processInitialization(getParameters());
-        applicationServices = ApplicationServices.fromEnvironment();
         showLogin(primaryStage);
     }
 
@@ -70,7 +88,6 @@ public class App extends Application {
         Parent root = loader.load();
 
         LoginController loginController = loader.getController();
-        loginController.setAuthenticationService(authenticationService);
         loginController.setApplicationServices(applicationServices);
         loginController.setOnLogout(() -> {
             try {
@@ -90,6 +107,14 @@ public class App extends Application {
         primaryStage.sizeToScene();
         primaryStage.centerOnScreen();
         primaryStage.show();
+    }
+
+    /** Crea composición en memoria solo para consumidores directos previos al arranque JavaFX. */
+    private ApplicationServices services() {
+        if (applicationServices == null) {
+            applicationServices = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+        }
+        return applicationServices;
     }
 
     public static void main(String[] args) {

@@ -13,6 +13,7 @@ import com.laexclusiva.ui.ApplicationServices;
 import com.laexclusiva.ui.controller.InventoryController;
 import com.laexclusiva.ui.controller.MainController;
 import com.laexclusiva.ui.controller.SalesController;
+import com.laexclusiva.testutil.IdentityTestFixture;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
@@ -43,6 +44,7 @@ import java.util.function.BiConsumer;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class AuthenticationServiceTest {
+    private IdentityTestFixture currentMenuIdentity;
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {
@@ -188,6 +190,8 @@ public class AuthenticationServiceTest {
         assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
                 "/com/laexclusiva/ui/fxml/inventory_view.fxml")).load());
         assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
+                "/com/laexclusiva/ui/fxml/user_management_view.fxml")).load());
+        assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
                 "/com/laexclusiva/ui/fxml/sales_view.fxml")).load());
         assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
                 "/com/laexclusiva/ui/fxml/portfolio_view.fxml")).load());
@@ -226,8 +230,10 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
             loader.load();
             InventoryController controller = loader.getController();
+            IdentityTestFixture identity = new IdentityTestFixture();
+            controller.setAuthorizationService(identity.authorization());
             controller.configure(services.products(), services.inventory(),
-                    new UserSession(new UserAccount(1L, "admin", "unused", UserRole.ADMINISTRATOR, null)));
+                    identity.issue(UserRole.ADMINISTRATOR).session());
             setText(loader, "productIdField", "UI-CATALOG-TEST");
             setText(loader, "productNameField", "Producto de interfaz");
             setText(loader, "volumeField", "330");
@@ -251,13 +257,14 @@ public class AuthenticationServiceTest {
                     java.util.Map.of());
             Seller assignedSeller = services.sellers().registerSeller("Vendedor asignado", "3000000103", "Dirección");
             services.sellers().registerSeller("Otro vendedor", "3000000104", "Dirección");
+            IdentityTestFixture identity = new IdentityTestFixture();
 
             FXMLLoader unassignedLoader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/sales_view.fxml"));
             unassignedLoader.load();
             SalesController unassignedController = unassignedLoader.getController();
-            UserSession unassignedWorker = new UserSession(
-                    new UserAccount(2L, "worker", "unused", UserRole.WORKER, null));
+            unassignedController.setAuthorizationService(identity.authorization());
+            UserSession unassignedWorker = identity.issue(UserRole.WORKER).session();
             unassignedController.configure(services.products(), services.inventory(), services.customers(),
                     services.sellers(), services.sales(), unassignedWorker);
             ComboBox<?> unassignedSellers = (ComboBox<?>) unassignedLoader.getNamespace().get("sellerCombo");
@@ -268,8 +275,8 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/sales_view.fxml"));
             assignedLoader.load();
             SalesController assignedController = assignedLoader.getController();
-            UserSession worker = new UserSession(
-                    new UserAccount(3L, "assigned-worker", "unused", UserRole.WORKER, assignedSeller.getId()));
+            assignedController.setAuthorizationService(identity.authorization());
+            UserSession worker = identity.issue("assigned-worker", UserRole.WORKER, assignedSeller.getId()).session();
             assignedController.configure(services.products(), services.inventory(), services.customers(),
                     services.sellers(), services.sales(), worker);
             ComboBox<?> sellerOptions = (ComboBox<?>) assignedLoader.getNamespace().get("sellerCombo");
@@ -283,8 +290,8 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/sales_view.fxml"));
             unknownLoader.load();
             SalesController unknownController = unknownLoader.getController();
-            UserSession unknownWorker = new UserSession(
-                    new UserAccount(4L, "unknown-worker", "unused", UserRole.WORKER, "SELLER-NOT-REGISTERED"));
+            unknownController.setAuthorizationService(identity.authorization());
+            UserSession unknownWorker = identity.issue("unknown-worker", UserRole.WORKER, "SELLER-NOT-REGISTERED").session();
             unknownController.configure(services.products(), services.inventory(), services.customers(),
                     services.sellers(), services.sales(), unknownWorker);
             ComboBox<?> unknownSellers = (ComboBox<?>) unknownLoader.getNamespace().get("sellerCombo");
@@ -297,9 +304,10 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/sales_view.fxml"));
             adminLoader.load();
             SalesController adminController = adminLoader.getController();
+            adminController.setAuthorizationService(identity.authorization());
             adminController.configure(services.products(), services.inventory(), services.customers(),
                     services.sellers(), services.sales(),
-                    new UserSession(new UserAccount(5L, "admin", "unused", UserRole.ADMINISTRATOR, null)));
+                    identity.issue(UserRole.ADMINISTRATOR).session());
             ComboBox<?> adminSellers = (ComboBox<?>) adminLoader.getNamespace().get("sellerCombo");
             assertFalse(adminSellers.isDisabled());
             assertEquals(2, adminSellers.getItems().size(), "El administrador conserva la selección de todos los vendedores.");
@@ -321,7 +329,9 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             loader.load();
             MainController controller = loader.getController();
-            UserSession session = new UserSession(new UserAccount(1L, "test", "unused", role, null));
+            IdentityTestFixture identity = new IdentityTestFixture();
+            controller.setAuthorizationService(identity.authorization());
+            UserSession session = identity.issue(role).session();
             controller.initSession(session);
 
             Button sellers = (Button) loader.getNamespace().get("btnSellers");
@@ -331,7 +341,7 @@ public class AuthenticationServiceTest {
                     () -> assertEquals(expectedVisibility, sellers.isManaged(), "Espacio de Vendedores"),
                     () -> assertEquals(expectedVisibility, adminUsers.isVisible(), "Visibilidad de Gestión de Usuarios"),
                     () -> assertEquals(expectedVisibility, adminUsers.isManaged(), "Espacio de Gestión de Usuarios"),
-                    () -> assertTrue(adminUsers.isDisabled(), "Gestión de Usuarios sigue pendiente")
+                    () -> assertFalse(adminUsers.isDisabled(), "La gestión se protege en la operación, no se deja deshabilitada")
             );
             return null;
         });
@@ -367,6 +377,7 @@ public class AuthenticationServiceTest {
             assertNotNull(menu.getCenter().lookup("#customersTable"));
             Node customerView = menu.getCenter();
             account.setActive(false);
+            currentMenuIdentity.update(account);
             customersButton.fire();
             assertSame(customerView, menu.getCenter());
         });
@@ -394,6 +405,7 @@ public class AuthenticationServiceTest {
         });
         withMainMenu(UserRole.ADMINISTRATOR, customers, (menu, account) -> {
             account.setActive(false);
+            currentMenuIdentity.update(account);
             Node dashboard = menu.getCenter();
             ((Button) menu.getLeft().lookup("#btnCustomers")).fire();
             assertSame(dashboard, menu.getCenter());
@@ -461,6 +473,7 @@ public class AuthenticationServiceTest {
 
         withMainMenu(role, null, sellers, (menu, account) -> {
             account.setActive(active);
+            currentMenuIdentity.update(account);
             Node dashboard = menu.getCenter();
             Button sellersButton = (Button) menu.getLeft().lookup("#btnSellers");
             sellersButton.fire();
@@ -565,6 +578,7 @@ public class AuthenticationServiceTest {
         });
         withMainMenu(UserRole.ADMINISTRATOR, customers, (menu, account) -> {
             account.setActive(false);
+            currentMenuIdentity.update(account);
             Node dashboard = menu.getCenter();
             ((Button) menu.getLeft().lookup("#btnCredit")).fire();
             assertSame(dashboard, menu.getCenter());
@@ -636,6 +650,7 @@ public class AuthenticationServiceTest {
             assertSame(sellersView, menu.getCenter());
             assertActiveNavigation(menu, "btnSellers");
             account.setActive(false);
+            currentMenuIdentity.update(account);
             ((Button) menu.lookup("#btnDashboard")).fire();
             assertSame(sellersView, menu.getCenter());
             assertActiveNavigation(menu, "btnSellers");
@@ -667,8 +682,10 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
             MainController controller = loader.getController();
-            UserAccount account = new UserAccount(1L, "admin", "unused", UserRole.ADMINISTRATOR, null);
-            UserSession session = new UserSession(account);
+            IdentityTestFixture identity = new IdentityTestFixture();
+            var issued = identity.issue(UserRole.ADMINISTRATOR);
+            UserAccount account = issued.account();
+            UserSession session = issued.session();
             CustomerService customers = new CustomerService(new CustomerRepository() {
                 @Override
                 public List<Customer> findAll() {
@@ -676,40 +693,94 @@ public class AuthenticationServiceTest {
                 }
             });
             controller.setCustomerService(customers);
+            controller.setAuthorizationService(identity.authorization());
             controller.initSession(session);
             boolean[] returnedToLogin = {false};
             controller.setOnLogout(() -> returnedToLogin[0] = true);
             ((Button) menu.lookup("#btnLogout")).fire();
             assertTrue(returnedToLogin[0]);
+            assertNotNull(menu.lookup("#sessionClosedMessage"),
+                    "Si el callback no reemplaza la vista, el menú debe seguir indicando sesión cerrada.");
             assertFalse(session.isActive());
             assertTrue(account.isActive());
-            AuthorizationService authorization = new AuthorizationService();
+            AuthorizationService authorization = identity.authorization();
             assertFalse(authorization.isAdministrator(session));
             assertFalse(authorization.hasRole(session, UserRole.ADMINISTRATOR));
             assertFalse(authorization.hasPermission(session, com.laexclusiva.model.Permission.VIEW_CUSTOMER));
             ((Button) menu.lookup("#btnCustomers")).fire();
-            assertEquals("No tiene permiso para consultar clientes.", ((Label) menu.getBottom()).getText());
-            assertThrows(IllegalArgumentException.class, () -> controller.initSession(session));
+            assertTrue(((Button) menu.lookup("#btnCustomers")).isDisabled());
+            assertThrows(SecurityException.class, () -> authorization.execute(session,
+                    com.laexclusiva.model.Permission.VIEW_CUSTOMER,
+                    () -> fail("Una sesión revocada no debe consultar clientes.")));
+            assertThrows(SecurityException.class, () -> controller.initSession(session));
             return null;
         });
     }
 
     @Test
-    void testLogoutFailurePreservesActiveSession() throws Exception {
+    void testLogoutFailureStillRevokesTheSession() throws Exception {
         onFxThread(() -> {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
             MainController controller = loader.getController();
-            UserSession session = new UserSession(new UserAccount(
-                    1L, "admin", "unused", UserRole.ADMINISTRATOR, null));
+            IdentityTestFixture identity = new IdentityTestFixture();
+            UserSession session = identity.issue(UserRole.ADMINISTRATOR).session();
+            AuthorizationService authorization = identity.authorization();
+            controller.setAuthorizationService(authorization);
             controller.initSession(session);
             controller.setOnLogout(() -> { throw new IllegalStateException("Carga no disponible."); });
             ((Button) menu.lookup("#btnLogout")).fire();
-            assertTrue(session.isActive());
-            assertActiveNavigation(menu, "btnDashboard");
-            assertEquals("No se pudo volver al inicio de sesión. Intente de nuevo.",
+            assertFalse(session.isActive());
+            assertTrue(((Button) menu.lookup("#btnCustomers")).isDisabled());
+            assertNotNull(menu.lookup("#sessionClosedMessage"));
+            Button retry = (Button) menu.lookup("#retryLoginButton");
+            assertNotNull(retry);
+            assertThrows(SecurityException.class, () -> authorization.execute(session,
+                    com.laexclusiva.model.Permission.VIEW_CUSTOMER,
+                    () -> fail("Una sesión revocada no puede recuperar permisos.")));
+            boolean[] retried = {false};
+            controller.setOnLogout(() -> retried[0] = true);
+            retry.fire();
+            assertTrue(retried[0]);
+            assertFalse(authorization.hasPermission(session, com.laexclusiva.model.Permission.VIEW_CUSTOMER));
+            return null;
+        });
+    }
+
+    @Test
+    void applicationOperationsRejectAFormerAdministratorAndLogoutRevokesTheIssuedSession() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE,
+                    java.util.Map.of());
+            String password = "Current-Identity-Admin-Test-2026";
+            UserAccount account = new UserAccount(null, "admin", com.laexclusiva.security.PasswordHasher.hash(password),
+                    UserRole.ADMINISTRATOR, null);
+            services.identity().users().save(account);
+            UserSession session = services.identity().authentication().createSession("admin", password).orElseThrow();
+
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
+            BorderPane menu = loader.load();
+            MainController controller = loader.getController();
+            controller.setApplicationServices(services);
+            controller.setOnLogout(() -> { });
+            controller.initSession(session);
+
+            UserAccount persisted = services.identity().users().findById(account.getId().toString()).orElseThrow();
+            persisted.setRole(UserRole.WORKER);
+            services.identity().users().update(persisted);
+            assertEquals(UserRole.ADMINISTRATOR, session.getUserAccount().getRole(),
+                    "El snapshot antiguo aún afirma administrador, pero no debe autorizar la acción.");
+            ((Button) menu.lookup("#btnAdminUsers")).fire();
+            assertEquals("No tiene permiso para administrar usuarios.",
                     ((Label) menu.getBottom()).getText());
+            assertNull(menu.lookup("#usersTable"), "No debe cargarse la pantalla administrativa con el rol anterior.");
+
+            ((Button) menu.lookup("#btnLogout")).fire();
+            assertFalse(session.isValid());
+            assertThrows(SecurityException.class,
+                    () -> services.identity().sessions().validate(session));
             return null;
         });
     }
@@ -733,7 +804,9 @@ public class AuthenticationServiceTest {
                 enterLogin(stage, "admin", "Admin-Test-2026-Valid-Only");
                 BorderPane adminMenu = (BorderPane) stage.getScene().getRoot();
                 assertTrue(adminMenu.lookup("#btnSellers").isVisible());
-                assertTrue(adminMenu.lookup("#btnAdminUsers").isDisabled());
+                assertFalse(adminMenu.lookup("#btnAdminUsers").isDisabled());
+                ((Button) adminMenu.lookup("#btnAdminUsers")).fire();
+                assertNotNull(adminMenu.lookup("#usersTable"), "La pantalla administrativa debe cargar la tabla de usuarios");
                 ((Button) adminMenu.lookup("#btnCustomers")).fire();
                 stage.setMaximized(true);
                 ((Button) adminMenu.lookup("#btnLogout")).fire();
@@ -807,10 +880,13 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
             MainController controller = loader.getController();
-            UserAccount account = new UserAccount(1L, "test", "unused", role, null);
+            currentMenuIdentity = new IdentityTestFixture();
+            var issued = currentMenuIdentity.issue(role);
+            UserAccount account = issued.account();
             controller.setCustomerService(customers);
             controller.setSellerService(sellers);
-            controller.initSession(new UserSession(account));
+            controller.setAuthorizationService(currentMenuIdentity.authorization());
+            controller.initSession(issued.session());
             check.accept(menu, account);
             return null;
         });

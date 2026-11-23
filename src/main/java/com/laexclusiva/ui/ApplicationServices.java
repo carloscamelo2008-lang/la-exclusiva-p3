@@ -60,11 +60,13 @@ public final class ApplicationServices {
     private final boolean postgresMode;
     private final CustomerGeneralDebtWorkflow generalDebt;
     private final CashWorkflow cash;
+    private final IdentityServices identity;
 
     private ApplicationServices(CustomerService customers, SellerService sellers, ProductService products,
                                 InventoryService inventory, SalesWorkflow sales,
                                 CustomerDebtQuery debtQuery, boolean postgresMode,
-                                CustomerGeneralDebtWorkflow generalDebt, CashWorkflow cash) {
+                                CustomerGeneralDebtWorkflow generalDebt, CashWorkflow cash,
+                                IdentityServices identity) {
         this.customers = customers;
         this.sellers = sellers;
         this.products = products;
@@ -74,6 +76,7 @@ public final class ApplicationServices {
         this.postgresMode = postgresMode;
         this.generalDebt = generalDebt;
         this.cash = cash;
+        this.identity = identity;
     }
 
     /**
@@ -108,12 +111,13 @@ public final class ApplicationServices {
     private static ApplicationServices inMemory() {
         CustomerRepositoryInterface customerRepository = new CustomerRepository();
         SellerRepositoryInterface sellerRepository = new SellerRepository();
+        SellerService sellers = new SellerService(sellerRepository);
+        IdentityServices identity = IdentityServices.inMemory(sellers);
         ProductRepository productRepository = new InMemoryProductRepository();
         InventoryRepository inventoryRepository = new InMemoryInventoryRepository();
         StockMovementRepository movements = new InMemoryStockMovementRepository();
         SaleRepository saleRepository = new InMemorySaleRepository();
         CustomerService customers = new CustomerService(customerRepository);
-        SellerService sellers = new SellerService(sellerRepository);
         ProductService products = new ProductService(productRepository);
         products.registerAll(InitialCatalog.create());
         InventoryService inventory = new InventoryService(products, inventoryRepository, movements);
@@ -122,7 +126,7 @@ public final class ApplicationServices {
         CustomerGeneralDebtWorkflow generalDebt = new InMemoryCustomerGeneralDebtWorkflow(customers, sales);
         CashWorkflow cash = new InMemoryCashWorkflow(sales, generalDebt);
         return new ApplicationServices(customers, sellers, products, inventory, sales, null, false,
-                generalDebt, cash);
+                generalDebt, cash, identity);
     }
 
     private static ApplicationServices postgres(DatabaseConfig config) {
@@ -130,6 +134,8 @@ public final class ApplicationServices {
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         CustomerRepositoryJdbc customerRepository = new CustomerRepositoryJdbc(provider);
         SellerRepositoryJdbc sellerRepository = new SellerRepositoryJdbc(provider);
+        SellerService sellers = new SellerService(sellerRepository);
+        IdentityServices identity = IdentityServices.postgres(provider, sellers);
         ProductRepositoryJdbc productRepository = new ProductRepositoryJdbc(provider, transactions);
         InventoryRepositoryJdbc inventoryRepository = new InventoryRepositoryJdbc(provider, transactions);
         StockMovementRepositoryJdbc movementRepository = new StockMovementRepositoryJdbc(provider);
@@ -142,7 +148,6 @@ public final class ApplicationServices {
                 new CustomerGeneralDebtMovementRepositoryJdbc(provider, transactions);
 
         CustomerService customers = new CustomerService(customerRepository);
-        SellerService sellers = new SellerService(sellerRepository);
         ProductService products = new ProductService(productRepository);
         InventoryService inventory = new InventoryService(products, inventoryRepository,
                 movementRepository, inventoryAdjuster, transactions);
@@ -153,7 +158,7 @@ public final class ApplicationServices {
                 debtQuery, customerBalances, generalDebtRepository, cashRepository, transactions);
         CashWorkflow cash = new CashWorkflowJdbc(cashRepository, transactions);
         return new ApplicationServices(customers, sellers, products, inventory, sales, debtQuery, true,
-                generalDebt, cash);
+                generalDebt, cash, identity);
     }
 
     /** Servicio de clientes conectado al repositorio seleccionado. */
@@ -174,4 +179,8 @@ public final class ApplicationServices {
     public CustomerGeneralDebtWorkflow generalDebt() { return generalDebt; }
     /** Registro de efectivo recibido y egresado, sin sumar facturación como efectivo. */
     public CashWorkflow cash() { return cash; }
+    /** Identidad, autenticación, autorización y administración compartidas por la aplicación. */
+    public IdentityServices identity() { return identity; }
+    /** Autorizador vinculado al emisor de sesiones de esta composición. */
+    public com.laexclusiva.service.AuthorizationService authorization() { return identity.authorization(); }
 }

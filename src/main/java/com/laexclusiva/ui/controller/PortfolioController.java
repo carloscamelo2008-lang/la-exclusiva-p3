@@ -71,7 +71,14 @@ public class PortfolioController {
     private CustomerGeneralDebtWorkflow generalDebtWorkflow;
     private boolean canRegisterPayment;
     private UserSession session;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
+
+    /** Inyecta la autoridad actual compartida con la aplicación. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
+        this.authorizationService = authorizationService;
+    }
     private String pendingSaleId;
     private BigDecimal pendingAmount;
     private String pendingKey;
@@ -139,12 +146,15 @@ public class PortfolioController {
     /** Variante que habilita los movimientos auditables de deuda general al activar persistencia JDBC. */
     public void configure(CustomerService customerService, SalesWorkflow salesWorkflow,
                           CustomerGeneralDebtWorkflow generalDebtWorkflow, UserSession session) {
+        requireSessionAuthority();
         if (customerService == null) throw new IllegalArgumentException("El servicio de clientes es obligatorio.");
         if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         this.customerService = customerService;
         this.salesWorkflow = salesWorkflow;
         this.generalDebtWorkflow = generalDebtWorkflow;
         this.session = session;
+        requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
+        requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         this.canRegisterPayment = authorizationService.hasPermission(session, Permission.REGISTER_PAYMENT);
         boolean canRegisterGeneralDebt = authorizationService.hasPermission(session, Permission.REGISTER_GENERAL_DEBT);
         paymentPane.setVisible(canRegisterPayment && salesWorkflow != null);
@@ -166,6 +176,8 @@ public class PortfolioController {
 
     /** Lista clientes con deuda total positiva y prepara el selector de cartera por venta. */
     public void showPortfolio(List<Customer> customers) {
+        requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
+        requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         if (customers == null) throw new IllegalArgumentException("La lista de clientes es obligatoria.");
         String previousCustomerId = customerCombo.getValue() == null ? null : customerCombo.getValue().getId();
         List<Customer> debtors = customers.stream()
@@ -189,6 +201,7 @@ public class PortfolioController {
     }
 
     public void showDebtors(List<Customer> debtors) {
+        requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
         portfolioTable.getItems().setAll(debtors);
     }
 
@@ -222,7 +235,8 @@ public class PortfolioController {
 
         key = pendingKey;
         try {
-            salesWorkflow.registerPayment(selected.getId(), amount, key);
+            authorizationService.execute(session, Permission.REGISTER_PAYMENT,
+                    () -> salesWorkflow.registerPayment(selected.getId(), amount, key));
         } catch (IllegalArgumentException rejected) {
             // Errores de dominio son rechazos definitivos antes de persistir el abono.
             pendingSaleId = null;
@@ -243,7 +257,8 @@ public class PortfolioController {
         String confirmedMessage = "Abono registrado correctamente.";
         messageLabel.setText(confirmedMessage);
         try {
-            showPortfolio(customerService.getAllCustomers());
+            showPortfolio(authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers));
             if (!lastQuerySucceeded) {
                 messageLabel.setText(confirmedMessage
                         + " No se pudo actualizar la consulta de cartera; use Actualizar cartera sin registrar otro abono.");
@@ -297,9 +312,13 @@ public class PortfolioController {
 
         try {
             if (payment) {
-                generalDebtWorkflow.registerPayment(selected.getId(), amount, category, description, pendingGeneralKey);
+                authorizationService.execute(session, Permission.REGISTER_PAYMENT,
+                        () -> generalDebtWorkflow.registerPayment(selected.getId(), amount, category,
+                                description, pendingGeneralKey));
             } else {
-                generalDebtWorkflow.registerDebt(selected.getId(), amount, category, description, pendingGeneralKey);
+                authorizationService.execute(session, Permission.REGISTER_GENERAL_DEBT,
+                        () -> generalDebtWorkflow.registerDebt(selected.getId(), amount, category,
+                                description, pendingGeneralKey));
             }
         } catch (IllegalArgumentException | SecurityException rejected) {
             pendingGeneralKey = null;
@@ -327,7 +346,8 @@ public class PortfolioController {
         }
         messageLabel.setText(payment ? "Abono aplicado solo a deuda general." : "Deuda general registrada.");
         try {
-            showPortfolio(customerService.getAllCustomers());
+            showPortfolio(authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers));
             if (!lastQuerySucceeded) {
                 messageLabel.setText(confirmedGeneralOperationMessage(payment)
                         + " No se pudo actualizar la consulta de cartera; use Actualizar cartera sin repetir la operación.");
@@ -348,7 +368,8 @@ public class PortfolioController {
     private void handleRefreshPortfolio() {
         try {
             requirePermission(Permission.VIEW_PORTFOLIO, "No tiene permiso para consultar la cartera.");
-            List<Customer> refreshed = customerService.getAllCustomers();
+            List<Customer> refreshed = authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers);
             showPortfolio(refreshed);
             if (lastQuerySucceeded) {
                 messageLabel.setText("Cartera actualizada.");
@@ -364,6 +385,12 @@ public class PortfolioController {
 
     private boolean refreshSelectedCustomer() {
         if (updatingView) return true;
+        if (!authorizationService.hasPermission(session, Permission.VIEW_PORTFOLIO)
+                || !authorizationService.hasPermission(session, Permission.VIEW_CUSTOMER)) {
+            clearPortfolioView();
+            messageLabel.setText("La sesión ya no permite consultar la cartera.");
+            return false;
+        }
         Customer selected = customerCombo.getValue();
         if (selected == null) {
             salesTable.getItems().clear();
@@ -375,15 +402,18 @@ public class PortfolioController {
             BigDecimal salesDebt;
             BigDecimal generalDebt;
             if (generalDebtWorkflow != null) {
-                CustomerDebtBreakdown breakdown = generalDebtWorkflow.findBalance(selected.getId());
+                CustomerDebtBreakdown breakdown = authorizationService.execute(session, Permission.VIEW_PORTFOLIO,
+                        () -> generalDebtWorkflow.findBalance(selected.getId()));
                 salesDebt = breakdown.outstandingSalesDebt();
                 generalDebt = breakdown.generalDebt();
             } else {
                 salesDebt = salesWorkflow == null ? BigDecimal.ZERO
-                        : salesWorkflow.outstandingSalesDebt(selected.getId());
+                        : authorizationService.execute(session, Permission.VIEW_PORTFOLIO,
+                            () -> salesWorkflow.outstandingSalesDebt(selected.getId()));
                 generalDebt = selected.getBalance().subtract(salesDebt);
             }
-            List<Sale> pendingSales = salesWorkflow == null ? List.of() : salesWorkflow.listAll().stream()
+            List<Sale> pendingSales = salesWorkflow == null ? List.of()
+                    : authorizationService.execute(session, Permission.VIEW_SALES, salesWorkflow::listAll).stream()
                     .filter(sale -> sale.getCustomer() != null
                             && selected.getId().equals(sale.getCustomer().getId()))
                     .filter(sale -> sale.calculateBalance().signum() > 0)
@@ -394,9 +424,10 @@ public class PortfolioController {
                     ? "Inconsistencia: ventas superan el saldo agregado."
                     : "Deuda general: " + money(generalDebt));
             if (generalDebtWorkflow != null) {
-                generalDebtMovementsTable.getItems().setAll(generalDebtWorkflow.listMovements(selected.getId(),
-                        movementFromDatePicker.getValue(), movementThroughDatePicker.getValue(),
-                        movementCategoryFilterField.getText()));
+                generalDebtMovementsTable.getItems().setAll(authorizationService.execute(session,
+                        Permission.VIEW_PORTFOLIO, () -> generalDebtWorkflow.listMovements(selected.getId(),
+                                movementFromDatePicker.getValue(), movementThroughDatePicker.getValue(),
+                                movementCategoryFilterField.getText())));
             }
             return true;
         } catch (RuntimeException failure) {
@@ -421,7 +452,13 @@ public class PortfolioController {
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
+    }
+
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
     }
 
     @FXML
@@ -455,7 +492,6 @@ public class PortfolioController {
     }
 
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 }
