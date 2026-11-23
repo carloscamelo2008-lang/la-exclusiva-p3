@@ -59,7 +59,15 @@
 .login-subtitle { -fx-font-size: 13; -fx-opacity: 0.88; }
 .login-shell .button { -fx-background-color: #ffd05b; -fx-text-fill: #082a63; }
 .login-shell .button:hover { -fx-background-color: #ffe08d; }
-.login-error { -fx-text-fill: #ffe2df; -fx-font-weight: bold; }
+/* Contraste >= 4.5:1 tanto para el texto claro como para el rojo inline heredado.
+   El controlador conserva íntegramente sus mensajes y su tratamiento de errores. */
+.login-shell .login-error {
+    -fx-text-fill: #ffe2df;
+    -fx-background-color: #080c12;
+    -fx-background-radius: 8;
+    -fx-padding: 10 12;
+    -fx-font-weight: bold;
+}
 .sidebar { -fx-background-color: linear-gradient(to bottom, #06295e, #0049aa); -fx-padding: 24 12; -fx-spacing: 7; }
 .brand { -fx-font-size: 23; -fx-font-weight: bold; -fx-text-fill: white; }
 .brand-caption { -fx-text-fill: #f7d16a; -fx-padding: 0 8 20 8; }

@@ -53,6 +53,9 @@ public class AuthenticationServiceTest {
         onFxThread(() -> {
             var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
             javafx.scene.Parent root = loader.load();
+            // Los skins ScrollPane se construyen al aplicar CSS, como en una ventana real.
+            new Scene(root, 400, 370);
+            root.applyCss(); root.layout();
             var controller = (com.laexclusiva.ui.controller.LoginController) loader.getController();
             var repository = new com.laexclusiva.repository.InMemoryUserRepository();
             repository.save(new UserAccount(null, "member", com.laexclusiva.security.PasswordHasher.hash(secret),
@@ -82,6 +85,9 @@ public class AuthenticationServiceTest {
         onFxThread(() -> {
             var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
             javafx.scene.Parent root = loader.load();
+            // Los skins ScrollPane se construyen al aplicar CSS, como en una ventana real.
+            new Scene(root, 400, 370);
+            root.applyCss(); root.layout();
             var controller = (com.laexclusiva.ui.controller.LoginController) loader.getController();
             controller.setAuthenticationService(new AuthenticationService(null) {
                 @Override public java.util.Optional<UserSession> createSession(String username, String password) {
@@ -102,6 +108,9 @@ public class AuthenticationServiceTest {
         onFxThread(() -> {
             var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
             javafx.scene.Parent root = loader.load();
+            // Los skins ScrollPane se construyen al aplicar CSS, como en una ventana real.
+            new Scene(root, 400, 370);
+            root.applyCss(); root.layout();
             ((TextField) root.lookup("#usernameField")).setText("   ");
             ((PasswordField) root.lookup("#passwordField")).setText("Una frase permitida");
             ((Button) root.lookup("#loginButton")).fire();
@@ -539,6 +548,7 @@ public class AuthenticationServiceTest {
             Button portfolioButton = (Button) sidebar.lookup("#btnCredit");
             portfolioButton.fire();
 
+            menu.applyCss(); menu.layout();
             TableView<?> table = (TableView<?>) menu.getCenter().lookup("#portfolioTable");
             assertNotNull(table);
             assertFalse(table.isEditable());
@@ -551,6 +561,7 @@ public class AuthenticationServiceTest {
             assertSame(dashboard, menu.getCenter());
             assertSame(sidebar, menu.getLeft());
             portfolioButton.fire();
+            menu.applyCss(); menu.layout();
             assertNotNull(menu.getCenter().lookup("#portfolioTable"));
         });
     }
@@ -561,6 +572,7 @@ public class AuthenticationServiceTest {
         customers.registerCustomer("C-01", "Ana Pérez", "3001234567", "Calle 10");
         withMainMenu(UserRole.WORKER, customers, (menu, account) -> {
             ((Button) menu.getLeft().lookup("#btnCredit")).fire();
+            menu.applyCss(); menu.layout();
             TableView<?> table = (TableView<?>) menu.getCenter().lookup("#portfolioTable");
             assertNotNull(table);
             assertTrue(table.getItems().isEmpty());
@@ -879,6 +891,7 @@ public class AuthenticationServiceTest {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
+            new Scene(menu, 1000, 800);
             MainController controller = loader.getController();
             currentMenuIdentity = new IdentityTestFixture();
             var issued = currentMenuIdentity.issue(role);

@@ -6,8 +6,10 @@
 <?import javafx.scene.control.PasswordField?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.ScrollPane?>
 
-<VBox alignment="CENTER" spacing="12.0" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.LoginController" stylesheets="@../css/theme.css" styleClass="login-shell">
+<ScrollPane fx:id="moduleScroll" fitToWidth="true" fitToHeight="true" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.LoginController" stylesheets="@../css/theme.css" styleClass="login-shell"><content>
+<VBox alignment="CENTER" spacing="12.0" minHeight="-Infinity" styleClass="login-content">
     <padding>
         <Insets bottom="18.0" left="28.0" right="28.0" top="18.0" />
     </padding>
@@ -25,5 +27,6 @@
 
     <Button fx:id="loginButton" defaultButton="true" onAction="#handleLogin"  text="Iniciar sesión" prefWidth="300.0" />
 
-    <Label fx:id="errorLabel" styleClass="login-error" wrapText="true" text="" />
+    <Label fx:id="errorLabel" visible="${errorLabel.text != &quot;&quot;}" managed="${errorLabel.visible}" maxWidth="300" styleClass="login-error" wrapText="true" text="" />
 </VBox>
+</content></ScrollPane>

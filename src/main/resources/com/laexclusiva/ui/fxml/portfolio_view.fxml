@@ -11,16 +11,17 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.ScrollPane?>
 
-<VBox spacing="12.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.laexclusiva.ui.controller.PortfolioController" stylesheets="@../css/theme.css" styleClass="workspace">
+<ScrollPane fx:id="moduleScroll" fitToWidth="true" fitToHeight="true" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.PortfolioController" stylesheets="@../css/theme.css" styleClass="workspace"><content>
+<VBox spacing="12.0" minHeight="-Infinity" styleClass="workspace">
     <padding>
         <Insets top="20.0" right="20.0" bottom="20.0" left="20.0" />
     </padding>
     <Label text="Cartera pendiente" style="-fx-font-size: 22px;" />
     <Label fx:id="portfolioSubtitle"
            text="Consulta de saldos por cliente y registro de abonos a ventas." wrapText="true" />
-    <TableView fx:id="portfolioTable" editable="false" VBox.vgrow="ALWAYS">
+    <TableView minHeight="160" fx:id="portfolioTable" editable="false" VBox.vgrow="ALWAYS">
         <columnResizePolicy>
             <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
         </columnResizePolicy>
@@ -40,7 +41,7 @@
         <Label fx:id="generalDebtLabel" text="Deuda general: —" />
     </FlowPane>
     <Label text="Ventas pendientes del cliente" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
-    <TableView fx:id="salesTable" prefHeight="150.0">
+    <TableView minHeight="160" fx:id="salesTable" prefHeight="150.0">
         <columns>
             <TableColumn fx:id="saleIdColumn" text="Venta" prefWidth="350.0" />
             <TableColumn fx:id="saleTotalColumn" text="Total" prefWidth="120.0" />
@@ -68,7 +69,7 @@
         <Button fx:id="refreshGeneralDebtMovementsButton" text="Consultar movimientos"
                 onAction="#handleRefreshGeneralDebtMovements" />
     </FlowPane>
-    <TableView fx:id="generalDebtMovementsTable" prefHeight="120.0">
+    <TableView minHeight="160" fx:id="generalDebtMovementsTable" prefHeight="120.0">
         <columns>
             <TableColumn fx:id="generalDebtDateColumn" text="Fecha y hora" prefWidth="150.0" />
             <TableColumn fx:id="generalDebtTypeColumn" text="Movimiento" prefWidth="120.0" />
@@ -80,3 +81,4 @@
     <Label fx:id="modeLabel" wrapText="true" />
     <Label fx:id="messageLabel" wrapText="true" />
 </VBox>
+</content></ScrollPane>

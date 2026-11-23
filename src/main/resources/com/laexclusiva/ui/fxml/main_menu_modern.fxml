@@ -58,7 +58,7 @@
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnAdminUsers" mnemonicParsing="false" prefHeight="64.0" prefWidth="220.0" styleClass="nav-button" disable="true" wrapText="true" text="Gestión de Usuarios (pendiente)">
+            <Button fx:id="btnAdminUsers" onAction="#handleShowAdminUsers" mnemonicParsing="false" prefHeight="64.0" prefWidth="220.0" styleClass="nav-button" wrapText="true" text="Gestión de Usuarios">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
@@ -84,12 +84,12 @@
                <VBox styleClass="card">
                   <Label text="Accesos rápidos" styleClass="section-title" />
                   <FlowPane hgap="12" vgap="12">
-                     <Button text="Clientes" onAction="#handleShowCustomers" styleClass="quick-action" />
-                     <Button text="Vendedores" onAction="#handleShowSellers" styleClass="quick-action" visible="${btnSellers.visible}" managed="${btnSellers.managed}" />
-                     <Button text="Inventario" onAction="#handleShowInventory" styleClass="quick-action" visible="${btnInventory.visible}" managed="${btnInventory.managed}" />
-                     <Button text="Registrar venta" onAction="#handleShowSales" styleClass="quick-action" visible="${btnSales.visible}" managed="${btnSales.managed}" />
-                     <Button text="Consultar cartera" onAction="#handleShowPortfolio" styleClass="quick-action" />
-                     <Button text="Caja y movimientos" onAction="#handleShowCash" styleClass="quick-action" visible="${btnCash.visible}" managed="${btnCash.managed}" />
+                     <Button text="Clientes" onAction="#handleShowCustomers" styleClass="quick-action" fx:id="quickCustomers" visible="${btnCustomers.visible}" managed="${btnCustomers.managed}" disable="${btnCustomers.disabled}" />
+                     <Button text="Vendedores" onAction="#handleShowSellers" styleClass="quick-action" fx:id="quickSellers" visible="${btnSellers.visible}" managed="${btnSellers.managed}" disable="${btnSellers.disabled}" />
+                     <Button text="Inventario" onAction="#handleShowInventory" styleClass="quick-action" fx:id="quickInventory" visible="${btnInventory.visible}" managed="${btnInventory.managed}" disable="${btnInventory.disabled}" />
+                     <Button text="Registrar venta" onAction="#handleShowSales" styleClass="quick-action" fx:id="quickSales" visible="${btnSales.visible}" managed="${btnSales.managed}" disable="${btnSales.disabled}" />
+                     <Button text="Consultar cartera" onAction="#handleShowPortfolio" styleClass="quick-action" fx:id="quickCredit" visible="${btnCredit.visible}" managed="${btnCredit.managed}" disable="${btnCredit.disabled}" />
+                     <Button text="Caja y movimientos" onAction="#handleShowCash" styleClass="quick-action" fx:id="quickCash" visible="${btnCash.visible}" managed="${btnCash.managed}" disable="${btnCash.disabled}" />
                   </FlowPane>
                </VBox>
                <FlowPane hgap="18" vgap="18" prefWrapLength="850">

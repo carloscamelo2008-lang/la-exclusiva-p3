@@ -10,12 +10,13 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.ScrollPane?>
 
-<VBox spacing="10.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.laexclusiva.ui.controller.InventoryController" stylesheets="@../css/theme.css" styleClass="workspace">
+<ScrollPane fx:id="moduleScroll" fitToWidth="true" fitToHeight="true" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.InventoryController" stylesheets="@../css/theme.css" styleClass="workspace"><content>
+<VBox spacing="10.0" minHeight="-Infinity" styleClass="workspace">
     <padding><Insets top="14.0" right="16.0" bottom="14.0" left="16.0" /></padding>
     <Label text="Catálogo e inventario" style="-fx-font-size: 21px; -fx-font-weight: bold;" />
-    <TableView fx:id="inventoryTable" prefHeight="185.0">
+    <TableView minHeight="160" fx:id="inventoryTable" prefHeight="185.0">
         <columns>
             <TableColumn fx:id="productIdColumn" text="ID" prefWidth="170.0" />
             <TableColumn fx:id="productNameColumn" text="Producto" prefWidth="200.0" />
@@ -51,7 +52,7 @@
     <Label fx:id="messageLabel" wrapText="true" />
     <Button fx:id="refreshInventoryButton" text="Actualizar inventario" onAction="#handleRefreshInventory" />
     <Label text="Movimientos de inventario" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
-    <TableView fx:id="movementTable" VBox.vgrow="ALWAYS">
+    <TableView minHeight="160" fx:id="movementTable" VBox.vgrow="ALWAYS">
         <columns>
             <TableColumn fx:id="movementProductColumn" text="Producto" prefWidth="180.0" />
             <TableColumn fx:id="movementTypeColumn" text="Tipo" prefWidth="90.0" />
@@ -61,3 +62,4 @@
         </columns>
     </TableView>
 </VBox>
+</content></ScrollPane>
