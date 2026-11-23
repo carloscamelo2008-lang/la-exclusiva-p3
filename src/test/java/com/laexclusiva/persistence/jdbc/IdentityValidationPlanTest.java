@@ -3,10 +3,47 @@ package com.laexclusiva.persistence.jdbc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Verifica barreras del plan preparado; no valida sintaxis SQL, Docker ni ejecución PostgreSQL. */
 class IdentityValidationPlanTest {
+    @ParameterizedTest
+    @ValueSource(strings = {"none", "rollback", "close"})
+    void rollbackFixtureNeverHidesDriverCleanupFailure(String failureAt) {
+        int[] calls = new int[4]; // operación, rollback, cierre, commit
+        java.sql.Connection driver = (java.sql.Connection) java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{java.sql.Connection.class}, (proxy, method, args) -> {
+                    return switch (method.getName()) {
+                        case "setAutoCommit" -> null;
+                        case "rollback" -> {
+                            calls[1]++;
+                            if (failureAt.equals("rollback")) throw new java.sql.SQLException("Driver fixture detail must stay private");
+                            yield null;
+                        }
+                        case "close" -> {
+                            calls[2]++;
+                            if (failureAt.equals("close")) throw new java.sql.SQLException("Driver fixture detail must stay private");
+                            yield null;
+                        }
+                        case "commit" -> { calls[3]++; yield null; }
+                        default -> throw new AssertionError("Operación JDBC inesperada: " + method.getName());
+                    };
+                });
+        var config = new DatabaseConfig("jdbc:postgresql://localhost:5432/la_exclusiva_test", "fixture", "unused");
+        var provider = new JdbcConnectionProvider(config, () -> driver);
+        Runnable fixture = () -> AccountInstancePostgresIntegrationTest.runRollbackFixture(
+                new JdbcTransactionManager(provider), () -> calls[0]++);
+        if (!failureAt.equals("none")) {
+            AssertionError error = assertThrows(AssertionError.class, fixture::run);
+            assertFalse(error.getMessage().contains("Driver fixture detail"));
+        } else {
+            fixture.run();
+        }
+        assertArrayEquals(new int[]{1, 1, 1, 0}, calls);
+    }
+
     private static String asset(String name) throws Exception {
         return Files.readString(Path.of("database/validation/identity", name)).replace("\r\n", "\n");
     }

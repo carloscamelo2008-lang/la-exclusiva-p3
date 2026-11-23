@@ -1,5 +1,51 @@
 # Plan de validación PostgreSQL de identidad — pendiente de autorización
 
+## Estado de cierre del PR #22 — 22/11/2026
+
+Carlos confirmó en los comentarios del PR que las dos observaciones de código
+están resueltas y aprobó la preparación técnica del laboratorio. Su último
+comentario mantiene pendiente la autorización de ejecución específica; no se
+confunde esa aprobación estática con evidencia PostgreSQL ni aprobación de merge.
+
+**Único bloqueo operativo: no hay un laboratorio autorizado, identificado y
+operativo para ejecutar la validación real.** Docker no está instalado en este
+equipo (confirmado por el usuario); no se encontró en PATH. No se identificó una
+VM alternativa en la documentación o comentarios del PR. Las cuatro variables
+del laboratorio están ausentes en proceso, usuario y sistema. No se instaló nada,
+no se sustituyó por otro entorno y no se ejecutó SQL o migraciones.
+
+Para resolver ese bloqueo, Carlos debe proporcionar en un solo registro:
+
+1. Equipo/VM Docker desechable y medio de acceso autorizado, separado de bases
+   compartidas; identificar el proyecto exclusivo de validación.
+2. Referencias completas PostgreSQL 18 y Maven/Temurin 17 con digests revisados,
+   disponibles allí; ruta de caché Maven Linux offline y ubicación del archivo de
+   secreto temporal exclusivo (sin compartir su contenido).
+3. Autorización específica para crear/desechar ese laboratorio, aplicar
+   V001/V104/V105/V106 y ejecutar las 19 integraciones, seis escenarios V105,
+   escenarios negativos y repetición en limpio descritos aquí.
+
+La revisión final de Carlos/Jesús sigue el proceso del PR. No constituye otro
+bloqueo técnico descubierto ni se da por aprobada por publicar esta documentación.
+Sin evidencia real de estos criterios, el PR permanece abierto y sin merge.
+
+La auditoría de cierre reforzó el fixture Java: la excepción intencionada de
+rollback no basta si lleva fallos suprimidos de reversión o cierre. El fixture
+ahora falla con diagnóstico genérico; tres regresiones sin conexión prueban el
+caso normal, rollback fallido y cierre fallido con el coordinador real y driver
+simulado. Ninguna acredita que el rollback funcione en PostgreSQL real.
+
+Las instrucciones siguientes conservan su carácter de plan pendiente; los
+resultados históricos de preparación no se reinterpretan como ejecución real.
+
+Verificación de cierre: `mvn -o verify` con Temurin 17.0.21+9 contabilizó 771
+casos: 728 aprobados, 43 PostgreSQL omitidos, cero fallos y cero errores. Incluye
+las tres regresiones de limpieza. V104/V105/V106 se revisaron sin modificarlas ni
+ejecutarlas. Se verificó el PR y sus comentarios; develop permanece en
+db9530cc7f35b49da69fe8ad75f0a43b473dfe5f, sin solapamientos de archivos entrantes
+respecto de identidad y sin integrar ramas. La CI de GitHub comprueba además la
+combinación de prueba del PR, sin hacer merge en las ramas del repositorio.
+
 Esta entrega prepara archivos y pruebas, **no ejecuta SQL, Docker ni migraciones**.
 No inspecciona una base real: el esquema conocido procede de los archivos del
 repositorio. Carlos confirmó resueltos los dos bloqueantes del PR #22; la revisión

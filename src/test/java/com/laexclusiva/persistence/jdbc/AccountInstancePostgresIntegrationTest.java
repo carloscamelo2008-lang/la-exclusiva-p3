@@ -115,10 +115,18 @@ class AccountInstancePostgresIntegrationTest {
         JdbcConnectionProvider provider = new JdbcConnectionProvider(config, () -> openVerified(config));
         var transactions = new JdbcTransactionManager(provider);
         var users = new UserRepositoryJdbc(provider);
-        assertThrows(RollbackFixture.class, () -> transactions.inTransaction(() -> {
-            test.accept(users);
+        runRollbackFixture(transactions, () -> test.accept(users));
+    }
+
+    /** No confunde la excepción esperada con un rollback o cierre JDBC fallido. */
+    static void runRollbackFixture(JdbcTransactionManager transactions, Runnable test) {
+        RollbackFixture aborted = assertThrows(RollbackFixture.class, () -> transactions.inTransaction(() -> {
+            test.run();
             throw new RollbackFixture();
         }));
+        if (aborted.getSuppressed().length != 0) {
+            throw new AssertionError("No se pudo acreditar la reversión y cierre del fixture; revisar el laboratorio.");
+        }
     }
 
     @ParameterizedTest

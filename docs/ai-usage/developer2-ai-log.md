@@ -434,3 +434,14 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté preparar el laboratorio y mantener pendiente su ejecución específica. No se encontró Docker en PATH ni se instalaron herramientas; imágenes por digest, caché Linux, recursos y permiso de crear/desechar el laboratorio deben confirmarse con Carlos. Una aserción estática que confundía un comentario con tracing se corrigió, sin cambiar producción.
 * **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9: 768 casos, 725 aprobados, 43 PostgreSQL omitidos, cero fallos/errores; incluye cinco pruebas estáticas nuevas y tres integraciones nuevas omitidas. bash -n pasó sin ejecutar el runner. Compose y SQL solo se inspeccionaron estáticamente. No hubo conexiones, SQL ni migraciones; las entradas anteriores se conservan.
 * **Commit o Pull Request relacionado:** PR #22; commit de preparación pendiente de creación al registrar esta entrada.
+
+### Interacción 24 – Cierre verificable del PR #22 sin laboratorio
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Auditoría final de identidad (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Pedí completar lo verificable, publicar correcciones y consolidar el bloqueo de PostgreSQL sin improvisar un entorno.
+* **Resumen de la respuesta recibida:** Codex revisó el PR, comentarios de Carlos, CI, migraciones y fixtures. Corrigió el fixture que podía ocultar fallos suprimidos de rollback/cierre y añadió tres regresiones con el coordinador real y driver simulado.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté el refuerzo de pruebas y un único bloqueo operativo documentado: falta un laboratorio autorizado e identificado con equipo/VM, digests, caché offline y secreto temporal. No se instaló Docker ni se sustituyó el entorno. La aprobación estática de Carlos no se registra como ejecución PostgreSQL ni aprobación de merge.
+* **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9: 771 casos, 728 aprobados, 43 PostgreSQL omitidos, cero fallos/errores. git diff --check pasó. Se comprobó develop en db9530c y ausencia de solapamientos entrantes de identidad sin integrar ramas. No hubo SQL, conexiones, migraciones ni cambios de producción o módulos ajenos.
+* **Commit o Pull Request relacionado:** PR #22; commit de cierre pendiente de creación al registrar esta entrada.
