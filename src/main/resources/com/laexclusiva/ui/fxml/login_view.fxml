@@ -19,10 +19,10 @@
 
     <VBox spacing="8.0" style="-fx-max-width: 300px;">
         <Label text="Usuario" />
-        <TextField fx:id="usernameField" promptText="Ingrese su usuario" />
+        <TextField fx:id="usernameField" promptText="Ingrese su usuario" accessibleText="Usuario" />
         
         <Label text="Contraseña" />
-        <PasswordField fx:id="passwordField" promptText="********" />
+        <PasswordField fx:id="passwordField" promptText="********" accessibleText="Contraseña" />
     </VBox>
 
     <Button fx:id="loginButton" defaultButton="true" onAction="#handleLogin"  text="Iniciar sesión" prefWidth="300.0" />

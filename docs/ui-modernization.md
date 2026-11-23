@@ -196,3 +196,58 @@ sin modificar controladores o permisos. Se repitió Maven offline clean verify c
 Temurin 17.0.21+9: 839 casos, 779 aprobados, 60 omitidos y cero fallos/errores.
 Las capturas integradas se renovaron con este ancho. La ejecución local incluyó
 una pausa prolongada del equipo; su duración no se utiliza como medida de rendimiento.
+## Revisión independiente de accesibilidad — 23/11/2026
+
+Se revisó el PR #27: continúa abierto y no fusionado. No se integra su rama ni se
+preparan accesos provisionales de Alertas; el trabajo parte del HEAD a0c7126 del PR #25.
+
+Hallazgos medidos y correcciones limitadas:
+
+- El extremo claro del banner (#0587ef) tenía contraste 3,67:1 con texto blanco
+  normal. Se cambia solo ese extremo a #086bdb: contraste mínimo 5,08:1. Se mantienen
+  azul profundo, blanco y dorado, distribución del banner y mascota original intacta.
+- El borde dorado genérico de foco contrastaba 1,74:1 con la tarjeta blanca. Se usa
+  azul profundo #102b56: 13,98:1 sobre blanco y 12,37:1 sobre el acceso rápido claro.
+  El dorado del menú lateral, su foco específico y la identidad visual se conservan.
+- Usuario y Contraseña reciben nombres accesibles explícitos en FXML. No cambian
+  fx:id, eventos, validaciones, secretos, controlador o autenticación.
+
+Las nuevas pruebas primero detectaron el contraste insuficiente y la ausencia de
+nombres accesibles explícitos (18 casos, dos errores agregados). Se corrigieron
+los recursos y la repetición dirigida pasó 18/18. Se comprobó navegación real del
+motor JavaFX con eventos Tab/MAYÚS+Tab: Usuario → Contraseña → Iniciar sesión y
+retorno a Contraseña, manteniendo el botón predeterminado. Se mide el foco aplicado
+por CSS y se comprueba que deshabilitar el botón reduce su opacidad, cambia el cursor
+y que habilitarlo restaura su apariencia. No se presenta como certificación completa
+con lector de pantalla ni como evaluación de accesibilidad de todas las rutas.
+
+Inventario, Cartera y ahora Compras se comprueban a 560×600: ayudas completas de
+campos y acciones dentro del ancho disponible. Las pruebas no detectaron necesidad
+de cambiar su disposición; se conservan scrolling vertical y horizontal nativos,
+ventas pendientes seleccionables y abonos accesibles. No se elimina ninguna columna,
+prueba o funcionalidad para obtener estos resultados. El lateral mantiene Compras,
+administración y logout a 800×600; las tarjetas y la mascota conservan su distribución.
+
+Validación final local con Temurin 17.0.21+9, `mvn -o clean verify`: **841 casos,
+781 aprobados, 60 PostgreSQL omitidos, 0 fallos y 0 errores**, BUILD SUCCESS.
+Incluye 18 pruebas visuales y los recorridos ya existentes a 1280×800, 1024×768 y
+800×600, permisos de ambos roles, Inventario/movimientos, Compras/recepción,
+Cartera/abonos, administración, login/logout y recuperación. Sin SQL ni conexiones.
+
+Capturas nuevas y actualizadas de JavaFX:
+
+- [Banner y foco a 1024×768](ui-review/dashboard-accessibility-1024.png): muestra
+  de CSS/FXML aislada, sin sesión; el pseudoestado de foco se aplica expresamente
+  para medir su borde. No representa una sesión autenticada.
+- Dashboard con sesión auténtica de prueba: [1280×800](ui-review/integrated-dashboard-ADMINISTRATOR-1280.png)
+  y [800×600](ui-review/integrated-dashboard-ADMINISTRATOR-800.png).
+- [Login con foco mediante teclado](ui-review/login-keyboard-560x600.png) y
+  [botón deshabilitado](ui-review/login-disabled-560x600.png).
+- [Formulario de Compras 560×600](ui-review/purchases-560x600.png), cargado sin
+  sesión para inspección de disposición: los editores aparecen deshabilitados.
+  Las pruebas de navegación anteriores comprueban separadamente ambos roles.
+
+No se modifican Java de producción, App.java, launcher, iconos, servicios, SQL,
+migraciones, permisos ni el archivo original de mascota. Siguen pendientes el logo
+independiente y la integración de escritorio coordinada con Carlos. El PR #25 sigue
+Draft; la CI del nuevo commit se comprobará después de publicar.

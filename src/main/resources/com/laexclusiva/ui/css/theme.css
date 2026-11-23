@@ -22,7 +22,8 @@
 }
 .button:hover { -fx-background-color: #0055b9; }
 .button:pressed { -fx-background-color: #003f91; }
-.button:focused { -fx-border-color: #f0bd41; -fx-border-width: 2; -fx-border-radius: 9; }
+/* El azul profundo distingue el foco sobre tarjetas claras y botones dorados. */
+.button:focused { -fx-border-color: #102b56; -fx-border-width: 2; -fx-border-radius: 9; }
 .button:disabled { -fx-opacity: 0.52; -fx-cursor: default; }
 .text-field, .combo-box, .date-picker {
     -fx-background-color: white;
@@ -74,7 +75,8 @@
 .page-heading { -fx-font-size: 22; -fx-font-weight: bold; }
 .muted { -fx-text-fill: #566e8b; }
 .card { -fx-background-color: white; -fx-background-radius: 18; -fx-padding: 22; -fx-spacing: 12; -fx-effect: dropshadow(gaussian, #103b7420, 12, 0.12, 0, 3); }
-.hero { -fx-background-color: linear-gradient(to bottom right, #0346a4, #0587ef); -fx-background-radius: 20; -fx-padding: 28; -fx-spacing: 15; }
+/* Ambos extremos conservan contraste de texto blanco normal >= 4.5:1. */
+.hero { -fx-background-color: linear-gradient(to bottom right, #0346a4, #086bdb); -fx-background-radius: 20; -fx-padding: 28; -fx-spacing: 15; }
 .hero .label { -fx-text-fill: white; }
 .hero-title { -fx-font-size: 30; -fx-font-weight: bold; }
 .hero-copy { -fx-font-size: 16; }

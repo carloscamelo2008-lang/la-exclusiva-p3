@@ -445,7 +445,7 @@ class VisualRefreshTest {
     @Test
     void compactFinancialFormsShowCompletePromptsAndKeepActionsInsideViewport() throws Exception {
         onFx(() -> {
-            for (String name : new String[]{"inventory", "portfolio"}) {
+            for (String name : new String[]{"inventory", "portfolio", "purchases"}) {
                 FXMLLoader loader = loader(name + "_view.fxml");
                 Parent root = loader.load();
                 new Scene(root, 560, 600); root.applyCss(); root.layout();
@@ -478,6 +478,74 @@ class VisualRefreshTest {
             }
             return null;
         });
+    }
+
+    @Test
+    void dashboardCopyAndKeyboardFocusHaveSufficientContrast() throws Exception {
+        onFx(() -> {
+            FXMLLoader loader = loader("main_menu_view.fxml");
+            BorderPane root = loader.load();
+            new Scene(root, 1024, 768); root.applyCss(); root.layout();
+            var banner = (javafx.scene.layout.Region) loader.getNamespace().get("welcomeBanner");
+            var gradient = (javafx.scene.paint.LinearGradient) banner.getBackground().getFills().get(0).getFill();
+            Label copy = (Label) banner.lookup(".hero-copy");
+            for (var stop : gradient.getStops()) {
+                assertTrue(contrast((Color) copy.getTextFill(), stop.getColor()) >= 4.5,
+                        "Texto normal del banner debe contrastar incluso en el extremo más claro");
+            }
+            Button quick = button(loader, "quickCustomers");
+            quick.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("focused"), true);
+            root.applyCss(); root.layout();
+            Color ring = (Color) quick.getBorder().getStrokes().get(0).getTopStroke();
+            Color card = (Color) ((javafx.scene.layout.Region) quick.getParent().getParent()).getBackground().getFills().get(0).getFill();
+            assertTrue(contrast(ring, card) >= 3, "Foco visible contra la tarjeta blanca");
+            assertTrue(contrast(ring, (Color) quick.getBackground().getFills().get(0).getFill()) >= 3);
+            snapshot(root, "dashboard-accessibility-1024");
+            return null;
+        });
+    }
+
+    @Test
+    void loginKeyboardTraversalPreservesFieldsAndSubmitAction() throws Exception {
+        onFx(() -> {
+            FXMLLoader loader = loader("login_view.fxml");
+            Parent root = loader.load();
+            var stage = new javafx.stage.Stage();
+            try {
+                Scene scene = new Scene(root, 560, 600); stage.setScene(scene); stage.show();
+                root.applyCss(); root.layout();
+                TextField username = (TextField) loader.getNamespace().get("usernameField");
+                PasswordField password = (PasswordField) loader.getNamespace().get("passwordField");
+                Button submit = button(loader, "loginButton");
+                username.requestFocus(); assertSame(username, scene.getFocusOwner());
+                tab(scene, false); assertSame(password, scene.getFocusOwner());
+                tab(scene, false); assertSame(submit, scene.getFocusOwner());
+                tab(scene, true); assertSame(password, scene.getFocusOwner());
+                assertTrue(submit.isDefaultButton()); assertNotNull(submit.getOnAction());
+                assertEquals("Usuario", username.getAccessibleText());
+                assertEquals("Contraseña", password.getAccessibleText());
+                snapshot(root, "login-keyboard-560x600");
+                double enabledOpacity = submit.getOpacity();
+                submit.setDisable(true); root.applyCss(); root.layout();
+                assertTrue(submit.getOpacity() < enabledOpacity, "Estado deshabilitado distinguible");
+                assertEquals(javafx.scene.Cursor.DEFAULT, submit.getCursor());
+                snapshot(root, "login-disabled-560x600");
+                submit.setDisable(false); root.applyCss(); root.layout();
+                assertEquals(enabledOpacity, submit.getOpacity());
+            } finally { stage.close(); }
+            return null;
+        });
+    }
+
+    private static void tab(Scene scene, boolean backwards) {
+        javafx.event.Event.fireEvent(scene.getFocusOwner(), new javafx.scene.input.KeyEvent(
+                javafx.scene.input.KeyEvent.KEY_PRESSED, "", "", javafx.scene.input.KeyCode.TAB,
+                backwards, false, false, false));
+    }
+
+    private static double contrast(Color first, Color second) {
+        double a = luminance(first), b = luminance(second);
+        return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
     }
 
     @Test
