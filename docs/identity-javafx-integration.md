@@ -80,17 +80,46 @@ operaciones administrativas, bootstrap no duplicado, validación de contraseña 
 el bloqueo de permisos cuando un snapshot antiguo aún muestra un rol privilegiado.
 Los conteos finales de Maven se registran en `docs/ai-usage/leader-ai-log.md`.
 
-## Validación local de la integración
+## Validación final del PR #24
 
-El 23-11-2026 se ejecutó `mvn clean verify` con Microsoft JDK 17.0.18 y Maven
-3.10.0. Maven terminó en `BUILD SUCCESS`: **810 pruebas contabilizadas, 0
-fallidas, 0 errores, 56 omitidas y 754 ejecutadas con éxito**; también generó el
-JAR. Las pruebas de composición, autenticación, revocación, autorización,
-controladores JavaFX y carga de FXML se ejecutaron localmente. Esta evidencia es
-automatizada; no representa un recorrido manual de todas las pantallas.
+La validación final se ejecutó en el HEAD publicado de `feature/identity-app-integration`
+después de incorporar mediante merge normal `origin/develop` en `9002bf7`.
+`mvn clean verify`, con Microsoft JDK 17.0.18 y Maven 3.10.0 en Windows, terminó
+en `BUILD SUCCESS`: **814 pruebas contabilizadas, 755 ejecutadas con éxito, 0
+fallidas, 0 errores y 59 omitidas**. Se generó el JAR. Las omisiones son
+integraciones optativas sin configuración local y no se cuentan como aprobadas.
+Las pruebas JavaFX/FXML se ejecutaron automáticamente; no equivalen a un recorrido
+manual visual de todas las pantallas.
 
-No se ejecutaron pruebas contra PostgreSQL en esta validación. Las variables de
-conexión de pruebas no estaban disponibles en el proceso Maven y el preflight de
-solo lectura de `la_exclusiva_test` encontró V104, V105 y V106 ausentes. Las 56
-omisiones corresponden a integraciones PostgreSQL optativas; no se cuentan como
-aprobadas. No se aplicaron migraciones ni se modificó ninguna base de datos.
+La validación PostgreSQL real se ejecutó aparte en el laboratorio efímero de
+GitHub Actions, asociado al mismo HEAD de la rama. El contenedor usó PostgreSQL
+18 (`postgres:18-bookworm`, digest fijado; servidor 18.7), Temurin Java 17.0.20.1
+y Maven 3.9.16. Ejecutó **105 pruebas, 0 fallidas, 0 errores y 0 omitidas**:
+26 en el ciclo de identidad, 26 en su repetición, 52 en la composición comercial
+de `ApplicationServices` y 1 contra un esquema incompleto para comprobar fallo
+seguro. El escenario comercial cubrió autenticación persistente, bootstrap sin
+duplicados, administración de cuentas, revocación/roles/estado, permisos vigentes,
+servicios de clientes, vendedores, inventario, ventas, cartera y caja, replay
+idempotente, rollback, persistencia al recrear la composición y rechazo del
+fallback a memoria.
+
+El laboratorio crea una base PostgreSQL aislada y temporal, con almacenamiento
+efímero y sin puerto publicado. En ese laboratorio se aplicaron los archivos de
+migración requeridos por cada escenario (incluyendo V001, V002 y V104/V105/V106;
+el escenario comercial también incluye las migraciones de ventas necesarias).
+No se ejecutaron migraciones ni escrituras en la instalación local: el preflight
+histórico de solo lectura de `la_exclusiva_test` detectó V104/V105/V106 ausentes,
+y no se conectó a `la_exclusiva`. La suite especializada también comprobó que la
+composición JDBC falla de forma segura ante un esquema incompleto.
+
+Las 6 pruebas de `PurchaseWorkflowPostgresIntegrationTest` no forman parte del
+laboratorio especializado (dependen de V004, fuera del alcance de esta integración)
+y quedaron entre las pruebas PostgreSQL optativas omitidas por Maven local. No se
+presentan como validadas. El primer intento más reciente del job del laboratorio
+se detuvo antes de crear la base por una respuesta HTTP 429 de Maven Central; la
+repetición del mismo HEAD completó los 105 casos. Los checks finales de GitHub
+Actions para el HEAD publicado terminaron correctamente.
+
+Esta evidencia es automatizada. No se afirma haber realizado un recorrido manual
+visual completo de JavaFX. La inspección del laboratorio y los conteos detallados
+quedan registrados en `docs/ai-usage/leader-ai-log.md`.

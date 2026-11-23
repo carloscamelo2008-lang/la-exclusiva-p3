@@ -147,3 +147,16 @@ AuthenticatedPrincipal incluye el UUID actual como quinto componente inmutable.
 Las garantías de autoridad, revocación y operaciones ya iniciadas no cambian.
 Véase [identidad de instancia](account-instance-identity.md) para el contrato de
 snapshots, migración V106 y validaciones PostgreSQL todavía pendientes.
+
+## Validación de la integración JavaFX del PR #24
+
+En el HEAD final publicado se ejecutó `mvn clean verify` local con Microsoft JDK
+17.0.18 y Maven 3.10.0: 814 casos contabilizados, 755 aprobados, 0 fallidos, 0
+errores y 59 omisiones de pruebas optativas PostgreSQL. Por separado, el laboratorio
+efímero de GitHub Actions ejecutó 105 pruebas reales contra PostgreSQL 18.7 con
+Temurin 17.0.20.1 y Maven 3.9.16: 0 fallos, errores u omisiones. Incluyó dos ciclos
+de 26 pruebas de identidad, 52 pruebas de composición de aplicación/servicios y
+una prueba de esquema incompleto que verifica el fallo seguro. Solo el laboratorio
+efímero recibió migraciones; la base local no fue modificada. La cobertura y el
+límite de las seis pruebas `PurchaseWorkflowPostgresIntegrationTest` omitidas se
+detallan en `docs/identity-javafx-integration.md` y en la bitácora de IA.
