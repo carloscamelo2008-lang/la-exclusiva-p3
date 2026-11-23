@@ -70,6 +70,18 @@ class CustomerCollectionPostgresIntegrationTest {
                     "Consentimiento ficticio para integración.", now);
             collections.saveProfile(profile, List.of(consentEvent));
             assertEquals(profile, collections.findProfile(customerId).orElseThrow());
+            assertThrows(RuntimeException.class, () -> provider.withConnection(connection -> {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        UPDATE customer_collection_profile SET authorized_channel='PHONE'
+                        WHERE customer_id=?
+                        """)) {
+                    statement.setString(1, customerId);
+                    statement.executeUpdate();
+                }
+                return null;
+            }), "La restricción SQL no debe conservar un email cuando el canal autorizado es telefónico.");
+            assertEquals(CollectionChannel.EMAIL,
+                    collections.findProfile(customerId).orElseThrow().authorizedChannel());
 
             CustomerCollectionReminder proposed = new CustomerCollectionReminder(0, customerId, week,
                     CollectionChannel.EMAIL, CustomerCollectionReminder.Status.PENDING_REVIEW,

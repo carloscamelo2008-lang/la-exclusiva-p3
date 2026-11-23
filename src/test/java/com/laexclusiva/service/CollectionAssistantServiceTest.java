@@ -3,6 +3,7 @@ package com.laexclusiva.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,6 +39,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 
@@ -100,6 +104,30 @@ class CollectionAssistantServiceTest {
         assertEquals(null, revoked.email());
         assertEquals(6, fixture.service.history(fixture.admin.session(), "consent").size());
         assertEquals(0, fixture.service.prepareWeeklyReminders(fixture.admin.session()).created());
+    }
+
+    @Test
+    void changingEmailRenewsConsentAndPhoneChannelDoesNotRetainEmail() {
+        Fixture fixture = new Fixture(new FakeEmail(false, false));
+        fixture.customer("changed-email", "100.00", List.of());
+        LocalDateTime earlierConsent = TODAY.minusDays(2).atTime(9, 0);
+        fixture.collectionRepository.saveProfile(new com.laexclusiva.model.CollectionProfile("changed-email",
+                "old@example.test", CollectionChannel.EMAIL, true, earlierConsent, true, null,
+                new BigDecimal("100.00"), earlierConsent), List.of());
+
+        var updated = fixture.service.saveProfile(fixture.admin.session(), "changed-email", "new@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+
+        assertEquals("new@example.test", updated.email());
+        assertTrue(updated.consentRecordedAt().isAfter(earlierConsent));
+        assertEquals(CollectionFollowUp.EventType.CONSENT_CHANGED,
+                fixture.service.history(fixture.admin.session(), "changed-email").get(0).eventType());
+
+        fixture.customer("phone-only", "75.00", List.of());
+        var phoneOnly = fixture.service.saveProfile(fixture.admin.session(), "phone-only", "unused@example.test",
+                CollectionChannel.PHONE, true, true, null, null);
+        assertNull(phoneOnly.email());
+        assertNull(fixture.service.profile(fixture.admin.session(), "phone-only").email());
     }
 
     @Test
@@ -205,6 +233,30 @@ class CollectionAssistantServiceTest {
             assertTrue(text.contains("Deuda de ventas"));
             assertTrue(text.contains("Deuda general (no asociada a ventas)"));
             assertTrue(text.contains("Saldo total actualizado"));
+        }
+    }
+
+    @Test
+    void pdfWrapsWideCustomerNamesWithinPrintablePageWidth() throws Exception {
+        Fixture fixture = new Fixture(new FakeEmail(false, false));
+        String longName = "W".repeat(160);
+        fixture.customerRepository.save(new Customer("wide-name", longName, "3000000000",
+                "Dirección ficticia", new BigDecimal("90.00")));
+
+        byte[] pdf = fixture.service.statementPdf(fixture.worker.session(), "wide-name");
+
+        try (var document = Loader.loadPDF(pdf)) {
+            String text = new PDFTextStripper().getText(document);
+            assertTrue(text.replaceAll("\\s+", "").contains(longName),
+                    "El nombre debe aparecer completo aunque se divida entre renglones.");
+            PDType1Font regular = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            float availableWidth = PDRectangle.A4.getWidth() - 96;
+            for (String line : text.split("\\R")) {
+                if (!line.contains("W")) continue;
+                float renderedWidth = regular.getStringWidth(line.strip()) / 1000f * 10;
+                assertTrue(renderedWidth <= availableWidth + 1,
+                        "La línea del cliente debe caber dentro de los márgenes del PDF.");
+            }
         }
     }
 

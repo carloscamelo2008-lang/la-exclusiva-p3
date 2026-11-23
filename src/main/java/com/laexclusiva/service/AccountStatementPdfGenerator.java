@@ -21,14 +21,15 @@ public final class AccountStatementPdfGenerator {
     private static final float LEFT = 48;
     private static final float TOP = 790;
     private static final float LEADING = 16;
+    private static final float CONTENT_WIDTH = PDRectangle.A4.getWidth() - LEFT * 2;
     private final PDType1Font regular = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
     private final PDType1Font bold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
 
     /** Produce bytes efímeros que pueden previsualizarse o adjuntarse a un mensaje consentido. */
     public byte[] generate(AccountStatementData data) {
         if (data == null) throw new IllegalArgumentException("Los datos del estado de cuenta son obligatorios.");
-        List<String> lines = lines(data).stream().flatMap(AccountStatementPdfGenerator::wrap).toList();
         try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            List<String> lines = wrapLines(lines(data));
             PDPage page = new PDPage(PDRectangle.A4);
             document.addPage(page);
             int linesOnPage = 0;
@@ -51,7 +52,7 @@ public final class AccountStatementPdfGenerator {
                     }
                     if (line.startsWith("Estado de cuenta") && document.getNumberOfPages() == 1) stream.setFont(bold, 14);
                     else stream.setFont(regular, 10);
-                    stream.showText(pdfText(line));
+                    stream.showText(line);
                     stream.newLine();
                     linesOnPage++;
                 }
@@ -98,22 +99,55 @@ public final class AccountStatementPdfGenerator {
         return result;
     }
 
+    private List<String> wrapLines(List<String> source) throws IOException {
+        List<String> result = new ArrayList<>();
+        for (String line : source) {
+            boolean title = line.startsWith("Estado de cuenta");
+            result.addAll(wrap(pdfText(line), title ? bold : regular, title ? 14 : 10));
+        }
+        return result;
+    }
+
     private static String pdfText(String value) {
         String safe = value.replace('\u2014', '-').replace('\u2013', '-').replace('\u2019', '\'');
         return safe.replaceAll("[^\\x20-\\x7E\\xA0-\\xFF]", "?");
     }
 
-    private static java.util.stream.Stream<String> wrap(String value) {
-        if (value.isEmpty()) return java.util.stream.Stream.of(value);
-        java.util.List<String> wrapped = new java.util.ArrayList<>();
+    private static List<String> wrap(String value, PDType1Font font, float fontSize) throws IOException {
+        if (value.isEmpty()) return List.of(value);
+        List<String> wrapped = new ArrayList<>();
         String remaining = value;
-        while (remaining.length() > 88) {
-            int cut = remaining.lastIndexOf(' ', 88);
-            if (cut < 20) cut = 88;
-            wrapped.add(remaining.substring(0, cut));
-            remaining = "  " + remaining.substring(cut).stripLeading();
+        while (!remaining.isEmpty()) {
+            float width = 0;
+            int cut = 0;
+            int lastSpace = 0;
+            for (int offset = 0; offset < remaining.length();) {
+                int codePoint = remaining.codePointAt(offset);
+                int next = offset + Character.charCount(codePoint);
+                String glyph = new String(Character.toChars(codePoint));
+                float glyphWidth = font.getStringWidth(glyph) * fontSize / 1000f;
+                if (width + glyphWidth > CONTENT_WIDTH) break;
+                width += glyphWidth;
+                cut = next;
+                if (Character.isWhitespace(codePoint) && !remaining.substring(0, next).isBlank()) {
+                    lastSpace = next;
+                }
+                offset = next;
+            }
+            if (cut == remaining.length()) {
+                wrapped.add(remaining);
+                break;
+            }
+            if (cut == 0) cut = Character.charCount(remaining.codePointAt(0));
+            int breakAt = lastSpace > 0 ? lastSpace : cut;
+            String segment = remaining.substring(0, breakAt).stripTrailing();
+            if (segment.isEmpty()) {
+                breakAt = cut;
+                segment = remaining.substring(0, breakAt).stripTrailing();
+            }
+            wrapped.add(segment);
+            remaining = "  " + remaining.substring(breakAt).stripLeading();
         }
-        wrapped.add(remaining);
-        return wrapped.stream();
+        return wrapped;
     }
 }

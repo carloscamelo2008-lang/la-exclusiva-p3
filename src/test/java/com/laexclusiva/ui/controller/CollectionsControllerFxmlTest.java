@@ -1,12 +1,17 @@
 package com.laexclusiva.ui.controller;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.laexclusiva.model.CollectionChannel;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.security.PasswordHasher;
 import com.laexclusiva.ui.ApplicationServices;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
@@ -55,6 +60,47 @@ class CollectionsControllerFxmlTest {
             assertFalse(workerPane.isManaged());
             return null;
         });
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void savingPhoneConsentClearsEmailFromProfileAndForm() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            String adminPassword = "Collection-Phone-Admin-2026!";
+            services.identity().bootstrapInitialAdministrator("collection-phone-admin", adminPassword);
+            var admin = services.identity().authentication().createSession("collection-phone-admin", adminPassword)
+                    .orElseThrow();
+            services.customers().registerCustomer("collection-phone-only", "Cliente de teléfono",
+                    "3000000789", "Dirección ficticia");
+
+            FXMLLoader loader = load();
+            CollectionsController controller = loader.getController();
+            controller.configure(services.collectionAssistant(), services.administrativeAudit(),
+                    services.customers().getAllCustomers(), admin, services.authorization());
+            field(controller, "customerCombo", javafx.scene.control.ComboBox.class)
+                    .setValue(services.customers().getCustomerById("collection-phone-only"));
+            field(controller, "emailField", javafx.scene.control.TextField.class)
+                    .setText("stale@example.test");
+            field(controller, "channelCombo", javafx.scene.control.ComboBox.class)
+                    .setValue(CollectionChannel.PHONE);
+            field(controller, "consentCheck", javafx.scene.control.CheckBox.class).setSelected(true);
+            field(controller, "remindersCheck", javafx.scene.control.CheckBox.class).setSelected(true);
+
+            Method save = CollectionsController.class.getDeclaredMethod("handleSaveProfile");
+            save.setAccessible(true);
+            save.invoke(controller);
+
+            assertNull(services.collectionAssistant().profile(admin, "collection-phone-only").email());
+            assertEquals("", field(controller, "emailField", javafx.scene.control.TextField.class).getText());
+            return null;
+        });
+    }
+
+    private static <T> T field(Object target, String name, Class<T> type) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return type.cast(field.get(target));
     }
 
     private static FXMLLoader load() throws Exception {

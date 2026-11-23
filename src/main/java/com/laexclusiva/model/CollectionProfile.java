@@ -23,6 +23,9 @@ public record CollectionProfile(String customerId, String email, CollectionChann
         if (authorizedChannel == CollectionChannel.EMAIL && (email == null || email.isBlank())) {
             throw new IllegalArgumentException("Se requiere un correo para autorizar el canal email.");
         }
+        if (authorizedChannel != CollectionChannel.EMAIL && email != null) {
+            throw new IllegalArgumentException("El correo solo se conserva cuando email es el canal autorizado.");
+        }
         if (collectionConsent != (consentRecordedAt != null)
                 || collectionConsent == (authorizedChannel == CollectionChannel.NONE)
                 || (!collectionConsent && remindersEnabled)) {

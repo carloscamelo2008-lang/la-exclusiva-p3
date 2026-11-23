@@ -26,7 +26,8 @@ CREATE TABLE customer_collection_profile (
             AND consent_recorded_at IS NOT NULL)
     ),
     CONSTRAINT ck_collection_profile_email_channel CHECK (
-        authorized_channel <> 'EMAIL' OR email IS NOT NULL
+        (authorized_channel = 'EMAIL' AND email IS NOT NULL)
+        OR (authorized_channel <> 'EMAIL' AND email IS NULL)
     ),
     CONSTRAINT ck_collection_profile_observation CHECK (
         (observed_balance IS NULL AND observed_at IS NULL)

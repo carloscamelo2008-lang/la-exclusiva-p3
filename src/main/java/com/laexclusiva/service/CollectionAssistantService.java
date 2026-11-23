@@ -157,14 +157,15 @@ public final class CollectionAssistantService {
                 throw new IllegalArgumentException("El consentimiento requiere un canal autorizado.");
             }
             boolean enabledReminders = consent && remindersEnabled;
-            String normalizedEmail = consent ? normalizeEmail(email) : null;
+            String normalizedEmail = consent && channel == CollectionChannel.EMAIL ? normalizeEmail(email) : null;
             if (channel == CollectionChannel.EMAIL && normalizedEmail == null) {
                 throw new IllegalArgumentException("El canal email requiere una dirección válida.");
             }
             LocalDateTime now = LocalDateTime.now(clock.withZone(COLOMBIA));
             boolean consentChanged = previous.collectionConsent() != consent
                     || previous.authorizedChannel() != channel
-                    || previous.remindersEnabled() != enabledReminders;
+                    || previous.remindersEnabled() != enabledReminders
+                    || !java.util.Objects.equals(previous.email(), normalizedEmail);
             LocalDateTime consentAt = !consent ? null : consentChanged || previous.consentRecordedAt() == null
                     ? now : previous.consentRecordedAt();
             CollectionProfile profile = new CollectionProfile(customerId, normalizedEmail, channel, consent,

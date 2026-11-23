@@ -177,7 +177,7 @@ public final class CollectionsController {
             consentCheck.setSelected(saved.collectionConsent());
             remindersCheck.setSelected(saved.remindersEnabled());
             channelCombo.setValue(saved.authorizedChannel());
-            if (!saved.collectionConsent()) emailField.clear();
+            emailField.setText(saved.email() == null ? "" : saved.email());
             noteField.clear();
             historyTable.getItems().setAll(assistant.history(session, customer.getId()));
             messageLabel.setText(saved.collectionConsent()
