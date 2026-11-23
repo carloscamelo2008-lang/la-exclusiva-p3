@@ -187,3 +187,12 @@ El PR #25 se mantiene Draft para revisión. Siguen pendientes el logo independie
 la integración de identidad de escritorio por Carlos y las fuentes reales de indicadores
 globales. No se modifica App.java, launcher ni iconos. El resultado de CI del nuevo
 commit se comprobará tras publicar; las pruebas PostgreSQL omitidas no se declaran aprobadas.
+### Corrección de ancho tras CI Ubuntu
+
+La primera CI del merge (`45261680900` y `45261691421`) detectó que la fuente de
+Ubuntu recortaba «Compras y Recepción»: 839 casos, 1 error, 60 omitidos. Se conserva
+la aserción de medidas y se amplía el lateral de 220 a 256 px en ambos menús,
+sin modificar controladores o permisos. Se repitió Maven offline clean verify con
+Temurin 17.0.21+9: 839 casos, 779 aprobados, 60 omitidos y cero fallos/errores.
+Las capturas integradas se renovaron con este ancho. La ejecución local incluyó
+una pausa prolongada del equipo; su duración no se utiliza como medida de rendimiento.
