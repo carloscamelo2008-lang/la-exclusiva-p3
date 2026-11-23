@@ -132,13 +132,10 @@ No se registró la contraseña temporal de prueba.
   caja.
 - Desde la sesión del trabajador se registró una venta de una unidad de
   `COSTENITA_175`: total $ 2.500 COP, pago inicial $ 1.000 COP y saldo $ 1.500
-  COP. El inventario pasó a 37 y apareció una salida de una unidad. La cartera
-  mostró el saldo agregado de $ 1.500 COP, pero la tabla “Ventas pendientes del
-  cliente” no presentó una fila seleccionable incluso tras actualizarla y
-  maximizar la ventana. Por ello no se pudo verificar el abono desde esa
-  pantalla JavaFX; no se alteró el controlador ni el FXML de cartera, que queda
-  fuera del alcance de esta integración y coincide con la modernización visual
-  independiente de Daniel.
+  COP. El inventario pasó a 37 y apareció una salida de una unidad. La primera
+  observación mostró el saldo agregado, pero no la fila dentro del espacio
+  visible. La investigación y corrección se registran abajo: la fila sí estaba
+  en el modelo; faltaba desplazamiento general en la pantalla.
 - El cierre de sesión del administrador volvió al login; luego el trabajador
   inició sesión y también volvió al login al cerrar sesión. Se cerró la
   aplicación y se descartaron los datos de prueba en memoria.
@@ -148,26 +145,107 @@ usuarios, alta de cliente/vendedor/proveedor, pedido, recepción parcial y
 completa, movimientos/stock y registro de venta en modo memoria. No valida
 persistencia ni transacciones PostgreSQL desde la interfaz.
 
-## Comprobaciones manuales restantes en Windows
+## Corrección de cartera y recorrido financiero PostgreSQL (2026-11-23)
 
-1. Repetir pedidos y recepciones con la configuración de la aplicación
-   apuntando únicamente al laboratorio `la_exclusiva_test`, después de que
-   Daniel integre el diseño visual.
-2. Verificar desde JavaFX la fila pendiente de venta, selección y abono; la
-   tabla de cartera no mostró una fila durante el recorrido anterior.
-3. Revisar caja, deuda general, datos inválidos, sobreventa y abono superior al
-   saldo con una cuenta administradora y fixtures controlados.
-4. Reiniciar la aplicación conectada al laboratorio y comprobar la persistencia
-   de cuentas, clientes, vendedores, proveedores, pedidos, recepciones,
-   movimientos, ventas y pagos.
+### Diagnóstico y corrección de visibilidad
+
+Se reprodujo el caso de una venta parcial de COP 2.500 con pago inicial de COP
+1.000 y saldo de COP 1.500. `PortfolioController.refreshSelectedCustomer()`
+recibía el cliente seleccionado, `salesWorkflow.listAll()` incluía la venta y
+`salesTable` contenía la fila filtrada por cliente con saldo positivo. No faltaba
+una fila en el modelo ni en PostgreSQL. La causa era de presentación: el FXML
+tenía varias tablas en un `VBox` sin desplazamiento exterior, por lo que la tabla
+de ventas pendientes podía quedar fuera de los límites de la ventana.
+
+La raíz de `portfolio_view.fxml` ahora es un `ScrollPane` vertical con ancho
+ajustado al contenido. Se conservan el controlador, los `fx:id` y los eventos;
+la tabla de ventas tiene altura preferida para que el desplazamiento exterior
+sea útil en ventanas pequeñas. No cambió la selección del cliente ni el contrato
+de pagos.
+
+La regresión JavaFX
+`selectedCustomerPartialSaleIsVisibleAndPaymentRetryAfterLostResponseIsIdempotent`
+comprueba que solo aparezca la venta del cliente elegido, que la fila y el saldo
+de COP 1.500 sean seleccionables/visibles y que el formulario permita registrar
+un abono de COP 500. La escena se mide y la fila se renderiza visible en
+1280×800, 1024×768 y 800×600. La prueba ejecuta un flujo de memoria con trabajador
+autorizado; simula que se pierde la respuesta después de confirmar y repite la
+misma clave. Resultado: dos intentos, una sola escritura de COP 500, saldo de
+ventas de COP 1.000 y sin cambios en la otra cuenta ni en stock/movimientos. Esta
+es evidencia simulada de idempotencia de interfaz, no un reintento visual sobre
+PostgreSQL.
+
+### Recorrido manual JavaFX conectado al laboratorio aislado
+
+Se preparó un clúster temporal propio, PostgreSQL 18.6, enlazado solo a
+`127.0.0.1:49676`, con base `la_exclusiva_test`. No se utilizó el servicio
+PostgreSQL local de 5432 ni bases compartidas o productivas. En ese clúster se
+verificaron las tablas/columnas de V001, V002, V004, V100–V106 y se aplicaron
+esas migraciones únicamente allí. La aplicación se inició con Java 17 en modo
+`postgres` y su `LAEXCLUSIVA_DB_URL` apuntó exclusivamente a esa base. Se usaron
+registros ficticios y una cuenta temporal; no se guardaron contraseñas en el
+repositorio ni en esta bitácora.
+
+Registros identificables creados para el recorrido: cliente
+`QA-PR26-C-001`, vendedor `Vendedor QA PR26` (ID `SEL-FD621D47`), producto
+`QA-PR26-BEER` y venta
+`SALE-EEC5C53E-C741-4D8A-B3C3-8332FBBF3D4B`. La cuenta temporal fue
+`qa-pr26-admin`. No se registraron teléfonos ni contraseñas en la documentación.
+
+En la interfaz se confirmó una entrada ficticia de 2 unidades, la venta por COP
+2.500, pago inicial de COP 1.000 y saldo de venta COP 1.500. Cartera mostró la
+fila seleccionable del cliente correcto; un abono de COP 500 dejó saldo de COP
+1.000. La deuda general ficticia de COP 300 se redujo con un abono de COP 100,
+quedando COP 200, sin afectar el saldo de venta. Caja distinguió facturación de
+COP 2.500 y cobros de ventas de COP 1.500, más COP 100 de pago de deuda general.
+Un egreso manual de COP 25 dejó egresos en COP 25 y efectivo neto en COP 1.575.
+La UI rechazó un egreso de COP 0 y un abono general de COP 201 cuando quedaban
+COP 200; las cifras y el historial no cambiaron por esos rechazos.
+
+La aplicación se cerró y se volvió a iniciar. El segundo login de la cuenta
+temporal no se completó: la interfaz respondió “Credenciales inválidas o cuenta
+inactiva”. La consulta de solo lectura posterior confirmó que la cuenta seguía
+activa y que los datos comerciales persistían: una venta, dos pagos de venta
+(COP 1.000 y COP 500), saldo agregado de cliente COP 1.200 (COP 1.000 de ventas
+y COP 200 de deuda general), existencias 1, entrada 2/salida 1, deuda general
+COP 300 menos COP 100 y los cuatro movimientos esperados de caja. `App` solo
+crea la cuenta inicial cuando el repositorio de identidad está vacío; no la
+reinicializa al arrancar con cuentas existentes. No se restableció ni cambió la
+contraseña para forzar el login. Por ello la persistencia de los registros está
+comprobada, pero el login UI tras reiniciar queda **no verificado**.
+
+### Validación automatizada final
+
+Con Microsoft JDK 17.0.18 y Maven 3.10.0, `mvn clean verify` terminó en
+`BUILD SUCCESS`: **822 pruebas contabilizadas, 793 aprobadas, 0 fallidas, 0
+errores y 29 omitidas**. Surefire confirma que 30 pruebas PostgreSQL reales se
+ejecutaron y aprobaron; 29 integraciones optativas de identidad/concurrencia y
+esquema incompleto se omitieron y no se cuentan como aprobadas. Las 30 incluyen
+cartera (1), clientes/vendedores (1), finanzas (7), inventario (3), ventas JDBC
+(5), productos (3), compras (6), ventas (1), identidad de solicitud (1) y
+movimientos de stock (2). Las suites dirigidas de controladores financieros,
+regresión JavaFX y autenticación aprobaron **63/63**. `git diff --check` pasó.
+Maven conserva advertencias no bloqueantes del modelo efectivo de JavaFX y de
+carga JavaFX desde módulo sin nombre.
+
+### Comprobaciones que siguen pendientes
+
+1. Repetir el login después del reinicio con una credencial temporal conocida,
+   sin restablecer ni cambiar cuentas que ya existan.
+2. Verificar en la interfaz los permisos y asignación de vendedor para una
+   sesión trabajadora en modo PostgreSQL; la regresión automatizada de cartera
+   usa una sesión trabajadora en memoria.
+3. Repetir las comprobaciones visuales sobre el diseño que Daniel incorpore
+   desde el PR #25, preservando el punto de navegación funcional.
 
 ## Límites y preparación de entrega
 
 El módulo de compras no registra pagos a proveedores ni movimientos de caja:
-una recepción representa mercancía recibida, no un egreso de efectivo. La
-tabla de ventas pendientes en la pantalla de cartera no mostró filas durante
-la prueba manual, aunque el resumen sí mostró el saldo. La validación visual
-completa con PostgreSQL queda pendiente. La modernización visual de Daniel y el
-ícono oficial también siguen pendientes. Por ello no se prepara todavía un
-instalador de Windows; primero se requiere la revisión visual restante y la
-aprobación del diseño y el ícono.
+una recepción representa mercancía recibida, no un egreso de efectivo. La fila
+pendiente de cartera ya se muestra y permite registrar abonos; el reintento con
+respuesta perdida está cubierto en una regresión JavaFX simulada. Los flujos de
+cartera, caja y rechazo de valores inválidos también se recorrieron con JavaFX
+conectado al PostgreSQL efímero; el segundo login después del reinicio queda
+pendiente según se detalla arriba. La modernización visual de Daniel y el ícono
+oficial siguen pendientes. Por ello no se prepara todavía un instalador de
+Windows.
