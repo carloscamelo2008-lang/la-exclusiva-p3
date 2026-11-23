@@ -1,0 +1,78 @@
+/* Identidad visual compartida. Los controladores conservan sus contratos. */
+.root {
+    -fx-font-family: "Segoe UI", sans-serif;
+    -fx-font-size: 13px;
+    -fx-base: #f5f8ff;
+    -fx-background: #f1f6ff;
+    -fx-accent: #0879ef;
+    -fx-focus-color: #0879ef;
+    -fx-faint-focus-color: #0879ef28;
+    -fx-text-background-color: #102b56;
+}
+.workspace { -fx-background-color: #f1f6ff; -fx-spacing: 14; }
+.label { -fx-text-fill: #102b56; }
+.button {
+    -fx-background-color: #086bdb;
+    -fx-text-fill: white;
+    -fx-background-radius: 9;
+    -fx-padding: 10 16;
+    -fx-cursor: hand;
+    -fx-font-weight: bold;
+    -fx-min-height: 36;
+}
+.button:hover { -fx-background-color: #0055b9; }
+.button:pressed { -fx-background-color: #003f91; }
+.button:focused { -fx-border-color: #f0bd41; -fx-border-width: 2; -fx-border-radius: 9; }
+.button:disabled { -fx-opacity: 0.52; -fx-cursor: default; }
+.text-field, .combo-box, .date-picker {
+    -fx-background-color: white;
+    -fx-background-radius: 8;
+    -fx-border-color: #c6d8ef;
+    -fx-border-radius: 8;
+    -fx-min-height: 36;
+}
+.text-field { -fx-padding: 8 10; -fx-prompt-text-fill: #60758f; }
+.text-field:focused, .combo-box:focused, .date-picker:focused { -fx-border-color: #0879ef; -fx-border-width: 2; }
+.text-field:disabled, .combo-box:disabled { -fx-opacity: 0.65; }
+.table-view {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-border-color: #d5e3f5;
+    -fx-border-radius: 12;
+    -fx-padding: 5;
+    -fx-fixed-cell-size: 36;
+}
+.table-view .column-header-background { -fx-background-color: #e7f0ff; -fx-background-radius: 8 8 0 0; }
+.table-view .column-header, .table-view .filler { -fx-background-color: transparent; -fx-size: 38; }
+.table-view .column-header .label { -fx-text-fill: #103c79; -fx-font-weight: bold; -fx-alignment: CENTER_LEFT; -fx-padding: 0 8; }
+.table-row-cell { -fx-background-color: white; -fx-border-color: transparent transparent #edf2f9 transparent; }
+.table-row-cell:odd { -fx-background-color: #f7faff; }
+.table-row-cell:filled:hover { -fx-background-color: #eaf3ff; }
+.table-row-cell:filled:selected { -fx-background-color: #d0e5ff; -fx-text-background-color: #092b60; }
+.table-cell { -fx-padding: 8; }
+.scroll-pane, .scroll-pane > .viewport { -fx-background-color: transparent; }
+.scroll-bar { -fx-background-color: transparent; }
+.scroll-bar .thumb { -fx-background-color: #b3c9e4; -fx-background-radius: 6; }
+.login-shell { -fx-background-color: linear-gradient(to bottom right, #05255d, #075fd1); }
+.login-shell .label { -fx-text-fill: white; }
+.login-title { -fx-font-size: 25; -fx-font-weight: bold; }
+.login-subtitle { -fx-font-size: 13; -fx-opacity: 0.88; }
+.login-shell .button { -fx-background-color: #ffd05b; -fx-text-fill: #082a63; }
+.login-shell .button:hover { -fx-background-color: #ffe08d; }
+.login-error { -fx-text-fill: #ffe2df; -fx-font-weight: bold; }
+.sidebar { -fx-background-color: linear-gradient(to bottom, #06295e, #0049aa); -fx-padding: 24 12; -fx-spacing: 7; }
+.brand { -fx-font-size: 23; -fx-font-weight: bold; -fx-text-fill: white; }
+.brand-caption { -fx-text-fill: #f7d16a; -fx-padding: 0 8 20 8; }
+.page-heading { -fx-font-size: 22; -fx-font-weight: bold; }
+.muted { -fx-text-fill: #566e8b; }
+.card { -fx-background-color: white; -fx-background-radius: 18; -fx-padding: 22; -fx-spacing: 12; -fx-effect: dropshadow(gaussian, #103b7420, 12, 0.12, 0, 3); }
+.hero { -fx-background-color: linear-gradient(to bottom right, #0346a4, #0587ef); -fx-background-radius: 20; -fx-padding: 28; -fx-spacing: 15; }
+.hero .label { -fx-text-fill: white; }
+.hero-title { -fx-font-size: 30; -fx-font-weight: bold; }
+.hero-copy { -fx-font-size: 16; }
+.section-title { -fx-font-size: 18; -fx-font-weight: bold; }
+.quick-action { -fx-background-color: #e8f2ff; -fx-text-fill: #06499d; -fx-min-width: 160; }
+.quick-action:hover { -fx-background-color: #cee5ff; }
+.notice { -fx-text-fill: #834b0a; -fx-background-color: #fff3d7; -fx-padding: 12; -fx-background-radius: 9; }
+
+.sidebar .label { -fx-text-fill: white; }

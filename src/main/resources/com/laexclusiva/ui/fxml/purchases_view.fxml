@@ -5,7 +5,7 @@
 <?import javafx.scene.layout.*?>
 
 <ScrollPane fitToWidth="true" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="com.laexclusiva.ui.controller.PurchasesController">
+            fx:controller="com.laexclusiva.ui.controller.PurchasesController" stylesheets="@../css/theme.css" styleClass="workspace">
     <VBox spacing="10">
         <padding><Insets top="18" right="18" bottom="18" left="18"/></padding>
         <Label text="Compras y recepción de mercancía" style="-fx-font-size: 22px; -fx-font-weight: bold;"/>

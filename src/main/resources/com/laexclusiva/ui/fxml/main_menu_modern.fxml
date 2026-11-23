@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.control.ScrollPane?>
+
+
+
+<BorderPane fx:id="rootPane" minHeight="500.0" minWidth="700.0" prefHeight="820.0" prefWidth="1280.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.MainController" stylesheets="@../css/navigation.css">
+   <left>
+      <VBox prefHeight="600.0" prefWidth="220.0" styleClass="sidebar" BorderPane.alignment="CENTER">
+         <children>
+            <Label text="LA EXCLUSIVA" textFill="WHITE">
+               <font>
+                  <Font name="System Bold" size="18.0" />
+               </font>
+               <VBox.margin>
+                  <Insets bottom="20.0" left="20.0" top="25.0" />
+               </VBox.margin>
+            </Label>
+            <Button fx:id="btnDashboard" onAction="#handleShowDashboard" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Resumen / Inicio">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnCustomers" onAction="#handleShowCustomers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Clientes">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnSellers" onAction="#handleShowSellers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Vendedores">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnCredit" onAction="#handleShowPortfolio" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Cartera (consulta)">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnCash" onAction="#handleShowCash" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Caja y movimientos">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnInventory" onAction="#handleShowInventory" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Catálogo e Inventario">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnSales" onAction="#handleShowSales" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Registrar Venta">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnAdminUsers" mnemonicParsing="false" prefHeight="64.0" prefWidth="220.0" styleClass="nav-button" disable="true" wrapText="true" text="Gestión de Usuarios (pendiente)">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnLogout" onAction="#handleLogout" text="Cerrar sesión" styleClass="nav-button" prefWidth="220.0" />
+         </children>
+      </VBox>
+   </left>
+   <center>
+      <ScrollPane fx:id="dashboard" fitToWidth="true" hbarPolicy="NEVER">
+         <content>
+            <VBox spacing="20" styleClass="workspace">
+               <padding><Insets top="24" right="24" bottom="24" left="24" /></padding>
+               <Label text="La Exclusiva · Panel de gestión" styleClass="page-heading" />
+               <Label fx:id="roleLabel" text="Rol actual" styleClass="muted" />
+               <FlowPane hgap="24" vgap="16" styleClass="hero" prefWrapLength="750">
+                  <VBox spacing="15" prefWidth="420">
+                     <Label fx:id="welcomeLabel" text="¡Bienvenido a La Exclusiva!" wrapText="true" styleClass="hero-title" />
+                     <Label text="Tu comercio, en un solo lugar." styleClass="hero-copy" wrapText="true" />
+                     <Label text="Consulta clientes, inventario y operaciones con los permisos de tu cuenta." wrapText="true" styleClass="hero-copy" />
+                  </VBox>
+               </FlowPane>
+               <VBox styleClass="card">
+                  <Label text="Accesos rápidos" styleClass="section-title" />
+                  <FlowPane hgap="12" vgap="12">
+                     <Button text="Clientes" onAction="#handleShowCustomers" styleClass="quick-action" />
+                     <Button text="Vendedores" onAction="#handleShowSellers" styleClass="quick-action" visible="${btnSellers.visible}" managed="${btnSellers.managed}" />
+                     <Button text="Inventario" onAction="#handleShowInventory" styleClass="quick-action" visible="${btnInventory.visible}" managed="${btnInventory.managed}" />
+                     <Button text="Registrar venta" onAction="#handleShowSales" styleClass="quick-action" visible="${btnSales.visible}" managed="${btnSales.managed}" />
+                     <Button text="Consultar cartera" onAction="#handleShowPortfolio" styleClass="quick-action" />
+                     <Button text="Caja y movimientos" onAction="#handleShowCash" styleClass="quick-action" visible="${btnCash.visible}" managed="${btnCash.managed}" />
+                  </FlowPane>
+               </VBox>
+               <FlowPane hgap="18" vgap="18" prefWrapLength="850">
+                  <VBox styleClass="card" prefWidth="360">
+                     <Label text="Resumen comercial" styleClass="section-title" />
+                     <Label text="Consulta los valores actuales en Ventas, Inventario y Cartera." wrapText="true" />
+                     <Label text="Indicadores y gráfico semanal: pendientes de integración con los servicios." wrapText="true" styleClass="muted" />
+                  </VBox>
+                  <VBox styleClass="card" prefWidth="360">
+                     <Label text="Movimientos recientes" styleClass="section-title" />
+                     <Label text="Los movimientos reales se consultan en Caja y en el historial de cada módulo." wrapText="true" />
+                     <Label text="Sin una fuente de actividad global conectada." wrapText="true" styleClass="muted" />
+                  </VBox>
+               </FlowPane>
+            </VBox>
+         </content>
+      </ScrollPane>
+   </center>
+   <bottom>
+      <Label fx:id="navigationMessage" style="-fx-text-fill: #a01818;" />
+   </bottom>
+</BorderPane>
