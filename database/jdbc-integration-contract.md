@@ -546,3 +546,28 @@ La evidencia específica de transacciones, consultas, FXML, límites del modo me
 PostgreSQL se mantiene en [sales-jdbc-integration.md](sales-jdbc-integration.md). Las pruebas
 permanecen restringidas a fixtures ficticios propios de `la_exclusiva_test`; ninguna limpieza de
 estas suites afecta filas ajenas.
+
+## Cartera asistida, avisos y auditoría (V107/V108)
+
+V107 agrega `customer_collection_profile`, `customer_collection_follow_up` y
+`customer_collection_reminder`; V108 agrega `administrative_audit_event`. Son tablas aditivas y no
+reescriben cliente, venta o pago históricos. La aplicación no aplica migraciones automáticamente.
+Antes de habilitar esta parte de la aplicación, el esquema destino debe tener las versiones
+prerrequisito de clientes, ventas, libros financieros y usuarios, además de V107 y V108. Un esquema
+incompleto debe fallar cerrado.
+
+En modo PostgreSQL, `ApplicationServices.collectionAssistant()` compone adaptadores JDBC sobre el
+mismo `JdbcConnectionProvider` y la transacción compartida. Los avisos semanales son únicos por
+cliente/semana ISO; el claim y los cambios de estado usan comparación de estado/contador para evitar
+dos entregas concurrentes. La entrega externa de correo no es atómica con PostgreSQL: `SENDING`
+representa un resultado que requiere reconciliación y nunca se reintenta automáticamente.
+
+El perfil y el seguimiento no modifican el modelo histórico de clientes. El detalle de contacto
+requiere `MANAGE_COLLECTION`; dashboard/PDF requieren `VIEW_PORTFOLIO`; lectura de auditoría requiere
+`VIEW_ADMIN_AUDIT`. La guía de consentimiento, variables de correo, política horaria, contadores del
+dashboard, estado de cuenta y límites conocidos está en
+[`docs/collection-reminders-security.md`](../docs/collection-reminders-security.md).
+
+`CustomerCollectionPostgresIntegrationTest` solo se activa en el laboratorio efímero de GitHub
+Actions. Una omisión Surefire local sin las propiedades/URL de prueba no acredita validación
+PostgreSQL. Las pruebas no envían correos reales y no se deben ejecutar contra una base compartida.

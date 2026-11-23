@@ -1,118 +1,77 @@
-# La Exclusiva
+# La Exclusiva P3
 
-Sistema de administración para el negocio familiar La Exclusiva, desarrollado como proyecto de aula de Programación de Computadores III.
+Aplicación de escritorio para gestionar catálogo, inventario, compras, ventas, cartera y caja del negocio La Exclusiva. El cliente JavaFX usa Java 17; PostgreSQL/JDBC es opcional y el modo predeterminado conserva almacenamiento en memoria.
 
-## Propósito
+## Funciones disponibles
 
-Organizar la operación del negocio mediante módulos de productos e inventario, ventas, clientes, pagos parciales y abonos, pedidos de mercancía y movimientos de dinero. El control detallado de envases retornables y cavas físicas se considera una ampliación posterior.
+- Inicio de sesión, sesiones revocables, permisos y administración de usuarios.
+- Clientes, vendedores, catálogo, inventario, ventas y pagos idempotentes.
+- Proveedores, pedidos de compra y recepción integrada al inventario.
+- Cartera separada entre deuda de ventas y deuda general; pagos y movimientos de caja.
+- Asistente explicable de cartera con seguimiento, recomendaciones, estados de cuenta PDF y avisos semanales sujetos a revisión administrativa.
+- Auditoría básica de cambios administrativos y de intentos de envío de estados de cuenta.
 
-## Estado del proyecto
+El asistente de cartera usa reglas y datos registrados; no es un modelo de aprendizaje automático ni una predicción sobre las personas. `purchase_order` corresponde a compras a proveedores. La aplicación todavía no modela pedidos a domicilio de clientes ni seguimiento de entregas.
 
-La aplicación cuenta con una interfaz de consola en español para productos e inventario, ventas, clientes, vendedores, pagos parciales, abonos y consulta de cartera. La autenticación y los permisos del menú se aplican con cuentas de administrador y trabajador.
+## Requisitos y verificación
 
-- **Primer avance:** aplicación de consola en español y funcionalidades prioritarias.
-- **Interfaz final:** JavaFX se contempla para la entrega final; los mockups visuales se diseñarán por separado antes de implementar las ventanas.
-- **Persistencia actual:** los repositorios guardan los datos en memoria. Las cuentas, el inventario, clientes, vendedores y ventas no sobreviven al cierre del programa.
-- **Base de datos:** PostgreSQL y JDBC quedan para una etapa posterior. La integración no está implementada.
-- **Diseño:** análisis, requerimientos, diagramas iniciales y propuesta GRASP/SOLID en revisión.
+Se requieren Java 17 y Maven:
 
-## Tecnologías
-
-- Java 17.
-- Maven.
-- Git y GitHub.
-- IntelliJ IDEA o NetBeans.
-- PostgreSQL con JDBC, previsto para la etapa posterior.
-
-## Ejecutar el proyecto
-
-Se requiere Java 17 y Maven.
-
-Compilar y comprobar:
-
-~~~~bash
+```powershell
 mvn clean verify
-~~~~
+```
 
-Ejecutar la aplicación:
+En Linux sin servidor gráfico, las pruebas JavaFX pueden ejecutarse con Xvfb:
 
-~~~~bash
+```bash
+xvfb-run -a mvn clean verify
+```
+
+## Ejecutar JavaFX
+
+El punto de entrada predeterminado inicia JavaFX:
+
+```powershell
 mvn exec:java
-~~~~
+```
 
-En el primer inicio normal, la aplicación solicita un nombre de usuario y una contraseña para crear la cuenta inicial de administrador. Después solicita esas credenciales para iniciar sesión. Como las cuentas se guardan en memoria, este aprovisionamiento vuelve a solicitarse en cada ejecución normal.
+Por defecto, `LAEXCLUSIVA_PERSISTENCE_MODE` es `memory`, así que los datos de esa ejecución no sobreviven al cierre. En el primer arranque sin cuentas, el modo normal aprovisiona un administrador usando `LAEXCLUSIVA_INITIAL_ADMIN_USERNAME` (opcional, por defecto `admin`) y `LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD`. La contraseña debe cumplir la política configurada. En PostgreSQL el bootstrap solo ocurre si el repositorio persistente no contiene usuarios; no crea una cuenta alternativa en memoria ante errores de base o esquema.
 
-### Modo demo
+El modo demo solo está disponible en memoria:
 
-El modo demo carga existencias, un cliente ficticio, dos vendedores y una venta parcialmente pagada. También crea las cuentas `admin.demo` y `trabajador.demo`; sus contraseñas se leen de variables de entorno y se usan para iniciar sesión:
+```powershell
+$env:LAEXCLUSIVA_DEMO_ADMIN_PASSWORD = 'contraseña temporal'
+$env:LAEXCLUSIVA_DEMO_WORKER_PASSWORD = 'otra contraseña temporal'
+mvn exec:java "-Dexec.args=--demo"
+```
 
-~~~~bash
-export LAEXCLUSIVA_DEMO_ADMIN_PASSWORD='contraseña-admin'
-export LAEXCLUSIVA_DEMO_WORKER_PASSWORD='contraseña-trabajador'
-mvn exec:java -Dexec.args="--demo"
-~~~~
+No guardes contraseñas reales en el repositorio ni en la línea de comandos compartida. Usa variables privadas del proceso y evita capturar sus valores en registros.
 
-En PowerShell, configura las mismas variables con `$env:LAEXCLUSIVA_DEMO_ADMIN_PASSWORD` y `$env:LAEXCLUSIVA_DEMO_WORKER_PASSWORD` antes de ejecutar `mvn exec:java "-Dexec.args=--demo"`. Si alguna falta o está vacía, la aplicación informa que ambas son obligatorias y termina. El modo demo y sus cuentas también son temporales y se vuelven a crear al iniciar una nueva ejecución.
+## Seleccionar PostgreSQL
 
-El administrador tiene todos los permisos definidos. El trabajador puede consultar catálogo e inventario, registrar ventas y clientes, consultar clientes, ventas y cartera, y registrar abonos; no puede ingresar existencias ni consultar o registrar vendedores. En las ventas del trabajador, el vendedor se toma de la cuenta autenticada.
+La aplicación utiliza PostgreSQL únicamente cuando se configura `LAEXCLUSIVA_PERSISTENCE_MODE=postgres` junto con `LAEXCLUSIVA_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD`. La configuración inválida o un esquema incompleto debe fallar de forma segura; no se cambia automáticamente a memoria.
 
-## Organización del código
+Las migraciones no se ejecutan automáticamente. Antes de aplicar una migración, verifica el destino y su versión; nunca uses la base de desarrollo o producción para pruebas. La guía de entorno y el contrato están en [database/README.md](database/README.md) y [database/jdbc-integration-contract.md](database/jdbc-integration-contract.md).
 
-- **model:** conceptos del negocio y reglas propias de cada entidad.
-- **persistence:** contratos de repositorio e implementaciones temporales en memoria para el primer avance.
-- **service:** casos de uso, validaciones y reglas que coordinan varias entidades.
-- **ui:** interacción con el usuario. Para este avance se utilizará consola; JavaFX se abordará en la entrega final.
+## Asistente de cartera y privacidad
 
-La interfaz no debe ejecutar SQL ni modificar directamente el inventario. Las operaciones se solicitan a los servicios. Al integrar PostgreSQL, se sustituirá la persistencia temporal detrás de los contratos acordados.
+El contrato del tablero y las reglas de estados de cuenta, consentimiento y correo están documentados en [docs/collection-reminders-security.md](docs/collection-reminders-security.md). La simulación de correo está activa por defecto. Un envío SMTP real requiere configuración explícita, consentimiento vigente, revisión individual, horario/días autorizados y confirmación administrativa de las instrucciones de pago. El estado de cuenta es informativo, no es factura electrónica DIAN ni confirma que un pago haya sido recibido.
 
-## Convenciones
+## Organización
 
-- Clases, métodos, atributos y variables: inglés.
-- Comentarios, JavaDoc, documentación y mensajes visibles al usuario: español.
-- Commits y ramas: inglés, descriptivos y consistentes.
-- No guardar contraseñas ni datos personales reales en el repositorio.
-- No integrar cambios en develop sin la revisión acordada.
+- `src/main/java/com/laexclusiva/model`: modelos y reglas de dominio.
+- `src/main/java/com/laexclusiva/repository`: puertos y adaptadores de persistencia.
+- `src/main/java/com/laexclusiva/service`: casos de uso, autorización y coordinación transaccional.
+- `src/main/java/com/laexclusiva/ui`: composición JavaFX, vistas y controladores.
+- `database/migrations`: migraciones SQL versionadas y no automáticas.
+- `docs/ai-usage`: bitácoras individuales de asistencia de IA.
 
-## Control de versiones
+## Documentación
 
-~~~~text
-main
-  ↑
-develop
-  ↑
-feature/*  fix/*  refactor/*  docs/*
-~~~~
-
-- **main:** versión estable.
-- **develop:** integración del trabajo revisado.
-- Las ramas de trabajo nacen de develop.
-- Cada tarea se propone mediante un Pull Request hacia develop.
-- El autor no aprueba su propio Pull Request.
-- Jesús y Daniel deben revisar y aprobar la configuración inicial antes de que Carlos la integre en develop.
-
-## Verificación automática
-
-GitHub Actions ejecuta una construcción Maven con Java 17 en los cambios configurados. La verificación automática complementa, pero no reemplaza, la revisión de los integrantes.
-
-~~~~bash
-mvn --batch-mode --no-transfer-progress clean verify
-~~~~
-
-## Documentación del proyecto
-
-- [Documento general del proyecto](docs/fase-1/proyecto-aula.md)
-- [Análisis del negocio](docs/fase-1/analisis-negocio.md)
-- [Requerimientos](docs/fase-1/requerimientos.md)
-- [Tabla de tareas actualizable](docs/fase-1/tabla-tareas.md)
-- [Arquitectura inicial por capas](docs/fase-2/arquitectura-inicial.md)
-- [Diagrama de paquetes](docs/fase-2/diagrama-paquetes.md)
-- [Diagrama de clases inicial](docs/fase-2/diagrama-clases-inicial.md)
-- [Estado de los mockups visuales](docs/fase-2/mockups.md)
-- [Propuesta GRASP y SOLID](docs/fase-2/grasp-solid.md)
-- [Plan de pruebas funcionales](docs/fase-3/pruebas-funcionales.md)
-- [Trazabilidad inicial GRASP/SOLID](docs/fase-3/trazabilidad-grasp-solid.md)
-- [Lista de control de la fase 4](docs/fase-4/README.md)
+- [Guía de PostgreSQL y JDBC](database/README.md)
+- [Contrato de integración JDBC](database/jdbc-integration-contract.md)
+- [Asistente de cartera, recordatorios y auditoría](docs/collection-reminders-security.md)
 - [Bitácoras de uso de IA](docs/ai-usage/README.md)
-- [Preparación futura de PostgreSQL](database/README.md)
+- [Integración JavaFX de compras](docs/purchases-javafx-integration.md)
 
-Los diagramas y las justificaciones de diseño son preliminares. Deben revisarse y actualizarse para reflejar la implementación real.
+Los cambios se proponen mediante Pull Requests a `develop`; no se integra directamente a `main`.
