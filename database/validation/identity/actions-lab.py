@@ -229,6 +229,7 @@ def main():
     assert state.strip().endswith("t"), state
     save("recovery-catalog.log", psql(["database/validation/identity/inspect.psql"]).stdout)
     report["recovery"] = "23505 rejected; V104 preserved; scoped fixture correction; V105/V106 applied"
+    cleanup()
     start("application")
     save("application-schema.log", psql(["database/validation/identity/application.psql"]).stdout)
     save("application-catalog.log", psql(["database/validation/identity/inspect.psql"]).stdout)
