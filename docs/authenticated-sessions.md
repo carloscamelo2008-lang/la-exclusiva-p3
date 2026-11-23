@@ -107,3 +107,13 @@ La ejecución posterior mvn -o verify con Temurin 17.0.21+9 contabilizó 751 cas
 19 casos del validador general, los 18 administrativos y 118 de gestión. No se
 interpretan las omisiones como aprobación de PostgreSQL. La revisión independiente
 de Carlos y Jesús y la integración comercial permanecen pendientes.
+
+## Corrección posterior del PR #22: identidad de instancia
+
+Además del ID y security_version, emisión y validación capturan y comparan el
+UUID persistente de cada inserción. Una sesión anterior no valida una cuenta
+recreada con el mismo ID y versión, incluso si conserva contraseña o cambia rol.
+AuthenticatedPrincipal incluye el UUID actual como quinto componente inmutable.
+Las garantías de autoridad, revocación y operaciones ya iniciadas no cambian.
+Véase [identidad de instancia](account-instance-identity.md) para el contrato de
+snapshots, migración V106 y validaciones PostgreSQL todavía pendientes.

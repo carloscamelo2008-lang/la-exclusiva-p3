@@ -1,4 +1,4 @@
-﻿# Bitácora de uso de IA – Desarrollador 2
+# Bitácora de uso de IA – Desarrollador 2
 
 **Integrante:** Daniel Josué Arrieta Fontalvo  
 **Rol inicial:** clientes, fiados y abonos  
@@ -412,3 +412,14 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté registrar los resultados reales y mantener pendientes la revisión de Jesús, inventario histórico, migraciones y futuras decisiones compartidas de integración. La autorización de trabajo autónomo no equivale a aprobar seguridad ni aplicar esquemas.
 * **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9 y objetivo Java 17: 751 casos, 711 aprobados, cero fallos/errores y 40 integraciones PostgreSQL omitidas. La medición secuencial usó un calentamiento y tres muestras por caso: medianas de 43,209 ms para el formato actual y 385,676 ms para un millón de iteraciones con resultado de 64 bytes; no es una garantía de capacidad. git diff --check pasó. No hubo PostgreSQL ni aplicación de V104/V105. No se reconstruyen fechas sin registros suficientes.
 * **Commit o Pull Request relacionado:** 3e4afd788d9b43187dca9ea93e41636e5ff99b2d; commit documental y PR pendientes de creación al registrar esta entrada.
+
+### Interacción 22 – Correcciones bloqueantes del PR #22
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Seguridad y compatibilidad de identidad (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Autoricé corregir la reutilización de cuentas y admitir hashes históricos válidos al actualizar metadatos.
+* **Resumen de la respuesta recibida:** Codex incorporó UUID por inserción, comparación en sesiones y actualizaciones, V106 con backfill e inmutabilidad y un parser estructural compartido sin ejecutar PBKDF2 para validar formatos.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté la implementación y regresiones dentro de identidad; V106 queda preparada, sin aplicar, y su revisión y validación PostgreSQL siguen pendientes. No se integraron los cambios ajenos de develop.
+* **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9: 760 casos, 720 aprobados, 40 integraciones PostgreSQL omitidas, cero fallos y errores. Incluye reutilización de ID con ambos roles, revocación y sesiones hostiles, 82 pruebas JDBC simuladas y dos inspecciones estáticas de V106. Se comprobó que V106 no aparece en las 20 ramas remotas consultadas. No hubo SQL, conexión PostgreSQL ni ejecución de migraciones.
+* **Commit o Pull Request relacionado:** PR #22; commits de corrección pendientes de creación al registrar esta entrada.

@@ -158,3 +158,12 @@ con commit y con rollback; conservación de active, seller_id y security_version
 tras rechazo/rollback; interacción con el trigger V104; índice válido y predicado
 correcto en catálogos; diagnóstico sin duplicados y fallo seguro de creación ante
 duplicados históricos. No se aplicarán migraciones automáticamente desde pruebas.
+
+## Dependencia adicional del adaptador: V106
+
+La corrección de reutilización de ID del PR #22 incorpora account_instance_id.
+El adaptador JDBC necesita V104 **y V106** aplicadas mediante autorización
+específica antes de ejecutarse. V105 mantiene su propósito de exclusividad de
+vendedor. Ninguna de estas migraciones se ejecutó durante esta corrección.
+Las integraciones existentes que usan el adaptador requieren también V106.
+Véase [identidad persistente de cuenta](account-instance-identity.md).

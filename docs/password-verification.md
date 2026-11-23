@@ -149,3 +149,18 @@ class IdentityPbkdf2Measurement {
 }
 
 ```
+
+## Corrección del PR #22: estructura compartida
+
+PasswordHasher.isSupportedHash() y verify() usan el mismo parser acotado.
+UserRepositoryJdbc delega la validación de escrituras en ese parser, sin derivar
+PBKDF2. Se conservan el máximo de 255 caracteres, 1.000–1.000.000 iteraciones,
+sal de 8–64 bytes y resultado de 16–64 bytes, incluido Base64 sin padding válido.
+No se acepta texto plano, formatos malformados ni valores fuera de esos límites.
+hash() conserva sus parámetros de generación actuales.
+
+Esto permite actualizar metadatos con un hash histórico admitido por verify(),
+manteniendo sus bytes idénticos. La prueba JDBC simulada usa un hash verificable
+de 1.000 iteraciones, sal de 8 bytes y resultado de 16 bytes. No acredita una
+integración PostgreSQL ni un inventario completo de hashes históricos. Persisten
+el riesgo operativo del máximo y la medición acotada antes de cerrar integración.
