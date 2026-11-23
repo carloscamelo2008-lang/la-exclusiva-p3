@@ -123,3 +123,62 @@ Actions para el HEAD publicado terminaron correctamente.
 Esta evidencia es automatizada. No se afirma haber realizado un recorrido manual
 visual completo de JavaFX. La inspección del laboratorio y los conteos detallados
 quedan registrados en `docs/ai-usage/leader-ai-log.md`.
+
+## Correcciones de revisión del PR #24
+
+### Frontera de autorización
+
+El constructor sin validador de `AuthorizationService` se conserva para consultas
+compatibles sobre sesiones sintéticas, pero `execute` ahora exige una autoridad
+de sesión. Por tanto, esa instancia no puede envolver ni iniciar una operación
+protegida. Los controladores JavaFX de clientes, vendedores, inventario, ventas,
+cartera y caja no crean autorizadores propios: rechazan la configuración hasta
+recibir la instancia estricta de `IdentityServices`. Las factorías y la vista de
+compras conservan las firmas legacy para compatibilidad de compilación, pero
+fallan cerradas si no reciben la autoridad vigente. Las comprobaciones vuelven
+a consultar el rol actual al ejecutar la operación.
+
+### Errores de administración
+
+`UserManagementController` solo presenta texto detallado para
+`UserManagementService.ValidationException` y mensajes operativos conocidos de
+concurrencia o reglas de negocio. Errores JDBC, SQL y estados internos muestran
+un mensaje genérico; no se presenta el mensaje de una excepción arbitraria.
+La validación de contraseña se tipa sin cambiar su contrato base de excepción,
+y las reglas de último administrador y asignación exclusiva conservan sus
+excepciones previas. Las otras pantallas usan una lista cerrada de mensajes de
+autorización conocidos y ocultan los detalles inesperados de persistencia.
+
+### Cierre de sesión y navegación
+
+Al cerrar sesión, `MainController` revoca la sesión con `AuthenticationService`,
+borra la referencia local y deshabilita toda navegación protegida. Muestra de
+inmediato el estado «sesión cerrada»; si el callback de navegación falla,
+presenta un botón controlado para reintentar el regreso al login. Ese control no
+recrea ni renueva sesión, y las operaciones continúan rechazando el token
+revocado. Si un callback retorna sin sustituir la escena, la pantalla anterior
+permanece visualmente marcada y bloqueada.
+
+Las regresiones de esta revisión se ejecutan en las suites JavaFX/FXML y de
+servicios. No utilizan una base PostgreSQL local ni aplican migraciones; la
+repetición del laboratorio PostgreSQL efímero y sus resultados se documentan en
+la bitácora para el HEAD publicado.
+
+### Validación de las correcciones de revisión (23 de noviembre de 2026)
+
+Con Microsoft JDK 17.0.18 y Maven 3.10.0, `mvn clean verify` terminó en
+`BUILD SUCCESS`: **819 casos contabilizados, 0 fallidos, 0 errores y 59
+omitidos** (760 ejecutados y aprobados). La suite incluyó las regresiones de
+frontera de autorización, mensajes de administración y logout/navegación, junto
+con JavaFX/FXML. Las 59 omisiones corresponden a integraciones PostgreSQL
+opcionales sin configuración local; no se cuentan como aprobadas. No se ejecutó
+ninguna migración ni se accedió a una base local.
+
+El workflow PostgreSQL efímero debe validar el nuevo HEAD publicado porque esta
+revisión toca la administración autenticada. Sus resultados se registran cuando
+finalice; no se atribuyen a esta ejecución local. Las advertencias de JavaFX sobre
+el módulo no nombrado/modelo efectivo siguen sin bloquear Maven. Una ejecución
+completa preliminar durante el desarrollo falló por cambios temporales a los
+contratos de excepciones del servicio de usuarios; se restauraron dichos
+contratos, se mantuvo el filtrado seguro de mensajes y la verificación final
+posterior pasó completamente.

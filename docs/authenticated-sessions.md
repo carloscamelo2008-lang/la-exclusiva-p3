@@ -160,3 +160,21 @@ una prueba de esquema incompleto que verifica el fallo seguro. Solo el laborator
 efímero recibió migraciones; la base local no fue modificada. La cobertura y el
 límite de las seis pruebas `PurchaseWorkflowPostgresIntegrationTest` omitidas se
 detallan en `docs/identity-javafx-integration.md` y en la bitácora de IA.
+
+El constructor de compatibilidad de `AuthorizationService` permite consultar
+permisos de un snapshot, pero nunca ejecutar una operación mediante
+`execute`: esa ruta exige el validador conectado al emisor de sesiones. Los
+controladores JavaFX y el módulo de compras requieren dicha autoridad durante la
+configuración. Tras logout, la pantalla queda cerrada y bloqueada aunque falle
+la navegación; el botón de recuperación solo vuelve a intentar abrir login y no
+restaura la sesión revocada.
+
+## Correcciones de revisión del PR #24 (validación local)
+
+El 23 de noviembre de 2026, `mvn clean verify` con Microsoft JDK 17.0.18 y Maven
+3.10.0 terminó en `BUILD SUCCESS`: 819 casos contabilizados, 0 fallidos, 0 errores
+y 59 pruebas PostgreSQL opcionales omitidas (760 casos ejecutados y aprobados).
+La ejecución incluyó las regresiones JavaFX/FXML de autorización, mensajes
+seguros de administración y recuperación de logout. No se usó PostgreSQL local ni
+se aplicaron migraciones. La repetición en el laboratorio PostgreSQL efímero de
+CI queda pendiente para este HEAD y se documentará cuando haya terminado.
