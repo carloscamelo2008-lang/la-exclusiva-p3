@@ -467,3 +467,180 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté la evidencia del laboratorio aislado y destruido; se resuelve el bloqueo de disponibilidad para esta validación. No equivale a desplegar migraciones en bases compartidas ni aprobar el merge. Se conservaron módulos ajenos y el job Maven compartido.
 * **Verificación realizada:** PostgreSQL 18.7, Temurin 17.0.20.1+1 y Maven 3.9.16 en imágenes oficiales por digest verificado. V001/V104/V105/V106 aplicadas solo en tmpfs del runner. Artefacto 14789887647 descargado: SHA-256 28d020a1a11641191c895e94044b21ec2c16c448fe068e67b1dc67c086d12e03, coincidente con GitHub; summary completed/destroyed=true. Se comprobaron XML, inspecciones y SQLSTATE esperados. Local: 728 aprobadas y 49 PostgreSQL omitidas con Temurin 17.0.21+9; no hubo PostgreSQL local. git diff --check pasó.
 * **Commit o Pull Request relacionado:** ca85e4f, 59fb4f7 y ccb995a; PR #22; commit documental de resultados pendiente de creación al registrar esta entrada.
+## Complemento retrospectivo verificado — auditoría del 23/11/2026
+
+Las interacciones 1–26 se conservan íntegras, incluido su contexto histórico.
+Las entradas siguientes complementan omisiones, sin sustituir registros previos
+ni contar dos veces una misma ejecución de pruebas. Se ordenan por la fecha de
+la conversación recuperada; su numeración corresponde al registro retrospectivo.
+Las horas se expresan en America/Bogota (UTC−05:00), convertidas desde los
+timestamps de cada turno, no desde la fecha del commit.
+
+Fuentes primarias consultadas: historial Codex **Analiza el proyecto la-exclusiva-p3**,
+chat `01a1e55d-53e3-75e0-b8a7-e76d68db207c` (162 turnos recuperados, incluida
+esta auditoría), y ChatGPT **Contexto del proyecto saved**, conversación
+`6afb38ee-65f4-83ea-8a9d-a2307c1e68a9` (cinco intercambios recientes disponibles).
+Los identificadores de turno se indican como evidencia, sin reproducir conversaciones
+privadas completas o prompts literales. Git, los PR y CI sirven para contrastar
+los resultados; no se usan por sí solos para atribuir uso de IA.
+
+### Interacción 27 (retrospectiva) – Diagnóstico inicial del proyecto
+
+* **Fecha:** 16/11/2026, 12:17.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Diagnóstico previo a JavaFX; `feature/sales-jdbc`, HEAD `f378c41`.
+* **Objetivo de la consulta:** Pedí analizar estructura, autenticación, permisos, pruebas y dependencias sin modificar archivos.
+* **Resumen de la respuesta recibida:** Codex distinguió la aplicación en memoria de los adaptadores JDBC y señaló que el menú JavaFX todavía no tenía acciones conectadas.
+* **Qué se acepta, modifica o descarta y por qué:** Se mantuvo la inspección de solo lectura como base para delimitar mi trabajo; no se implementaron recomendaciones en ese turno.
+* **Verificación realizada:** Turno Codex `01a1e55d-58de-7171-8d01-4d8b82ad69af`, solicitud y respuesta recuperadas. Inspección de código e informes existentes; no ejecutó Maven, JavaFX ni PostgreSQL. Sin archivos modificados.
+* **Commit o Pull Request relacionado:** `f378c41`, referencia del diagnóstico; no se creó commit por esta consulta.
+
+### Interacción 28 (retrospectiva) – Revisión cruzada de deuda de clientes
+
+* **Fecha:** 16/11/2026, 14:17.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Revisión del PR #12, desde `feature/javafx-login-navigation`.
+* **Objetivo de la consulta:** Pedí revisar el cálculo JDBC de deuda y su compatibilidad con clientes y Cartera.
+* **Resumen de la respuesta recibida:** Codex comprobó la agregación separada de líneas y pagos y recomendó no confundir la deuda de ventas con el saldo general ni usar esa consulta como autorización de escritura.
+* **Qué se acepta, modifica o descarta y por qué:** La recomendación quedó como revisión informativa; no se modificó el módulo del compañero ni se publicó una aprobación automática.
+* **Verificación realizada:** Turno `01a1e5ca-d407-74a2-a617-a4aad143a475`: siete archivos y cuatro commits revisados en `aa443c0`. Sin cambios de archivos; evidencia de inspección, no de ejecución PostgreSQL.
+* **Commit o Pull Request relacionado:** [PR #12](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/12).
+
+### Interacción 29 (retrospectiva) – Riesgo de snapshots antiguos en clientes
+
+* **Fecha:** 17/11/2026, 21:51.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Revisión cruzada del PR #14; `feature/javafx-login-navigation`.
+* **Objetivo de la consulta:** Pedí comprobar si una actualización de cliente podía sobrescribir un saldo ajustado concurrentemente.
+* **Resumen de la respuesta recibida:** Codex identificó el riesgo al combinar snapshots antiguos con `CustomerRepositoryJdbc.update` y recomendó proteger la escritura y añadir una regresión antes del merge.
+* **Qué se acepta, modifica o descarta y por qué:** Se conservaron los límites de revisión; no se corrigió código ajeno ni se confundió una recomendación con aprobación formal.
+* **Verificación realizada:** Turno `01a1ec91-13a3-7340-8e9d-f18b553f21a6`: nueve archivos y cinco commits en `5d9a0a8`. No ejecutó pruebas locales ni operaciones PostgreSQL; sin archivos modificados.
+* **Commit o Pull Request relacionado:** [PR #14](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/14).
+
+### Interacción 30 (retrospectiva) – Diagnóstico y corrección de CI al cerrar sesión
+
+* **Fecha:** 17/11/2026, 22:52–23:03.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Complemento de la Interacción 8; `feature/javafx-navigation-ux`, PR #17.
+* **Objetivo de la consulta:** Autoricé investigar el fallo de restauración del Login después de logout y publicar la corrección verificada.
+* **Resumen de la respuesta recibida:** Codex diagnosticó una carrera de maximización/restauración y añadió `primaryStage.hide()` en `App.java`, sin debilitar las aserciones de permisos.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté el ajuste mínimo y mantuve explícita la diferencia entre la prueba Windows y su confirmación posterior en CI Linux.
+* **Verificación realizada:** Turnos `01a1ecc8-8250-70d1-ac1b-ddddec607c3e` y `01a1ecd3-10ec-7d70-8c3b-19214b0960d9`. Local: JDK 25.0.2, 186 aprobadas y dos omitidas. CI posterior Java 17: 196 aprobadas y tres omitidas, cero fallos/errores. Archivos afectados: `App.java` y esta bitácora.
+* **Commit o Pull Request relacionado:** `e8f546b`, `2c489a3`; [ejecución 44234848131](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/44234848131), PR #17. No son pruebas ejecutadas de nuevo durante esta auditoría.
+
+### Interacción 31 (retrospectiva) – Simplificación académica de la bitácora
+
+* **Fecha:** 17/11/2026, 23:39–23:55.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Revisión documental; `feature/javafx-navigation-ux` y después `docs/simplify-developer2-activity5-log`.
+* **Objetivo de la consulta:** Pedí resumir la Interacción 8 sin inventar pruebas ni alterar las interacciones 1–7.
+* **Resumen de la respuesta recibida:** Codex propuso un texto breve, esperó su aprobación y preparó su incorporación documental a develop mediante un PR separado.
+* **Qué se acepta, modifica o descarta y por qué:** Aprobé el resumen y su publicación, conservando la evidencia técnica sin repetir el relato completo de cada paso.
+* **Verificación realizada:** Turnos `01a1ecf3-a8f4-7492-8302-7567ea821403` y `01a1ed02-447a-7662-9931-336bccb55c70`; diff exclusivamente de `developer2-ai-log.md`, entradas 1–7 intactas y CI del PR #19 satisfactoria según el registro recuperado.
+* **Commit o Pull Request relacionado:** `d8f1997`; [PR #19](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/19).
+
+### Interacción 32 (retrospectiva) – Revisión de integración y flujos protegidos
+
+* **Fecha:** 18/11/2026, 08:31, 18:19 y 19:26.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Revisión cruzada de `feature/full-jdbc-integration` y `feature/carlos-finance-close`.
+* **Objetivo de la consulta:** Pedí revisar los PR #18 y #20 y después las correcciones del líder, sin modificar sus módulos.
+* **Resumen de la respuesta recibida:** Codex señaló problemas del flujo trabajador-vendedor, resultados inciertos y confirmaciones de Cartera. En la segunda revisión del PR #20 consideró atendidas las tres observaciones examinadas.
+* **Qué se acepta, modifica o descarta y por qué:** Se diferenciaron hallazgos iniciales, correcciones posteriores y riesgos operativos; la recomendación no sustituyó la revisión humana.
+* **Verificación realizada:** Turnos `01a1eedb-5c5c-7bc1-9d99-cd36a1485fe6`, `01a1f0f5-9940-79b0-9cda-12a28c2eafec` y `01a1f132-2f80-7033-bbf6-7146929af5b8`. Revisión estática de diffs y registros de GitHub; sin archivos modificados ni pruebas locales, JavaFX o PostgreSQL ejecutados en esas revisiones.
+* **Commit o Pull Request relacionado:** [PR #18](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/18) y [PR #20](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/20); último HEAD revisado `8f6801e`.
+
+### Interacción 33 (retrospectiva) – Integración autorizada de develop en identidad
+
+* **Fecha:** 18/11/2026, 22:19–22:25.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Compatibilidad y regresiones; `feature/daniel-identity-users`.
+* **Objetivo de la consulta:** Pedí inspeccionar y después autoricé integrar develop mediante merge normal, preservando los cuatro commits propios y los cambios financieros.
+* **Resumen de la respuesta recibida:** Codex comparó las ramas, realizó el merge sin conflictos y separó pruebas dirigidas de la suite general y de las integraciones omitidas.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé la integración y su publicación posterior; no se resolvieron conflictos automáticamente ni se consideró aprobado el contrato pendiente.
+* **Verificación realizada:** Turnos `01a1f1d0-ac41-7cd1-b352-b6200eae50c7`, `01a1f1d3-08f7-72a1-a25f-1d1b333caf91` y `01a1f1d6-d0dd-7e32-8494-e07f4a46f6ee`. JDK 25.0.2, objetivo Java 17: grupos dirigidos de 58 y 34 aprobadas; suite de 286 aprobadas y 29 PostgreSQL omitidas, cero fallos/errores. Sin ediciones manuales de identidad, contratos o bitácora, ni SQL.
+* **Commit o Pull Request relacionado:** Merge `00a759c` desde `c5a95af`; posteriormente conservado en el PR #22.
+
+### Interacción 34 (retrospectiva) – Corrección de la barrera de seguridad V104
+
+* **Fecha:** 19/11/2026, 00:47–00:55.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Complemento de la Interacción 17; `feature/daniel-identity-users`.
+* **Objetivo de la consulta:** Pedí revisar antes del commit y corregir la comprobación insuficiente de CHECK, trigger y función, sin ejecutar SQL.
+* **Resumen de la respuesta recibida:** Codex rechazó CHECK triviales, triggers con WHEN/UPDATE OF o eventos incompletos y funciones incompatibles; comparó definición y atributos, no solo nombres.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé corregir únicamente las dos clases de integración y seguridad; no se modificó V104 ni se presentó la simulación como validación real.
+* **Verificación realizada:** Turnos `01a1f258-2a19-76b0-8b28-285891a6f278`, `01a1f259-b261-7bd2-aea9-6d5f37b017bf` y `01a1f260-190e-7780-9536-959200fbda39`. Java 17: 54 casos simulados y 83 regresiones, **137 aprobados**, cero fallos/errores/omisiones. Complementa los 104 casos iniciales ya registrados; no se suman ambos totales. Archivos: `UserSecurityVersionPostgresIntegrationTest.java` y `UserSecurityVersionIntegrationSafetyTest.java`.
+* **Commit o Pull Request relacionado:** `1d5eda0`, incorporado posteriormente al PR #22.
+
+### Interacción 35 (retrospectiva) – Diseño previo de exclusividad de vendedor
+
+* **Fecha:** 19/11/2026, 19:40.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Propuesta PostgreSQL previa a 4A; `feature/daniel-identity-users`.
+* **Objetivo de la consulta:** Pedí evaluar una garantía de exclusividad frente a escrituras externas sin crear ni aplicar una migración.
+* **Resumen de la respuesta recibida:** Codex propuso el índice único parcial de vendedor activo no nulo y diagnóstico de duplicados; explicó las diferencias entre commit, rollback y creación concurrente del índice.
+* **Qué se acepta, modifica o descarta y por qué:** Se mantuvo como propuesta para coordinación; no se corrigieron duplicados ni se modificó V104. La implementación posterior está registrada por separado en 4A.
+* **Verificación realizada:** Turno `01a1f665-74d7-7991-acb6-c8cc3e3bed79`: inspección del esquema, excepciones JDBC y migraciones con HEAD `86fae23`; sin archivos modificados, pruebas, conexiones ni ejecución SQL.
+* **Commit o Pull Request relacionado:** Antecedente de `ad3966f` y V105 en el PR #22; el commit no demuestra por sí solo esta conversación.
+
+### Interacción 36 (retrospectiva) – Límites documentales de PBKDF2 antes del commit
+
+* **Fecha:** 22/11/2026, 19:52–19:56.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Complemento de 4C; `feature/daniel-identity-users`.
+* **Objetivo de la consulta:** Pedí comprobar que los riesgos operativos e históricos estuvieran documentados antes de crear el commit autorizado.
+* **Resumen de la respuesta recibida:** Codex se detuvo al faltar la declaración de inventario histórico incompleto y la medición acotada pendiente. Tras la autorización documental añadió ambas aclaraciones en `docs/password-verification.md` y creó el commit.
+* **Qué se acepta, modifica o descarta y por qué:** Autoricé la corrección documental mínima; no se cambiaron otra vez producción, pruebas ni bitácora en ese paso.
+* **Verificación realizada:** Turnos `01a205e3-8f6b-7c13-be41-84f21ca2301a` y `01a205e7-d262-7121-a30b-c4c36a563a4b`. Diff y staging revisados; se confirmaron los informes previos de 404 aprobadas, **sin repetir pruebas**. No hubo SQL ni push durante la creación local.
+* **Commit o Pull Request relacionado:** `af35bbf`, incorporado al PR #22. La medición posterior está en la Interacción 21.
+
+### Interacción 37 (retrospectiva) – Apoyo de ChatGPT para delimitar el laboratorio
+
+* **Fecha:** 22/11/2026, 23:14–23:18.
+* **Herramienta:** ChatGPT.
+* **Fase, tarea y rama:** Coordinación del laboratorio para `feature/daniel-identity-users`, PR #22.
+* **Objetivo de la consulta:** Compartí el informe de bloqueo de Codex y después la autorización de Carlos para priorizar GitHub Actions.
+* **Resumen de la respuesta recibida:** ChatGPT distinguió código preparado de PostgreSQL validado y propuso concentrar implementación, ejecución y corrección del laboratorio en una tarea para Codex.
+* **Qué se acepta, modifica o descarta y por qué:** Retomé la tarea integral con Codex; la orientación no se tomó como prueba de que el entorno ya estuviera funcionando ni como autorización de merge.
+* **Verificación realizada:** Turnos ChatGPT `ce2ecc5b-269c-43d4-ace5-070a24e269ed` y `3ee72060-f996-44fd-ad78-41becd5b3c22`, con solicitud y respuesta fechadas. ChatGPT no editó archivos ni ejecutó pruebas; la ejecución posterior corresponde a Codex y Actions, registrada en 25–26.
+* **Commit o Pull Request relacionado:** PR #22; `19013b6` era el informe compartido, no un commit generado por ChatGPT.
+
+### Interacción 38 (retrospectiva) – Revisión conversacional de la entrega PostgreSQL
+
+* **Fecha:** 22/11/2026, 23:44.
+* **Herramienta:** ChatGPT.
+* **Fase, tarea y rama:** Preparación de revisión final del PR #22; `feature/daniel-identity-users`.
+* **Objetivo de la consulta:** Compartí el resultado final de Codex, las migraciones y los enlaces de Actions para preparar la revisión del equipo.
+* **Resumen de la respuesta recibida:** ChatGPT resumió las 50 pruebas reportadas por Codex y redactó una propuesta de mensaje para solicitar la revisión final, sin afirmar haber ejecutado esas pruebas.
+* **Qué se acepta, modifica o descarta y por qué:** Se mantuvo la distinción entre evidencia técnica, propuesta de comunicación y aprobación humana. No se atribuye a ChatGPT el envío del mensaje ni la ejecución del laboratorio.
+* **Verificación realizada:** Turno `8cc490aa-d919-43ee-bfd1-9ab4fdf004ee`. El enlace compartido corresponde a [Actions 45113153620](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45113153620); archivos mencionados: `docs/identity-postgres-results.md`, sin modificaciones por ChatGPT. Las pruebas no se suman a la Interacción 26.
+* **Commit o Pull Request relacionado:** PR #22; informe de `ff995ec` ya publicado por Codex.
+
+### Interacción 39 (retrospectiva) – Cierre tras el merge y solicitud de auditoría
+
+* **Fecha:** 22/11/2026, 23:55–23:56.
+* **Herramienta:** ChatGPT.
+* **Fase, tarea y rama:** Cierre del PR #22 y planificación de la auditoría documental desde develop.
+* **Objetivo de la consulta:** Informé que el líder aprobó el PR y que ya hice merge; después señalé interacciones faltantes en la bitácora.
+* **Resumen de la respuesta recibida:** ChatGPT recomendó no seguir modificando la rama fusionada y auditar las fuentes con Codex, sin inventar fechas ni conversaciones inaccesibles.
+* **Qué se acepta, modifica o descarta y por qué:** Inicié esta auditoría independiente; no se presupuso acceso completo a ChatGPT ni que una recomendación de IA equivaliera a aprobación del líder.
+* **Verificación realizada:** Turnos `1ee36c3a-4085-4295-bf78-decf11e77ee8` y `73babd1a-2a11-42d7-b262-25f8fa3bef06`. ChatGPT no editó archivos. En esta auditoría GitHub confirmó aprobación de Carlos a las 23:51 y merge a las 23:53 del 22/11 en America/Bogota.
+* **Commit o Pull Request relacionado:** [PR #22 fusionado](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/22), merge `83058a6`.
+
+### Interacción 40 – Auditoría y recuperación de la bitácora
+
+* **Fecha:** 23/11/2026; solicitud iniciada el 22/11 a las 23:56, con continuación después de medianoche.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Auditoría documental; `codex/complete-developer2-ai-log`, desde `origin/develop` en `83058a6`.
+* **Objetivo de la consulta:** Pedí recuperar solo interacciones verificables, conservar las entradas anteriores y preparar commit y PR independientes.
+* **Resumen de la respuesta recibida:** Codex contrastó historial conversacional, Git, PR y convenciones; añadió este complemento cronológico y separó los registros pendientes de evidencia.
+* **Qué se acepta, modifica o descarta y por qué:** Se conservó íntegro el texto anterior y se excluyeron otras conversaciones sin vínculo inequívoco con La Exclusiva. Git se usó para contrastar cambios, no para deducir uso de IA.
+* **Verificación realizada:** Turno Codex `01a206c3-534a-70a1-b0bb-b833b6a69a3e`. Se comprobaron las convenciones de `docs/ai-usage/README.md`, ocho campos por entrada, UTF-8, fechas, diff exclusivamente documental y conservación del prefijo anterior byte por byte. No se ejecutó Maven manualmente, SQL ni migraciones; la CI posterior se informa en el PR independiente.
+* **Commit o Pull Request relacionado:** PR documental independiente pendiente de creación al registrar esta entrada; el PR #22 no se modifica.
+
+### Fuentes que siguen pendientes de aportar
+
+- **ChatGPT anterior al 22/11/2026 a las 23:14:** el lector conectado devolvió solo cinco intercambios recientes de *Contexto del proyecto saved*, sin cursor para recuperar los anteriores. Si hubo asesoría sobre contratos, seguridad o actividades previas, hace falta la exportación o los mensajes con sus fechas. La fecha de creación del chat no permite reconstruirlos.
+- **Gemini, 26 y 29/10/2026:** no se consultaron las conversaciones originales de las interacciones 1–3. Se preservan sus registros existentes, sin ampliarlos; para contrastarlos hace falta aportar la fuente original.
+- **Solicitud V105 del 19/11/2026 a las 19:51:** turno Codex `01a1f66f-917b-7000-8c7b-5df334358b7d`, con un adjunto de instrucciones, pero sin respuesta final recuperada. Se requiere el registro completo para atribuir un resultado; no se convirtió en una implementación presunta.
+- **20 y 21/11/2026 u otras conversaciones externas:** no aparecieron interacciones fechadas de esos días en las fuentes consultadas. No se presume que existieran por continuidad del desarrollo. Si hubo consultas, deben aportarse los mensajes y timestamps; no se crearán entradas usando solo commits o recuerdos.
