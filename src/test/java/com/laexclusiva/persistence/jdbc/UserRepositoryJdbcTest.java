@@ -29,8 +29,44 @@ import org.postgresql.util.ServerErrorMessage;
 
 /** Verifica SQL parametrizado, mapeo, errores y participación transaccional sin abrir PostgreSQL. */
 class UserRepositoryJdbcTest {
+    @Test
+    void insertAcceptsOnlyTheIdentityReturnedByPersistence() {
+        java.util.UUID generated = java.util.UUID.randomUUID();
+        var reply = inserted(77L); reply.put("account_instance_id", generated); jdbc.query(reply);
+        UserAccount input = account(null);
+        users.save(input);
+        assertEquals(generated, input.getAccountInstanceId());
+        assertFalse(jdbc.calls.get(0).sql.substring(0, jdbc.calls.get(0).sql.indexOf("RETURNING")).contains("account_instance_id"));
+        assertResourcesClosed(1, 1);
+    }
+
+    @Test
+    void missingPersistedIdentityIsRejectedInReadsAndInsertResults() {
+        var missing = stored(8L, "Name", true); missing.put("account_instance_id", null); jdbc.query(missing);
+        assertThrows(JdbcPersistenceException.class, users::findAll);
+        var inserted = inserted(9L); inserted.put("account_instance_id", null); jdbc.query(inserted);
+        UserAccount input = account(null);
+        assertThrows(JdbcPersistenceException.class, () -> users.save(input));
+        assertNull(input.getId()); assertEquals(INSTANCE_ID, input.getAccountInstanceId());
+        assertResourcesClosed(2, 2);
+    }
+
+    @Test
+    void updateIncludesInstanceInThePredicateAndNeverSetsItOrRetries() {
+        jdbc.query();
+        UserAccount old = account(8L);
+        java.util.UUID identity = old.getAccountInstanceId();
+        assertThrows(java.util.ConcurrentModificationException.class, () -> users.update(old));
+        Call call = jdbc.calls.get(0);
+        assertEquals(identity, call.values.get(8));
+        assertTrue(call.sql.contains("AND account_instance_id = ?"));
+        assertFalse(call.sql.substring(call.sql.indexOf("SET"), call.sql.indexOf("WHERE")).contains("account_instance_id"));
+        assertEquals(identity, old.getAccountInstanceId()); assertEquals(0, old.getSecurityVersion());
+        assertResourcesClosed(1, 1);
+    }
     private static final String HASH = "$pbkdf2-sha256$i=210000$AAAAAAAAAAAAAAAAAAAAAA==$"
             + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    private static final java.util.UUID INSTANCE_ID = java.util.UUID.fromString("b2af43f1-930d-41b3-81cd-3d10700c2500");
     private static final LocalDateTime CREATED = LocalDateTime.of(2024, 3, 4, 5, 6, 7, 123456000);
     private ScriptedJdbc jdbc;
     private JdbcConnectionProvider connections;
@@ -206,7 +242,7 @@ class UserRepositoryJdbcTest {
         assertEquals(7L, call.values.get(7));
         assertEquals(8, user.getSecurityVersion());
         assertFalse(call.sql.substring(call.sql.indexOf("SET"), call.sql.indexOf("WHERE")).contains("security_version"));
-        assertTrue(call.sql.contains("WHERE id = ? AND security_version = ? RETURNING security_version"));
+        assertTrue(call.sql.contains("WHERE id = ? AND security_version = ? AND account_instance_id = ? RETURNING security_version"));
         assertResourcesClosed(1, 1);
     }
 
@@ -349,10 +385,15 @@ class UserRepositoryJdbcTest {
         UserAccount loaded = users.findById("1").orElseThrow();
         assertEquals(historicalHash, loaded.getPasswordHash());
         assertTrue(PasswordHasher.verify("Historical-Test-Only", loaded.getPasswordHash()));
-        assertThrows(IllegalArgumentException.class, () -> users.save(loaded));
+        jdbc.query(row("security_version", 1L));
+        loaded.setRole(UserRole.ADMINISTRATOR);
+        users.update(loaded);
+        assertEquals(historicalHash, loaded.getPasswordHash());
+        assertEquals(historicalHash, jdbc.calls.get(1).values.get(2));
+        assertEquals(1, loaded.getSecurityVersion());
         loaded.setPasswordHash("plaintext-password");
         assertThrows(IllegalArgumentException.class, () -> users.update(loaded));
-        assertResourcesClosed(1, 1);
+        assertResourcesClosed(2, 2);
     }
 
     @Test
@@ -793,6 +834,7 @@ class UserRepositoryJdbcTest {
     private static UserAccount account(Long id) {
         UserAccount user = new UserAccount(id, "Name", HASH, UserRole.WORKER, null);
         user.setCreatedAt(CREATED);
+        user.setAccountInstanceId(INSTANCE_ID);
         return user;
     }
 
@@ -807,6 +849,7 @@ class UserRepositoryJdbcTest {
 
     private static Map<String, Object> row(Object... values) {
         Map<String, Object> row = new HashMap<>();
+        row.put("account_instance_id", INSTANCE_ID);
         for (int i = 0; i < values.length; i += 2) row.put((String) values[i], values[i + 1]);
         return row;
     }

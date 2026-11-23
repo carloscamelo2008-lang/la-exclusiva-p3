@@ -17,6 +17,20 @@ public class UserAccount {
     private String sellerId;
     private LocalDateTime createdAt;
     private long securityVersion;
+    private java.util.UUID accountInstanceId;
+
+    /** @return identidad persistida de la inserción; null antes de guardar o mapear */
+    public java.util.UUID getAccountInstanceId() { return accountInstanceId; }
+
+    /**
+     * Asigna metadatos de un snapshot para mapeo. No autoriza modificar la identidad persistida;
+     * ambos repositorios rechazan sustituciones en update y generan otra identidad en save.
+     * @param accountInstanceId UUID no nulo confirmado por persistencia
+     */
+    public void setAccountInstanceId(java.util.UUID accountInstanceId) {
+        if (accountInstanceId == null) throw new IllegalArgumentException("La identidad de cuenta es obligatoria.");
+        this.accountInstanceId = accountInstanceId;
+    }
 
     public UserAccount() {
         this.securityVersion = 0;

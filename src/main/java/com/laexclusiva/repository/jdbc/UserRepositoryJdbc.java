@@ -13,20 +13,19 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Optional;
 import org.postgresql.util.PSQLException;
 
 /**
- * Persiste cuentas sobre V001 y V104 sin autenticar ni administrar permisos.
+ * Persiste cuentas sobre V001, V104 y V106 sin autenticar ni administrar permisos.
  * Reutiliza la conexión transaccional del proveedor; no confirma ni cierra conexiones exteriores.
  * Devuelve cuentas independientes y nunca incluye hashes ni detalles del servidor en sus errores.
  */
 public final class UserRepositoryJdbc implements UserRepository {
     private static final String INSERT_COLUMNS = "id, username, password_hash, role, active, seller_id, created_at";
-    private static final String COLUMNS = INSERT_COLUMNS + ", security_version";
+    private static final String COLUMNS = INSERT_COLUMNS + ", security_version, account_instance_id";
     // Límite defensivo: no repara secuencias atrasadas. Su comportamiento real sigue pendiente de validar.
     private static final int GENERATED_ID_ATTEMPTS = 64;
     private final JdbcConnectionProvider connections;
@@ -56,7 +55,7 @@ public final class UserRepositoryJdbc implements UserRepository {
         SavedAccount saved = execute("INSERT_USER", connection -> {
             if (user.getId() != null) {
                 String sql = "INSERT INTO user_account (" + INSERT_COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?) "
-                        + "RETURNING id, security_version";
+                        + "RETURNING id, security_version, account_instance_id";
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
                     statement.setLong(1, user.getId());
                     bindAccount(statement, user, 2);
@@ -75,6 +74,7 @@ public final class UserRepositoryJdbc implements UserRepository {
         });
         user.setId(saved.id());
         user.setSecurityVersion(saved.version());
+        user.setAccountInstanceId(saved.instanceId());
     }
 
     /**
@@ -147,13 +147,15 @@ public final class UserRepositoryJdbc implements UserRepository {
     public void update(UserAccount user) {
         validate(user);
         if (user.getId() == null) throw new IllegalArgumentException("El ID del usuario es obligatorio.");
+        if (user.getAccountInstanceId() == null) throw new IllegalArgumentException("La identidad de instancia es obligatoria.");
         long version = execute("UPDATE_USER", connection -> {
             try (PreparedStatement statement = connection.prepareStatement("UPDATE user_account SET username = ?, "
                     + "password_hash = ?, role = ?, active = ?, seller_id = ? "
-                    + "WHERE id = ? AND security_version = ? RETURNING security_version")) {
+                    + "WHERE id = ? AND security_version = ? AND account_instance_id = ? RETURNING security_version")) {
                 bindAccount(statement, user, 1);
                 statement.setLong(6, user.getId());
                 statement.setLong(7, user.getSecurityVersion());
+                statement.setObject(8, user.getAccountInstanceId());
                 try (ResultSet rows = statement.executeQuery()) {
                     if (!rows.next()) {
                         throw new ConcurrentModificationException("La cuenta no existe o fue modificada; vuelva a cargarla.");
@@ -189,7 +191,7 @@ public final class UserRepositoryJdbc implements UserRepository {
 
     private static SavedAccount insertGenerated(Connection connection, UserAccount user) throws SQLException {
         String sql = "INSERT INTO user_account (username, password_hash, role, active, seller_id, created_at) "
-                + "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING RETURNING id, security_version";
+                + "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING RETURNING id, security_version, account_instance_id";
         // V001 permite IDs históricos explícitos que no adelantan la secuencia. Saltarlos no reemplaza cuentas.
         for (int attempt = 0; attempt < GENERATED_ID_ATTEMPTS; attempt++) {
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -205,15 +207,22 @@ public final class UserRepositoryJdbc implements UserRepository {
         throw new JdbcPersistenceException("No se pudo asignar un ID libre; revise la secuencia de usuarios.");
     }
 
-    private record SavedAccount(long id, long version) { }
+    private record SavedAccount(long id, long version, java.util.UUID instanceId) { }
 
     private static SavedAccount readInserted(ResultSet rows) throws SQLException {
         Long id = rows.getObject("id", Long.class);
         long version = readSecurityVersion(rows);
+        java.util.UUID instanceId = readInstanceId(rows);
         if (id == null || id <= 0 || version != 0 || rows.next()) {
             throw new JdbcPersistenceException("La inserción devolvió metadatos de cuenta inesperados.");
         }
-        return new SavedAccount(id, version);
+        return new SavedAccount(id, version, instanceId);
+    }
+
+    private static java.util.UUID readInstanceId(ResultSet rows) throws SQLException {
+        java.util.UUID instanceId = rows.getObject("account_instance_id", java.util.UUID.class);
+        if (instanceId == null) throw new JdbcPersistenceException("La identidad de cuenta persistida es inválida.");
+        return instanceId;
     }
 
     private static long readSecurityVersion(ResultSet rows) throws SQLException {
@@ -247,7 +256,8 @@ public final class UserRepositoryJdbc implements UserRepository {
             user.setActive(rows.getBoolean("active"));
             user.setCreatedAt(rows.getObject("created_at", LocalDateTime.class));
             user.setSecurityVersion(readSecurityVersion(rows));
-            // Leer no aplica la política de hashes nuevos: conserva el valor histórico opaco.
+            user.setAccountInstanceId(readInstanceId(rows));
+            // Leer conserva el valor histórico opaco, sin derivar ni reescribir credenciales.
             // AuthenticationService/PasswordHasher deciden si ese valor permite autenticar.
             validateFields(user);
             return user;
@@ -343,17 +353,7 @@ public final class UserRepositoryJdbc implements UserRepository {
     }
 
     private static boolean isPasswordHash(String hash) {
-        if (hash == null || hash.length() > 255) return false;
-        String[] parts = hash.split("\\$", -1);
-        if (parts.length != 5 || !parts[1].equals("pbkdf2-sha256") || !parts[0].isEmpty()
-                || !parts[2].matches("i=[1-9][0-9]{0,9}")) return false;
-        try {
-            return Integer.parseInt(parts[2].substring(2)) > 0
-                    && Base64.getDecoder().decode(parts[3]).length >= 16
-                    && Base64.getDecoder().decode(parts[4]).length == 32;
-        } catch (IllegalArgumentException invalid) {
-            return false;
-        }
+        return com.laexclusiva.security.PasswordHasher.isSupportedHash(hash);
     }
 
     private static Long parseId(String id) {

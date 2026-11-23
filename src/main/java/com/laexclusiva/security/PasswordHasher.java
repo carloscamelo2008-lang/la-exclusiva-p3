@@ -54,37 +54,64 @@ public class PasswordHasher {
     }
 
     static boolean verify(String password, String storedHash, Derivation derivation) {
-        if (password == null || storedHash == null || storedHash.length() > 255) return false;
-        String[] parts = storedHash.split("\\$", -1);
-        if (parts.length != 5 || !parts[0].isEmpty() || !parts[1].equals("pbkdf2-sha256")
-                || !parts[2].matches("i=[1-9][0-9]{0,6}")) return false;
-        int iterations = Integer.parseInt(parts[2].substring(2));
-        if (iterations < 1000 || iterations > 1000000
-                || parts[3].length() < 11 || parts[3].length() > 88
-                || parts[4].length() < 22 || parts[4].length() > 88) return false;
-        byte[] salt = null;
-        byte[] expected = null;
+        if (password == null) return false;
+        ParsedHash parsed = parseHash(storedHash);
+        if (parsed == null) return false;
         byte[] actual = null;
         char[] secret = null;
         try {
-            try {
-                salt = Base64.getDecoder().decode(parts[3]);
-                expected = Base64.getDecoder().decode(parts[4]);
-            } catch (IllegalArgumentException malformed) {
-                return false;
-            }
-            if (salt.length < 8 || salt.length > 64 || expected.length < 16 || expected.length > 64) return false;
             secret = password.toCharArray();
-            actual = derivation.apply(secret, salt, iterations, expected.length * 8);
-            return MessageDigest.isEqual(expected, actual);
+            actual = derivation.apply(secret, parsed.salt(), parsed.iterations(), parsed.expected().length * 8);
+            return MessageDigest.isEqual(parsed.expected(), actual);
         } catch (NoSuchAlgorithmException | InvalidKeySpecException | ProviderException failure) {
             LOGGER.log(Level.WARNING, "No se pudo completar la verificación criptográfica.");
             return false;
         } finally {
             if (secret != null) Arrays.fill(secret, '\0');
-            if (salt != null) Arrays.fill(salt, (byte) 0);
-            if (expected != null) Arrays.fill(expected, (byte) 0);
             if (actual != null) Arrays.fill(actual, (byte) 0);
+            parsed.clear();
+        }
+    }
+
+    /** Valida solo estructura y límites admitidos; no deriva PBKDF2 ni autentica. */
+    public static boolean isSupportedHash(String storedHash) {
+        ParsedHash parsed = parseHash(storedHash);
+        if (parsed == null) return false;
+        parsed.clear();
+        return true;
+    }
+
+    private record ParsedHash(int iterations, byte[] salt, byte[] expected) {
+        void clear() { Arrays.fill(salt, (byte) 0); Arrays.fill(expected, (byte) 0); }
+    }
+
+    private static ParsedHash parseHash(String storedHash) {
+        if (storedHash == null || storedHash.length() > 255) return null;
+        String[] parts = storedHash.split("\\$", -1);
+        if (parts.length != 5 || !parts[0].isEmpty() || !parts[1].equals("pbkdf2-sha256")
+                || !parts[2].matches("i=[1-9][0-9]{0,6}")) return null;
+        int iterations = Integer.parseInt(parts[2].substring(2));
+        if (iterations < 1000 || iterations > 1000000
+                || parts[3].length() < 11 || parts[3].length() > 88
+                || parts[4].length() < 22 || parts[4].length() > 88) return null;
+        byte[] salt = null;
+        byte[] expected = null;
+        boolean accepted = false;
+        try {
+            try {
+                salt = Base64.getDecoder().decode(parts[3]);
+                expected = Base64.getDecoder().decode(parts[4]);
+            } catch (IllegalArgumentException malformed) {
+                return null;
+            }
+            if (salt.length < 8 || salt.length > 64 || expected.length < 16 || expected.length > 64) return null;
+            accepted = true;
+            return new ParsedHash(iterations, salt, expected);
+        } finally {
+            if (!accepted) {
+                if (salt != null) Arrays.fill(salt, (byte) 0);
+                if (expected != null) Arrays.fill(expected, (byte) 0);
+            }
         }
     }
 

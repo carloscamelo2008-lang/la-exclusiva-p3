@@ -217,6 +217,7 @@ class AdministrativeSessionValidatorTest {
     private static UserAccount account() {
         UserAccount account = new UserAccount(1L, "fixture", TEST_HASH, UserRole.ADMINISTRATOR, null);
         account.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        account.setAccountInstanceId(java.util.UUID.fromString("b2af43f1-930d-41b3-81cd-3d10700c2500"));
         return account;
     }
 

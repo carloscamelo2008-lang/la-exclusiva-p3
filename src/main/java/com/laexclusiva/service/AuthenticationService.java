@@ -15,7 +15,7 @@ public class AuthenticationService {
     // Claves débiles: una sesión abandonada no queda retenida por la autoridad.
     // Las sesiones emitidas son instancias exactas de UserSession y usan identidad de objeto.
     private final java.util.Map<UserSession, IssuedIdentity> issued = new java.util.WeakHashMap<>();
-    private record IssuedIdentity(Long id, long version) { }
+    private record IssuedIdentity(Long id, long version, java.util.UUID instanceId) { }
     private final AuthenticatedSessionValidator validator = new AuthenticatedSessionValidator(this::validateIssued);
     
     private final UserRepository userRepository;
@@ -59,9 +59,13 @@ public class AuthenticationService {
      */
     public Optional<UserSession> createSession(String username, String password) {
         return authenticateAccount(username, password).map(account -> {
+            if (account.getAccountInstanceId() == null) {
+                throw new IllegalStateException("La cuenta persistida carece de identidad de instancia.");
+            }
             UserSession session = new UserSession(account);
             synchronized (issued) {
-                issued.put(session, new IssuedIdentity(session.getAuthenticatedUserId(), session.getAuthenticatedSecurityVersion()));
+                issued.put(session, new IssuedIdentity(session.getAuthenticatedUserId(), session.getAuthenticatedSecurityVersion(),
+                        session.getAuthenticatedAccountInstanceId()));
             }
             return session;
         });
@@ -94,10 +98,11 @@ public class AuthenticationService {
         synchronized (issued) { identity = issued.get(session); }
         if (identity == null) throw denied();
         UserAccount current = userRepository.findById(identity.id().toString()).orElseThrow(AuthenticationService::denied);
-        if (!identity.id().equals(current.getId()) || !current.isActive() || current.getRole() == null
+        if (!identity.id().equals(current.getId()) || !identity.instanceId().equals(current.getAccountInstanceId())
+                || !current.isActive() || current.getRole() == null
                 || current.getSecurityVersion() != identity.version()) throw denied();
         AuthenticatedPrincipal principal = new AuthenticatedPrincipal(current.getId(), current.getRole(),
-                current.getSellerId(), current.getSecurityVersion());
+                current.getSellerId(), current.getSecurityVersion(), current.getAccountInstanceId());
         synchronized (issued) {
             if (issued.get(session) != identity || !session.isValid()) throw denied();
             return principal;

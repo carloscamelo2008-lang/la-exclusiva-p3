@@ -250,6 +250,7 @@ public final class UserManagementService {
         result.setActive(user.isActive());
         result.setCreatedAt(user.getCreatedAt());
         result.setSecurityVersion(user.getSecurityVersion());
+        if (user.getAccountInstanceId() != null) result.setAccountInstanceId(user.getAccountInstanceId());
         return result;
     }
 

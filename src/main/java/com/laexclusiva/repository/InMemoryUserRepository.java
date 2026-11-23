@@ -86,11 +86,16 @@ public class InMemoryUserRepository implements UserRepository {
             else followingId = Math.incrementExact(assignedId);
         }
         snapshot.setId(assignedId);
+        java.util.UUID instanceId;
+        do { instanceId = java.util.UUID.randomUUID(); }
+        while (containsInstanceId(instanceId));
+        snapshot.setAccountInstanceId(instanceId);
         snapshot.setSecurityVersion(0);
         storage.put(assignedId, snapshot);
         nextId = followingId;
         generatedIdsExhausted = exhausted;
         user.setId(assignedId);
+        user.setAccountInstanceId(instanceId);
         user.setSecurityVersion(0);
     }
 
@@ -144,7 +149,8 @@ public class InMemoryUserRepository implements UserRepository {
         if (stored == null) {
             throw new IllegalArgumentException("No existe un usuario con el ID especificado para actualizar.");
         }
-        if (snapshot.getSecurityVersion() != stored.getSecurityVersion()) {
+        if (!Objects.equals(snapshot.getAccountInstanceId(), stored.getAccountInstanceId())
+                || snapshot.getSecurityVersion() != stored.getSecurityVersion()) {
             throw new ConcurrentModificationException("La cuenta cambió; vuelva a cargarla antes de actualizar.");
         }
 
@@ -181,6 +187,11 @@ public class InMemoryUserRepository implements UserRepository {
         snapshot.setActive(user.isActive());
         snapshot.setCreatedAt(user.getCreatedAt());
         snapshot.setSecurityVersion(user.getSecurityVersion());
+        if (user.getAccountInstanceId() != null) snapshot.setAccountInstanceId(user.getAccountInstanceId());
         return snapshot;
+    }
+
+    private boolean containsInstanceId(java.util.UUID instanceId) {
+        return storage.values().stream().anyMatch(user -> instanceId.equals(user.getAccountInstanceId()));
     }
 }

@@ -13,6 +13,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Verificación real acotada y fallos simulados sin modificar proveedores globales. */
 class PasswordHasherTest {
+    @Test
+    void structuralValidationSharesAllLimitsWithoutVerifyingTheSecret() {
+        assertTrue(PasswordHasher.isSupportedHash(encoded("i=1000", 8, 16)));
+        assertTrue(PasswordHasher.isSupportedHash(encoded("i=1000000", 64, 64)));
+        for (String invalid : List.of("plaintext", encoded("i=999", 8, 16),
+                encoded("i=1000001", 8, 16), encoded("i=1000", 7, 16),
+                encoded("i=1000", 8, 65), encoded("i=i=1000", 8, 16))) {
+            assertFalse(PasswordHasher.isSupportedHash(invalid));
+        }
+    }
     private static String encoded(String iterations, int salt, int key) {
         return "$pbkdf2-sha256$" + iterations + "$" + Base64.getEncoder().encodeToString(new byte[salt])
                 + "$" + Base64.getEncoder().encodeToString(new byte[key]);

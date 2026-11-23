@@ -28,7 +28,7 @@ class AuthenticatedSessionValidatorTest {
         var principal = auth.sessions().validate(session);
         assertEquals(1L, principal.userId()); assertEquals(UserRole.WORKER, principal.role());
         assertEquals("SELLER-1", principal.sellerId()); assertEquals(0, principal.securityVersion());
-        assertEquals(List.of("userId", "role", "sellerId", "securityVersion"),
+        assertEquals(List.of("userId", "role", "sellerId", "securityVersion", "accountInstanceId"),
                 Arrays.stream(AuthenticatedPrincipal.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName).toList());
         assertThrows(SecurityException.class, () -> new AdministrativeSessionValidator(users,
                 new AuthorizationService(), auth).validate(session));
@@ -102,9 +102,42 @@ class AuthenticatedSessionValidatorTest {
         var snapshot = session.getUserAccount();
         snapshot.setId(99L); snapshot.setRole(UserRole.ADMINISTRATOR); snapshot.setActive(false);
         snapshot.setSecurityVersion(50); snapshot.setSellerId("OTHER");
+        snapshot.setAccountInstanceId(UUID.randomUUID());
         var principal = auth.sessions().validate(session);
         assertEquals(1L, principal.userId()); assertEquals(UserRole.WORKER, principal.role());
         assertEquals("SELLER-1", principal.sellerId()); assertEquals(0, principal.securityVersion());
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(UserRole.class)
+    void deletedAccountCannotBeReplacedUnderAnOldSessionEvenWithSameIdVersionAndPassword(UserRole role) {
+        UserSession old = login(UserRole.ADMINISTRATOR);
+        UUID oldIdentity = old.getAuthenticatedAccountInstanceId();
+        UserAccount stale = users.findById("1").orElseThrow();
+        users.delete("1");
+        UserAccount replacement = new UserAccount(1L, "member", HASH, role, "SELLER-1");
+        replacement.setAccountInstanceId(oldIdentity); // El llamador no impone la identidad de una inserción.
+        users.save(replacement);
+        assertEquals(0, replacement.getSecurityVersion());
+        assertNotEquals(oldIdentity, replacement.getAccountInstanceId());
+        assertThrows(SecurityException.class, () -> auth.sessions().validate(old));
+        assertThrows(SecurityException.class, () -> new AdministrativeSessionValidator(users, new AuthorizationService(), auth).validate(old));
+        stale.setRole(UserRole.WORKER);
+        assertThrows(ConcurrentModificationException.class, () -> users.update(stale));
+        assertEquals(role, users.findById("1").orElseThrow().getRole());
+        UserSession fresh = auth.createSession("member", PASSWORD).orElseThrow();
+        assertEquals(replacement.getAccountInstanceId(), auth.sessions().validate(fresh).accountInstanceId());
+    }
+
+    @Test
+    void normalUpdateCannotReplacePersistedInstanceIdentity() {
+        UserSession session = login(UserRole.ADMINISTRATOR);
+        UserAccount account = users.findById("1").orElseThrow();
+        UUID original = account.getAccountInstanceId();
+        account.setAccountInstanceId(UUID.randomUUID());
+        assertThrows(ConcurrentModificationException.class, () -> users.update(account));
+        assertEquals(original, users.findById("1").orElseThrow().getAccountInstanceId());
+        assertEquals(original, auth.sessions().validate(session).accountInstanceId());
     }
 
     @ParameterizedTest

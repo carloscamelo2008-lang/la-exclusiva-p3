@@ -13,6 +13,7 @@ public class UserSession {
     private final LocalDateTime loginTime;
     private final Long authenticatedUserId;
     private final long authenticatedSecurityVersion;
+    private final java.util.UUID authenticatedAccountInstanceId;
     private volatile boolean valid = true;
 
     /**
@@ -33,6 +34,7 @@ public class UserSession {
         }
         this.authenticatedUserId = userId;
         this.authenticatedSecurityVersion = securityVersion;
+        this.authenticatedAccountInstanceId = userAccount.getAccountInstanceId();
         this.userAccount = userAccount;
         this.loginTime = LocalDateTime.now();
     }
@@ -56,6 +58,9 @@ public class UserSession {
     public long getAuthenticatedSecurityVersion() {
         return authenticatedSecurityVersion;
     }
+
+    /** @return UUID capturado; las sesiones sintéticas anteriores pueden carecer de él */
+    public java.util.UUID getAuthenticatedAccountInstanceId() { return authenticatedAccountInstanceId; }
 
     /** Indica únicamente si la sesión no ha sido invalidada; no valida la cuenta persistida. */
     public boolean isValid() {
