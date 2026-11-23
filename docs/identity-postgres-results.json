@@ -1,0 +1,48 @@
+{
+  "source_head": "ccb995afc2064be7e7af4d748de9f8319040c211",
+  "cycles": [
+    {
+      "cycle": "first",
+      "java": {
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "identity_integrations": 19,
+      "seller_concurrency": 6,
+      "sql_assertions_and_reapply": "passed"
+    },
+    {
+      "cycle": "repeat",
+      "java": {
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "identity_integrations": 19,
+      "seller_concurrency": 6,
+      "sql_assertions_and_reapply": "passed"
+    }
+  ],
+  "migrations": {
+    "V001__initial_schema.sql": "3b7c86d6ff6542de1c975cfbf14ee8f1efe9a987f7597231b7aa4b6f8dc639fc",
+    "V104__user_security_version.sql": "ff9182acfa484d1d3d679f1a38581333cb41cb704fe83d73cc2cbafb10fb6425",
+    "V105__unique_active_user_seller.sql": "72ac306d47ed618b4c5265eaa0412cc190498c0b4515345b6457dd5916a9ff03",
+    "V106__user_account_instance_identity.sql": "82945a6d87fe54292b6e6bff0e5a446bd606d1aaf6abb3dee4f2ce0fb8646661"
+  },
+  "completed": true,
+  "LAEXCLUSIVA_PG18_IMAGE": "postgres:18-bookworm@sha256:194e55feb2597b1465dbee81cc9fd8d204566cd2eb42c8d22fd6c931a38781b1",
+  "LAEXCLUSIVA_JAVA17_IMAGE": "maven:3.9-eclipse-temurin-17@sha256:1a352420f7aba21f5ad08df31bab55f74c013fb491f1ae8ab1dd7ff9ed698584",
+  "recovery": "23505 rejected; V104 preserved; scoped fixture correction; V105/V106 applied",
+  "destroyed": true,
+  "run_url": "https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45112354069",
+  "artifact_id": 14789887647,
+  "artifact_sha256": "28d020a1a11641191c895e94044b21ec2c16c448fe068e67b1dc67c086d12e03",
+  "runtime": {
+    "postgres": "18.7 (Debian 18.7-1.pgdg12+5)",
+    "java": "Temurin 17.0.20.1+1",
+    "maven": "3.9.16"
+  }
+}

@@ -1,4 +1,15 @@
-# Plan de validación PostgreSQL de identidad — pendiente de autorización
+# Validación PostgreSQL de identidad — plan y resultados
+
+## Resultado vigente: validación real completada en Actions
+
+El laboratorio autorizado de GitHub Actions completó V001/V104/V105/V106,
+backfill, restricciones, rollback, dos ciclos limpios de 25 casos Java cada uno
+(19 integraciones y seis concurrencias V105), reaplicaciones negativas y
+recuperación. Cero casos omitidos, fallos o errores en esas integraciones.
+Se verificó y destruyó cada laboratorio; no se usó PostgreSQL local o externo.
+Evidencia verificable: [resultados y ejecuciones](identity-postgres-results.md).
+El antiguo bloqueo de disponibilidad de laboratorio queda resuelto por Actions;
+la aprobación humana del PR y cualquier despliegue siguen siendo independientes.
 
 ## Ejecución autorizada en GitHub Actions
 
@@ -23,10 +34,13 @@ migraciones y recuperación de V105 fallida por duplicados sintéticos. La
 corrección de ese fixture negativo está limitada al laboratorio y se verifica
 antes de aplicar V105/V106. No es reparación automática de cuentas reales.
 
-La implementación del workflow aún debe producir evidencia de ejecución exitosa;
-preparar o publicar este cambio no se registra como éxito de PostgreSQL.
+La ejecución exitosa está registrada en identity-postgres-results.md y su JSON,
+incluidos digests, versiones y SHA-256 del artefacto descargado y verificado.
 
-## Estado de cierre del PR #22 — 22/11/2026
+## Estado histórico previo a autorizar Actions — 22/11/2026
+
+Este apartado conserva el diagnóstico anterior; el bloqueo aquí descrito fue
+resuelto posteriormente con la autorización y ejecución en Actions indicada arriba.
 
 Carlos confirmó en los comentarios del PR que las dos observaciones de código
 están resueltas y aprobó la preparación técnica del laboratorio. Su último
@@ -72,7 +86,9 @@ db9530cc7f35b49da69fe8ad75f0a43b473dfe5f, sin solapamientos de archivos entrante
 respecto de identidad y sin integrar ramas. La CI de GitHub comprueba además la
 combinación de prueba del PR, sin hacer merge en las ramas del repositorio.
 
-Esta entrega prepara archivos y pruebas, **no ejecuta SQL, Docker ni migraciones**.
+## Plan original previo a la ejecución, conservado como referencia
+
+La entrega inicial preparó archivos y pruebas, **sin ejecutar SQL, Docker ni migraciones**.
 No inspecciona una base real: el esquema conocido procede de los archivos del
 repositorio. Carlos confirmó resueltos los dos bloqueantes del PR #22; la revisión
 de Jesús y la autorización específica de ejecución siguen siendo necesarias.
@@ -242,13 +258,16 @@ procedimiento manual. Registrar los seis resultados y SQLSTATE, sin filas ni has
    UUID aleatorios serán distintos, pero no deben variar invariantes ni conteos.
    La repetibilidad procede del entorno nuevo, no de reaplicar DDL al mismo esquema.
 
-## Riesgos y decisiones que Carlos debe confirmar
+## Decisiones del plan anterior y límites de la autorización
 
-Confirmar por escrito: equipo Docker/VM, imágenes PostgreSQL 18 y Maven Temurin 17
+En la etapa de preparación se solicitó confirmar: equipo Docker/VM, imágenes PostgreSQL 18 y Maven Temurin 17
 por digest, disponibilidad de caché Linux, creación/destrucción exclusiva del
 laboratorio, permiso para V001/V104/V105/V106 y sus fixtures, 19 integraciones y
 los escenarios negativos/concurrentes. Definir quién registra resultados y dónde
 se conservan logs sin secretos; Jesús revisará barreras, SQL y privilegios.
+La autorización específica posterior de Actions y el workflow fijado resolvieron
+esos requisitos para los runners efímeros usados. No autorizan otro servidor o
+despliegue; no queda pendiente identificar un laboratorio para esta validación ya completada.
 
 El usuario de laboratorio es propietario/superusuario para poder aplicar DDL;
 esto no acredita una configuración de privilegios mínima de producción. La
@@ -259,5 +278,6 @@ lectura con revocación conserva el límite documentado de operaciones ya inicia
 
 Aceptar solo con todas las aserciones SQL y 19 casos Java aprobados, cero omitidos,
 seis desenlaces V105 registrados, recuperación y segunda ejecución en limpio
-verificadas. La ejecución preparada sigue pendiente; esta documentación no es una
-autorización ni evidencia de ejecución. No hay cambios de producción en esta tarea.
+verificadas. Esos criterios quedaron satisfechos en las ejecuciones reales
+enlazadas en identity-postgres-results.md. La documentación del plan por sí sola
+no era evidencia de ejecución; ahora se conserva la evidencia verificable por separado.

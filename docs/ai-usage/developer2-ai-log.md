@@ -456,3 +456,14 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté usar Actions con imágenes fijadas y credenciales aleatorias del job. Se conserva el workflow compartido y no se instala Docker local. La ejecución real y sus resultados deben verificarse tras publicar; no se anticipa su éxito.
 * **Verificación realizada:** Temurin 17.0.21+9, mvn -o verify local: 777 casos, 728 aprobados, 49 PostgreSQL omitidos, cero fallos/errores. bash -n pasó. No hubo SQL local; el resultado PostgreSQL sigue pendiente de Actions al registrar esta entrada.
 * **Commit o Pull Request relacionado:** PR #22; commit de laboratorio pendiente de creación al registrar esta entrada.
+
+### Interacción 26 – PostgreSQL real completado en Actions
+
+* **Fecha:** 22/11/2026 (logs UTC del 23/11).
+* **Herramienta:** Codex y GitHub Actions.
+* **Fase, tarea y rama:** Validación real y cierre de evidencia del PR #22 (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Ejecutar el laboratorio temporal autorizado, resolver fallos y registrar resultados verificables.
+* **Resumen de la respuesta recibida:** Codex corrigió el contexto runner del workflow y una opción no admitida de Compose. Las ejecuciones 45112354069 (PR) y 45112346376 (rama) completaron dos ciclos limpios de 25 pruebas cada una: 19 integraciones y seis concurrencias V105, sin omisiones, fallos ni errores. También aprobaron SQL, reaplicaciones negativas y recuperación.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté la evidencia del laboratorio aislado y destruido; se resuelve el bloqueo de disponibilidad para esta validación. No equivale a desplegar migraciones en bases compartidas ni aprobar el merge. Se conservaron módulos ajenos y el job Maven compartido.
+* **Verificación realizada:** PostgreSQL 18.7, Temurin 17.0.20.1+1 y Maven 3.9.16 en imágenes oficiales por digest verificado. V001/V104/V105/V106 aplicadas solo en tmpfs del runner. Artefacto 14789887647 descargado: SHA-256 28d020a1a11641191c895e94044b21ec2c16c448fe068e67b1dc67c086d12e03, coincidente con GitHub; summary completed/destroyed=true. Se comprobaron XML, inspecciones y SQLSTATE esperados. Local: 728 aprobadas y 49 PostgreSQL omitidas con Temurin 17.0.21+9; no hubo PostgreSQL local. git diff --check pasó.
+* **Commit o Pull Request relacionado:** ca85e4f, 59fb4f7 y ccb995a; PR #22; commit documental de resultados pendiente de creación al registrar esta entrada.
