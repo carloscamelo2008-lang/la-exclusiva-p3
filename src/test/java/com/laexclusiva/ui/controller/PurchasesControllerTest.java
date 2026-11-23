@@ -19,6 +19,7 @@ import com.laexclusiva.service.ProductService;
 import com.laexclusiva.service.PurchaseOrderService;
 import com.laexclusiva.service.SupplierService;
 import com.laexclusiva.testutil.IdentityTestFixture;
+import com.laexclusiva.ui.ApplicationServices;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -32,6 +33,8 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.control.ScrollPane;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -72,6 +75,32 @@ class PurchasesControllerTest {
             button(view, "refreshHistoryButton").fire();
             assertEquals(2, table(view, "historyTable").getItems().size());
             assertEquals(2, fixture.movements.findAll().size());
+            return null;
+        });
+    }
+
+    @Test
+    void mainMenuOpensPurchasesUsingTheApplicationComposition() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, java.util.Map.of());
+            String password = "Purchases-Navigation-Only-2026";
+            assertTrue(services.identity().bootstrapInitialAdministrator("navigation-admin", password));
+            var session = services.identity().authentication().createSession("navigation-admin", password).orElseThrow();
+            FXMLLoader main = new FXMLLoader(PurchasesControllerTest.class.getResource(
+                    "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
+            main.load();
+            MainController controller = main.getController();
+            controller.setApplicationServices(services);
+            controller.initSession(session);
+
+            Button purchases = (Button) main.getNamespace().get("btnPurchases");
+            assertFalse(purchases.isDisable());
+            purchases.fire();
+
+            BorderPane root = (BorderPane) main.getRoot();
+            assertInstanceOf(ScrollPane.class, root.getCenter(),
+                    "El menú debe sustituir el panel central por la vista real de compras.");
+            assertEquals("", ((Label) main.getNamespace().get("navigationMessage")).getText());
             return null;
         });
     }
@@ -224,9 +253,10 @@ class PurchasesControllerTest {
             var orderRepository = new InMemoryPurchaseOrderRepository();
             var authorization = identity.authorization();
             suppliers = new SupplierService(supplierRepository, authorization, boundary);
-            orders = new PurchaseOrderService(orderRepository, supplierRepository, products, authorization, boundary);
+            orders = new PurchaseOrderService(orderRepository, supplierRepository, products, authorization, boundary,
+                    identity.users());
             receipts = new GoodsReceiptService(orderRepository, new InMemoryGoodsReceiptRepository(), products,
-                    authorization, boundary, inventory, movements);
+                    authorization, boundary, inventory, movements, identity.users());
             suppliers.create(admin, "Proveedor ficticio", null, null);
         }
 

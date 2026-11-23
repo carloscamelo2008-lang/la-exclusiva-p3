@@ -112,13 +112,15 @@ histórico de solo lectura de `la_exclusiva_test` detectó V104/V105/V106 ausent
 y no se conectó a `la_exclusiva`. La suite especializada también comprobó que la
 composición JDBC falla de forma segura ante un esquema incompleto.
 
-Las 6 pruebas de `PurchaseWorkflowPostgresIntegrationTest` no forman parte del
-laboratorio especializado (dependen de V004, fuera del alcance de esta integración)
-y quedaron entre las pruebas PostgreSQL optativas omitidas por Maven local. No se
-presentan como validadas. El primer intento más reciente del job del laboratorio
-se detuvo antes de crear la base por una respuesta HTTP 429 de Maven Central; la
-repetición del mismo HEAD completó los 105 casos. Los checks finales de GitHub
-Actions para el HEAD publicado terminaron correctamente.
+En la validación del PR #24, las 6 pruebas de
+`PurchaseWorkflowPostgresIntegrationTest` no formaban parte del laboratorio y
+quedaron omitidas localmente al depender de V004. La rama de integración de
+Compras añadió V004 al esquema efímero e incorporó esa suite: el run
+[45217400054](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45217400054)
+ejecutó 111/111 pruebas reales PostgreSQL sin fallos, errores ni omisiones sobre
+el HEAD `596db429e965976ac59b4a86b7a25b364a3d9b5d`. El detalle, la imagen
+utilizada y la evidencia de las suites se mantienen en
+[`purchases-javafx-integration.md`](purchases-javafx-integration.md).
 
 Esta evidencia es automatizada. No se afirma haber realizado un recorrido manual
 visual completo de JavaFX. La inspección del laboratorio y los conteos detallados
@@ -186,3 +188,30 @@ preliminar durante el desarrollo falló por cambios temporales a los contratos d
 excepciones del servicio de usuarios; se restauraron dichos contratos, se mantuvo
 el filtrado seguro de mensajes y la verificación final posterior pasó
 completamente.
+
+### Validación JavaFX/PostgreSQL después de reconstruir la aplicación (23 de noviembre de 2026)
+
+La regresión optativa `IdentityJavaFxPostgresIntegrationTest` inicia la clase
+real `App` con persistencia PostgreSQL, no una composición en memoria. En un
+laboratorio desechable PostgreSQL 18.6 (`la_exclusiva_test`, puerto local 49713)
+se registró `qa-pr26-admin` mediante los valores del entorno privado y luego se
+construyó otra instancia de `App`. El login en el formulario JavaFX volvió a
+aceptar el mismo nombre y la misma contraseña del proceso; la cuenta conservó
+ID y el total de cuentas permaneció igual. Ambas instancias expusieron
+`UserRepositoryJdbc`; la ruta de autenticación de `App` es la del mismo
+`ApplicationServices` que entrega al `LoginController`.
+
+Esta ejecución controlada demuestra que la autenticación JDBC y la verificación
+del hash funcionan tras reconstruir la aplicación. El intento manual anterior
+no registró el valor exacto de contraseña ni evidencia de igualdad con las
+variables de entorno; no se puede identificar retroactivamente si aquel fallo
+fue de credenciales/procedimiento o si se reprodujo por otra causa. No se
+reinicializó ni modificó una cuenta existente para obtener el resultado.
+
+En la misma prueba, un trabajador temporal con vendedor asignado inició sesión
+por JavaFX, consultó Compras, registró una venta con pago inicial y abonó parte
+de su saldo. Los servicios rechazaron las operaciones administrativas de
+usuarios y compras aunque se invocaran directamente con la sesión del
+trabajador. El detalle de importes, inventario, limpieza de fixtures, pruebas
+omitidas y advertencias está en
+[`purchases-javafx-integration.md`](purchases-javafx-integration.md).

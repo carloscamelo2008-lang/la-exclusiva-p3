@@ -122,3 +122,68 @@ los dos textos de Inventario indicados arriba (1 caso con error, 59 omitidos).
 La corrección conserva las pruebas estrictas y solo aumenta esos dos anchos;
 la CI posterior se informa con su ejecución real, sin atribuir éxito a la
 integración del PR mientras su base siga en conflicto.
+
+## Integración autorizada del PR #26 — 23/11/2026
+
+El bloqueo descrito en la sección anterior queda resuelto mediante un merge normal
+ de `origin/develop` (`6e6db09`) sobre `bc90f12`, autorizado expresamente en esta
+continuación. Se conservan `7100748` y `bc90f12`, sin rebase ni sustitución del menú.
+
+Resolución de los tres conflictos:
+
+- `main_menu_view.fxml`: se conserva el dashboard moderno completo y se añade
+  `btnPurchases`, `#handleShowPurchases` y «Compras y Recepción». El acceso rápido
+  enlaza visibilidad, gestión y deshabilitación al botón real. Ambos menús FXML
+  quedan idénticos, comprobados mediante prueba. Se reduce solo el espaciado del
+  lateral para mantener diez destinos/logout accesibles a 800×600.
+- `portfolio_view.fxml`: ScrollPane vertical, tabla de cartera de 150 px y contenido
+  con altura mínima preferida, conservando el arreglo de Carlos, los formularios
+  adaptables, IDs, eventos y tema visual. Las ventas pendientes son seleccionables
+  y el formulario de abonos se alcanza mediante desplazamiento.
+- `AuthenticationServiceTest.java`: se conservan las regresiones de ambas ramas,
+  el acceso al contenido del ScrollPane y la aplicación de CSS/layout. Se amplía
+  el recorrido real login → Compras → administración/clientes → logout → trabajador,
+  verificando los permisos y el retorno al dashboard. La primera ejecución dirigida
+  detectó un selector de bienvenida consultado después de abandonar el dashboard;
+  se movió esa aserción antes de navegar, conservando su comprobación al regresar.
+
+MainController, ApplicationServices y los servicios de Compras se conservan
+exactamente como en develop. No se reescriben sus permisos: VIEW_INVENTORY permite
+consultar; MANAGE_INVENTORY_ENTRIES gobierna modificaciones. El trabajador puede
+consultar pedidos, con editores y recepción deshabilitados; el servicio también
+rechaza su escritura. Se mantienen administración, revocación, logout y recuperación.
+Los cambios de SQL, workflow y bitácora del líder que figuran en el merge son los
+heredados de develop; no son ediciones nuevas de esta modernización.
+
+Validación local: Temurin 17.0.21+9, Maven offline `clean verify`, con destinos
+PostgreSQL retirados del proceso y pruebas opt-in deshabilitadas: **839 casos,
+779 aprobados, 60 PostgreSQL omitidos, 0 fallos y 0 errores**; BUILD SUCCESS.
+Incluye 16 pruebas visuales. Las dos nuevas ejercitan Compras/Recepción con ambos
+roles y Cartera con venta pendiente y abonos a 1280×800, 1024×768 y 800×600.
+La recepción aumenta una unidad y genera un movimiento; el abono actualiza saldos
+sin cambiar existencias. Se conserva la regresión de Carlos de reintento de abono
+tras respuesta perdida. No se ejecutó SQL, migraciones ni PostgreSQL.
+
+Capturas reales de JavaFX (escenas renderizadas por pruebas, no recorrido manual):
+
+- [Dashboard 1280×800](ui-review/integrated-dashboard-ADMINISTRATOR-1280.png) y
+  [800×600](ui-review/integrated-dashboard-ADMINISTRATOR-800.png), con la mascota
+  original transparente, sin modificar ni reconstruir su imagen.
+- Compras: [1280×800](ui-review/purchases-ADMINISTRATOR-1280.png),
+  [1024×768](ui-review/purchases-ADMINISTRATOR-1024.png),
+  [800×600](ui-review/purchases-ADMINISTRATOR-800.png).
+- [Trabajador en consulta](ui-review/purchases-WORKER-800.png) y
+  [formulario de recepción tras desplazarse](ui-review/receipts-ADMINISTRATOR-800.png).
+- Venta pendiente seleccionada y abono: [1280×800](ui-review/portfolio-payment-1280.png),
+  [1024×768](ui-review/portfolio-payment-1024.png),
+  [800×600](ui-review/portfolio-payment-800.png).
+
+Los fixtures «QA visual» son ficticios y exclusivos del modo memory; no se presentan
+como cifras comerciales. Las tablas estrechas conservan su desplazamiento nativo;
+no se afirma que todas las columnas quepan simultáneamente. La captura de recepción
+se toma antes de confirmar; la prueba verifica después el historial y las existencias.
+
+El PR #25 se mantiene Draft para revisión. Siguen pendientes el logo independiente,
+la integración de identidad de escritorio por Carlos y las fuentes reales de indicadores
+globales. No se modifica App.java, launcher ni iconos. El resultado de CI del nuevo
+commit se comprobará tras publicar; las pruebas PostgreSQL omitidas no se declaran aprobadas.

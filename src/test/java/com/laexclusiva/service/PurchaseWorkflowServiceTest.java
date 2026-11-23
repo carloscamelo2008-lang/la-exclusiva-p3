@@ -46,7 +46,7 @@ class PurchaseWorkflowServiceTest {
 
     @BeforeEach
     void setUp() {
-        module = PurchasesModuleFactory.inMemory(products, inventory, movements, identity.authorization());
+        module = PurchasesModuleFactory.inMemory(products, inventory, movements, identity.authorization(), identity.users());
         admin = identity.issue(UserRole.ADMINISTRATOR).session();
         worker = identity.issue(UserRole.WORKER).session();
         for (int capacity : new int[]{38, 30, 16}) {
@@ -60,12 +60,14 @@ class PurchaseWorkflowServiceTest {
         var order = module.orders().create(admin, supplierId, null, List.of(
                 new OrderLineRequest("P38", 1, 2), new OrderLineRequest("P30", 1, 2),
                 new OrderLineRequest("P16", 1, 2)));
+        assertEquals(identity.authorization().currentPrincipal(admin).userId(), order.order().createdByUserId());
         assertEquals(List.of(38, 30, 16), order.lines().stream().map(line -> line.unitsPerBasketSnapshot()).toList());
         assertEquals(List.of(40, 32, 18), order.lines().stream().map(line -> line.orderedEquivalentUnits()).toList());
         assertTrue(inventory.findAll().isEmpty());
         assertTrue(movements.findAll().isEmpty());
         var forward = order.lines().stream().map(line -> new ReceiptLineRequest(line.id(), 1, 2)).toList();
         var saved = module.receipts().receive(admin, order.order().id(), "multilinea", null, forward);
+        assertEquals(identity.authorization().currentPrincipal(admin).userId(), saved.receivedByUserId());
         var reversed = List.of(forward.get(2), forward.get(1), forward.get(0));
         assertEquals(saved, module.receipts().receive(admin, order.order().id(), "multilinea", "otra nota", reversed));
         assertEquals(40, stock("P38"));

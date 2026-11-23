@@ -68,7 +68,7 @@
     -fx-padding: 10 12;
     -fx-font-weight: bold;
 }
-.sidebar { -fx-background-color: linear-gradient(to bottom, #06295e, #0049aa); -fx-padding: 24 12; -fx-spacing: 7; }
+.sidebar { -fx-background-color: linear-gradient(to bottom, #06295e, #0049aa); -fx-padding: 16 12; -fx-spacing: 5; }
 .brand { -fx-font-size: 23; -fx-font-weight: bold; -fx-text-fill: white; }
 .brand-caption { -fx-text-fill: #f7d16a; -fx-padding: 0 8 20 8; }
 .page-heading { -fx-font-size: 22; -fx-font-weight: bold; }

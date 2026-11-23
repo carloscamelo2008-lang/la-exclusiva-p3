@@ -11,6 +11,8 @@ import com.laexclusiva.model.StockRequest;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.repository.jdbc.UserRepositoryJdbc;
 import com.laexclusiva.service.UserManagementService;
+import com.laexclusiva.service.GoodsReceiptService;
+import com.laexclusiva.service.PurchaseOrderService;
 import com.laexclusiva.ui.ApplicationServices;
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -81,6 +83,8 @@ class IdentityApplicationPostgresIntegrationTest {
 
             authentication.revoke(adminSession);
             assertFalse(authorization.hasPermission(adminSession, Permission.MANAGE_USERS));
+            assertThrows(SecurityException.class, () -> app.purchases().orders().findAll(adminSession),
+                    "La revocación debe proteger también los servicios JavaFX de compras.");
             ApplicationServices restarted = application(config);
             assertTrue(restarted.identity().authentication().createSession(username, adminPassword).isPresent(),
                     "La identidad JDBC debe seguir persistida tras crear otra composición de aplicación.");
@@ -104,6 +108,8 @@ class IdentityApplicationPostgresIntegrationTest {
         String generalPaymentKey = "identity-app-general-payment-" + suffix;
         String saleId = null;
         String sellerId = null;
+        Long supplierId = null;
+        Long adminId = null;
         try {
             assertTrue(app.identity().bootstrapInitialAdministrator(adminName, adminPassword));
             var adminSession = app.identity().authentication().createSession(adminName, adminPassword).orElseThrow();
@@ -119,8 +125,13 @@ class IdentityApplicationPostgresIntegrationTest {
             assertEquals(10, app.inventory().availableUnits(productId));
 
             var account = app.identity().users().findByUsername(adminName).orElseThrow();
+            adminId = account.getId();
             app.identity().userManagement().assignSeller(adminSession, account.getId().toString(),
                     account.getSecurityVersion(), registeredSellerId);
+            assertThrows(SecurityException.class, () -> app.purchases().suppliers().findAll(adminSession),
+                    "El cambio de asignación debe invalidar la sesión anterior también en Compras.");
+            var purchasesSession = app.identity().authentication()
+                    .createSession(adminName, adminPassword).orElseThrow();
 
             List<StockRequest> lines = List.of(new StockRequest(productId, SalePresentation.UNIT, 2));
             Sale sale = app.sales().registerSale(lines, registeredSellerId, customerId,
@@ -168,13 +179,34 @@ class IdentityApplicationPostgresIntegrationTest {
             assertEquals(new BigDecimal("2300.00"), app.customers().getCustomerById(customerId).getBalance());
             assertEquals(before, app.cash().summarize(from, through));
 
+            var supplier = app.purchases().suppliers().create(purchasesSession,
+                    "Proveedor ficticio " + suffix.substring(0, 6), null, null);
+            supplierId = supplier.id();
+            var order = app.purchases().orders().create(purchasesSession, supplier.id(), "Fixture de laboratorio",
+                    List.of(new PurchaseOrderService.OrderLineRequest(productId, 1, 0)));
+            assertEquals(adminId, order.order().createdByUserId(), "El pedido debe guardar el ID persistido del actor.");
+            var receiptLine = order.lines().get(0);
+            var receipt = app.purchases().receipts().receive(purchasesSession, order.order().id(),
+                    "identity-app-receipt-" + suffix, "Recepción ficticia",
+                    List.of(new GoodsReceiptService.ReceiptLineRequest(receiptLine.id(), 1, 0)));
+            assertEquals(adminId, receipt.receivedByUserId(), "La recepción debe guardar el ID persistido del actor.");
+            assertEquals(32, app.inventory().availableUnits(productId));
+            assertEquals(3, app.inventory().movementsOf(productId).size());
+            assertEquals(before, app.cash().summarize(from, through),
+                    "Una recepción de compra no se contabiliza como efectivo de venta.");
+
             ApplicationServices restarted = application(config);
+            var restartedSession = restarted.identity().authentication()
+                    .createSession(adminName, adminPassword).orElseThrow();
             assertEquals(saleId, restarted.sales().findById(saleId).getId());
-            assertEquals(8, restarted.inventory().availableUnits(productId));
+            assertEquals(32, restarted.inventory().availableUnits(productId));
+            assertEquals(3, restarted.inventory().movementsOf(productId).size());
+            assertEquals(order.order().id(), restarted.purchases().orders()
+                    .findById(restartedSession, order.order().id()).orElseThrow().order().id());
             assertEquals(new BigDecimal("2300.00"), restarted.customers().getCustomerById(customerId).getBalance());
-            assertTrue(restarted.identity().authentication().createSession(adminName, adminPassword).isPresent());
+            assertTrue(restartedSession.isActive());
         } finally {
-            cleanupCommercialFixture(config, customerId, productId, sellerId, saleKey,
+            cleanupCommercialFixture(config, customerId, productId, sellerId, supplierId, saleKey,
                     generalPaymentKey, adminName);
         }
     }
@@ -229,9 +261,42 @@ class IdentityApplicationPostgresIntegrationTest {
     }
 
     private static void cleanupCommercialFixture(DatabaseConfig config, String customerId, String productId,
-                                                String sellerId, String saleKey, String generalPaymentKey,
+                                                String sellerId, Long supplierId, String saleKey, String generalPaymentKey,
                                                 String username) {
         executeCleanup(config, connection -> {
+            if (supplierId != null) {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        DELETE FROM goods_receipt_line WHERE goods_receipt_id IN (
+                            SELECT r.id FROM goods_receipt r JOIN purchase_order o ON o.id = r.purchase_order_id
+                            WHERE o.supplier_id = ?)
+                        """)) {
+                    statement.setLong(1, supplierId);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        DELETE FROM goods_receipt WHERE purchase_order_id IN
+                            (SELECT id FROM purchase_order WHERE supplier_id = ?)
+                        """)) {
+                    statement.setLong(1, supplierId);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        DELETE FROM purchase_order_line WHERE purchase_order_id IN
+                            (SELECT id FROM purchase_order WHERE supplier_id = ?)
+                        """)) {
+                    statement.setLong(1, supplierId);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM purchase_order WHERE supplier_id = ?")) {
+                    statement.setLong(1, supplierId);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement("DELETE FROM supplier WHERE id = ?")) {
+                    statement.setLong(1, supplierId);
+                    statement.executeUpdate();
+                }
+            }
             try (PreparedStatement statement = connection.prepareStatement("""
                     DELETE FROM cash_movement WHERE source_reference IN
                     (SELECT id FROM sale WHERE idempotency_key = ?)

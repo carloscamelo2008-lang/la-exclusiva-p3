@@ -81,7 +81,7 @@ class VisualRefreshTest {
             assertEquals("", ((Label) loader.getNamespace().get("navigationMessage")).getText());
             ((Button) loader.getNamespace().get("btnDashboard")).fire();
             assertSame(dashboard, root.getCenter());
-            for (String id : new String[]{"btnSellers", "btnInventory", "btnSales", "btnCredit", "btnCash"}) {
+            for (String id : new String[]{"btnSellers", "btnInventory", "btnPurchases", "btnSales", "btnCredit", "btnCash"}) {
                 ((Button) loader.getNamespace().get(id)).fire();
                 assertNotSame(dashboard, root.getCenter(), id);
                 assertEquals("", ((Label) loader.getNamespace().get("navigationMessage")).getText(), id);
@@ -111,7 +111,7 @@ class VisualRefreshTest {
                 Map<String, Permission> permissions = Map.of("Customers", Permission.VIEW_CUSTOMER,
                         "Credit", Permission.VIEW_PORTFOLIO, "Inventory", Permission.VIEW_INVENTORY,
                         "Sellers", Permission.VIEW_SELLERS, "Cash", Permission.VIEW_CASH,
-                        "Sales", Permission.REGISTER_SALE);
+                        "Sales", Permission.REGISTER_SALE, "Purchases", Permission.VIEW_INVENTORY);
                 for (var entry : permissions.entrySet()) {
                     Button quick = button(loader, "quick" + entry.getKey());
                     assertEquals(services.authorization().hasPermission(session, entry.getValue()), quick.isVisible(), role + ": " + entry.getKey());
@@ -119,7 +119,7 @@ class VisualRefreshTest {
                     assertFalse(quick.isDisabled());
                 }
                 assertEquals(role == UserRole.ADMINISTRATOR, button(loader, "btnAdminUsers").isVisible());
-                for (String suffix : new String[]{"Customers", "Credit", "Inventory"}) {
+                for (String suffix : new String[]{"Customers", "Credit", "Inventory", "Purchases"}) {
                     button(loader, "quick" + suffix).fire();
                     assertEquals("", ((Label) loader.getNamespace().get("navigationMessage")).getText());
                     assertNotSame(loader.getNamespace().get("dashboard"), root.getCenter());
@@ -268,6 +268,131 @@ class VisualRefreshTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void modernPurchasesNavigationKeepsReadWritePermissionsAndReceiptAtAllSizes() throws Exception {
+        onFx(() -> {
+            for (UserRole role : UserRole.values()) {
+                ApplicationServices services = ApplicationServices.create("memory", Map.of());
+                UserSession admin = issue(services, UserRole.ADMINISTRATOR);
+                UserSession session = role == UserRole.ADMINISTRATOR ? admin : issue(services, role);
+                var supplier = services.purchases().suppliers().create(admin, "Proveedor QA visual", "QA-UI-26", "Contacto ficticio");
+                var product = services.products().findById("COSTENITA_175");
+                services.purchases().orders().create(admin, supplier.id(), "Pedido temporal de prueba visual",
+                        java.util.List.of(new com.laexclusiva.service.PurchaseOrderService.OrderLineRequest(product.getId(), 0, 2)));
+                for (int[] size : new int[][]{{1280, 800}, {1024, 768}, {800, 600}}) {
+                    FXMLLoader loader = loader("main_menu_view.fxml");
+                    BorderPane root = loader.load();
+                    MainController controller = loader.getController();
+                    controller.setApplicationServices(services); controller.initSession(session);
+                    controller.setOnLogout(() -> { });
+                    new Scene(root, size[0], size[1]); root.applyCss(); root.layout();
+                    snapshot(root, "integrated-dashboard-" + role + "-" + size[0]);
+                    Button purchasesButton = button(loader, "btnPurchases");
+                    var caption = new javafx.scene.text.Text(purchasesButton.getText());
+                    caption.setFont(purchasesButton.getFont());
+                    assertTrue(caption.getLayoutBounds().getWidth() + purchasesButton.getInsets().getLeft()
+                            + purchasesButton.getInsets().getRight() <= purchasesButton.getWidth() + 1,
+                            "Compras y Recepción debe leerse completo");
+                    var logoutBounds = button(loader, "btnLogout").localToScene(button(loader, "btnLogout").getBoundsInLocal());
+                    assertTrue(logoutBounds.getMaxY() <= root.getLeft().localToScene(root.getLeft().getBoundsInLocal()).getMaxY() + .5);
+                    button(loader, "btnPurchases").fire(); root.applyCss(); root.layout();
+                    assertEquals("", ((Label) loader.getNamespace().get("navigationMessage")).getText());
+                    assertTrue(button(loader, "btnPurchases").getPseudoClassStates().contains(javafx.css.PseudoClass.getPseudoClass("active")));
+                    ScrollPane view = assertInstanceOf(ScrollPane.class, root.getCenter());
+                    Parent content = (Parent) view.getContent();
+                    var orders = (javafx.scene.control.TableView<com.laexclusiva.model.PurchaseOrder>) content.lookup("#ordersTable");
+                    assertEquals(1, orders.getItems().size());
+                    assertEquals(role != UserRole.ADMINISTRATOR, content.lookup("#supplierEditor").isDisabled());
+                    assertEquals(role != UserRole.ADMINISTRATOR, content.lookup("#orderEditor").isDisabled());
+                    orders.getSelectionModel().selectFirst();
+                    ((Button) content.lookup("#detailButton")).fire(); root.applyCss(); root.layout();
+                    assertEquals(role != UserRole.ADMINISTRATOR, content.lookup("#receiptEditor").isDisabled());
+                    snapshot(root, "purchases-" + role + "-" + size[0]);
+                    reveal(view, content.lookup("#receiptEditor"), 20); root.layout();
+                    snapshot(root, "receipts-" + role + "-" + size[0]);
+                    if (size[0] == 800) {
+                        if (role == UserRole.ADMINISTRATOR) {
+                            var lines = (javafx.scene.control.TableView<?>) content.lookup("#orderLinesTable");
+                            lines.getSelectionModel().selectFirst();
+                            ((TextField) content.lookup("#receiptBaskets")).setText("0");
+                            ((TextField) content.lookup("#receiptLoose")).setText("1");
+                            ((Button) content.lookup("#addReceiptLineButton")).fire();
+                            ((Button) content.lookup("#receiveButton")).fire();
+                            assertEquals(1, services.inventory().availableUnits(product.getId()));
+                            assertEquals(1, services.inventory().movementsOf(product.getId()).size());
+                            assertEquals(1, ((javafx.scene.control.TableView<?>) content.lookup("#historyTable")).getItems().size());
+                        } else {
+                            assertThrows(SecurityException.class, () -> services.purchases().suppliers().create(session, "Rechazado", "QA-NO", "QA"));
+                            assertTrue(content.lookup("#receiveButton").isDisabled());
+                        }
+                        button(loader, "btnDashboard").fire();
+                        assertSame(loader.getNamespace().get("dashboard"), root.getCenter());
+                        button(loader, "btnLogout").fire();
+                        assertThrows(SecurityException.class, () -> services.identity().sessions().validate(session));
+                        assertTrue(button(loader, "btnPurchases").isDisabled());
+                        assertTrue(button(loader, "quickPurchases").isDisabled());
+                    }
+                }
+            }
+            return null;
+        });
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void modernPortfolioKeepsPendingSaleSelectionAndPaymentReachableAtAllSizes() throws Exception {
+        onFx(() -> {
+            ApplicationServices services = ApplicationServices.create("memory", Map.of());
+            UserSession session = issue(services, UserRole.ADMINISTRATOR);
+            var seller = services.sellers().registerSeller("Vendedor QA visual", "3000000000", "Dirección QA");
+            services.customers().registerCustomer("QA-PORTFOLIO", "Cliente QA visual", "3000000001", "Dirección QA");
+            var product = services.products().findById("COSTENITA_175");
+            services.inventory().addStock(product.getId(), 0, 2, "Fixture temporal de cartera");
+            var sale = services.sales().registerSale(java.util.List.of(new com.laexclusiva.model.StockRequest(
+                    product.getId(), com.laexclusiva.model.SalePresentation.UNIT, 1)), seller.getId(), "QA-PORTFOLIO",
+                    new java.math.BigDecimal("1000.00"), "qa-modern-portfolio");
+            java.math.BigDecimal balance = sale.calculateBalance();
+            for (int[] size : new int[][]{{1280, 800}, {1024, 768}, {800, 600}}) {
+                FXMLLoader loader = loader("main_menu_view.fxml");
+                BorderPane root = loader.load();
+                MainController controller = loader.getController();
+                controller.setApplicationServices(services); controller.initSession(session);
+                new Scene(root, size[0], size[1]); root.applyCss(); root.layout();
+                button(loader, "btnCredit").fire(); root.applyCss(); root.layout();
+                ScrollPane view = assertInstanceOf(ScrollPane.class, root.getCenter());
+                Parent content = (Parent) view.getContent();
+                var customers = (javafx.scene.control.ComboBox<com.laexclusiva.model.Customer>) content.lookup("#customerCombo");
+                customers.setValue(customers.getItems().stream().filter(c -> c.getId().equals("QA-PORTFOLIO")).findFirst().orElseThrow());
+                var sales = (javafx.scene.control.TableView<com.laexclusiva.model.Sale>) content.lookup("#salesTable");
+                assertEquals(1, sales.getItems().size());
+                sales.getSelectionModel().selectFirst();
+                assertEquals(sale.getId(), sales.getSelectionModel().getSelectedItem().getId());
+                reveal(view, sales, 20); root.applyCss(); root.layout();
+                var row = sales.lookupAll(".table-row-cell").stream()
+                        .filter(n -> n instanceof javafx.scene.control.TableRow<?> r && r.getItem() == sales.getItems().get(0)).findFirst().orElseThrow();
+                var bounds = row.localToScene(row.getBoundsInLocal());
+                var viewport = view.localToScene(view.getViewportBounds());
+                assertTrue(bounds.getMinY() >= viewport.getMinY() - 1 && bounds.getMaxY() <= viewport.getMaxY() + 1);
+                ((TextField) content.lookup("#paymentAmountField")).setText("200.00");
+                snapshot(root, "portfolio-payment-" + size[0]);
+                ((Button) content.lookup("#registerPaymentButton")).fire();
+                balance = balance.subtract(new java.math.BigDecimal("200.00"));
+                assertEquals(0, services.sales().findById(sale.getId()).calculateBalance().compareTo(balance));
+                assertEquals(0, services.customers().getCustomerById("QA-PORTFOLIO").getBalance().compareTo(balance));
+                assertEquals(1, services.inventory().availableUnits(product.getId()), "El abono no debe modificar existencias");
+            }
+            return null;
+        });
+    }
+
+    private static void reveal(ScrollPane view, javafx.scene.Node target, double margin) {
+        double top = view.getContent().sceneToLocal(target.localToScene(0, 0)).getY();
+        double extent = view.getContent().getLayoutBounds().getHeight() - view.getViewportBounds().getHeight();
+        if (extent > 0) view.setVvalue(Math.max(0, Math.min(1, (top - margin) / extent)));
+        view.applyCss(); view.layout();
+    }
+
+    @Test
     void compactDashboardKeepsLogoutAndNavigationInsideSidebar() throws Exception {
         onFx(() -> {
             ApplicationServices services = ApplicationServices.create("memory", Map.of());
@@ -277,7 +402,7 @@ class VisualRefreshTest {
             controller.setApplicationServices(services); controller.initSession(issue(services, UserRole.ADMINISTRATOR));
             new Scene(root, 800, 600); root.applyCss(); root.layout();
             snapshot(root, "dashboard-800x600");
-            for (String id : new String[]{"btnDashboard", "btnCustomers", "btnCredit", "btnInventory", "btnAdminUsers", "btnLogout"}) {
+            for (String id : new String[]{"btnDashboard", "btnCustomers", "btnCredit", "btnInventory", "btnPurchases", "btnAdminUsers", "btnLogout"}) {
                 var bounds = button(loader, id).localToScene(button(loader, id).getBoundsInLocal());
                 var sidebar = root.getLeft().localToScene(root.getLeft().getBoundsInLocal());
                 assertTrue(bounds.getMaxY() <= sidebar.getMaxY() + .5, id + " queda fuera del lateral");

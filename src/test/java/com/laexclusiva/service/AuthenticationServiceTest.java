@@ -22,6 +22,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.BorderPane;
 import javafx.css.PseudoClass;
 import javafx.scene.Scene;
@@ -549,7 +550,8 @@ public class AuthenticationServiceTest {
             portfolioButton.fire();
 
             menu.applyCss(); menu.layout();
-            TableView<?> table = (TableView<?>) menu.getCenter().lookup("#portfolioTable");
+            Node portfolioContent = scrollContent(menu.getCenter());
+            TableView<?> table = (TableView<?>) portfolioContent.lookup("#portfolioTable");
             assertNotNull(table);
             assertFalse(table.isEditable());
             assertEquals(1, table.getItems().size());
@@ -562,7 +564,7 @@ public class AuthenticationServiceTest {
             assertSame(sidebar, menu.getLeft());
             portfolioButton.fire();
             menu.applyCss(); menu.layout();
-            assertNotNull(menu.getCenter().lookup("#portfolioTable"));
+            assertNotNull(scrollContent(menu.getCenter()).lookup("#portfolioTable"));
         });
     }
 
@@ -573,7 +575,7 @@ public class AuthenticationServiceTest {
         withMainMenu(UserRole.WORKER, customers, (menu, account) -> {
             ((Button) menu.getLeft().lookup("#btnCredit")).fire();
             menu.applyCss(); menu.layout();
-            TableView<?> table = (TableView<?>) menu.getCenter().lookup("#portfolioTable");
+            TableView<?> table = (TableView<?>) scrollContent(menu.getCenter()).lookup("#portfolioTable");
             assertNotNull(table);
             assertTrue(table.getItems().isEmpty());
             assertEquals("No hay clientes con saldo pendiente", ((Label) table.getPlaceholder()).getText());
@@ -817,6 +819,11 @@ public class AuthenticationServiceTest {
                 BorderPane adminMenu = (BorderPane) stage.getScene().getRoot();
                 assertTrue(adminMenu.lookup("#btnSellers").isVisible());
                 assertFalse(adminMenu.lookup("#btnAdminUsers").isDisabled());
+                assertTrue(adminMenu.lookup("#btnPurchases").isVisible());
+                ((Button) adminMenu.lookup("#btnPurchases")).fire();
+                assertActiveNavigation(adminMenu, "btnPurchases");
+                assertNotNull(scrollContent(adminMenu.getCenter()).lookup("#ordersTable"));
+                assertFalse(scrollContent(adminMenu.getCenter()).lookup("#supplierEditor").isDisabled());
                 ((Button) adminMenu.lookup("#btnAdminUsers")).fire();
                 assertNotNull(adminMenu.lookup("#usersTable"), "La pantalla administrativa debe cargar la tabla de usuarios");
                 ((Button) adminMenu.lookup("#btnCustomers")).fire();
@@ -834,6 +841,12 @@ public class AuthenticationServiceTest {
                 assertFalse(workerMenu.lookup("#btnSellers").isManaged());
                 assertFalse(workerMenu.lookup("#btnAdminUsers").isVisible());
                 assertEquals("¡Bienvenido, worker!", ((Label) workerMenu.lookup("#welcomeLabel")).getText());
+                assertTrue(workerMenu.lookup("#btnPurchases").isVisible());
+                ((Button) workerMenu.lookup("#btnPurchases")).fire();
+                assertActiveNavigation(workerMenu, "btnPurchases");
+                assertNotNull(scrollContent(workerMenu.getCenter()).lookup("#ordersTable"));
+                assertTrue(scrollContent(workerMenu.getCenter()).lookup("#supplierEditor").isDisabled());
+                assertTrue(scrollContent(workerMenu.getCenter()).lookup("#orderEditor").isDisabled());
                 ((Button) workerMenu.lookup("#btnCustomers")).fire();
                 assertActiveNavigation(workerMenu, "btnCustomers");
                 ((Button) workerMenu.lookup("#btnCredit")).fire();
@@ -869,9 +882,13 @@ public class AuthenticationServiceTest {
 
     private static void assertActiveNavigation(BorderPane menu, String selectedId) {
         PseudoClass active = PseudoClass.getPseudoClass("active");
-        for (String id : List.of("btnDashboard", "btnCustomers", "btnSellers", "btnCredit")) {
+        for (String id : List.of("btnDashboard", "btnCustomers", "btnSellers", "btnCredit", "btnInventory", "btnPurchases", "btnSales", "btnCash", "btnAdminUsers")) {
             assertEquals(id.equals(selectedId), menu.lookup("#" + id).getPseudoClassStates().contains(active), id);
         }
+    }
+
+    private static Node scrollContent(Node view) {
+        return view instanceof ScrollPane scrollPane ? scrollPane.getContent() : view;
     }
 
     private static void onFxThread(java.util.concurrent.Callable<Void> check) throws Exception {
