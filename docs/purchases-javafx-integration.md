@@ -108,30 +108,66 @@ El job confirmó `completed=true` y `destroyed=true`. Evidencia:
 totales Surefire. El run de aplicación anterior y su corrección se conservan en
 la bitácora de IA.
 
-## Lista breve de revisión manual en Windows
+## Recorrido JavaFX observado en Windows
 
-Las pruebas automatizadas cargan FXML y accionan controladores, pero no equivalen
-a una inspección visual manual. En Windows, después de elegir el diseño final,
-comprobar:
+El 23/11/2026 se abrió la aplicación con Microsoft JDK 17.0.18 y Maven 3.10.0,
+configurada explícitamente con `LAEXCLUSIVA_PERSISTENCE_MODE=memory`. No se
+configuró URL JDBC ni se conectó a una base local. Se usaron cuentas y datos
+ficticios exclusivamente en memoria; al cerrar la aplicación desaparecieron.
+No se registró la contraseña temporal de prueba.
 
-1. Iniciar sesión como administrador; abrir **Compras y Recepción** desde el
-   menú y comprobar que carga el catálogo de proveedores y pedidos.
-2. Crear un proveedor y un pedido de varias canastas; verificar que emitir el
-   pedido no aumenta existencias.
-3. Recibir primero una parte y luego el saldo restante; confirmar el estado
-   parcial/completo, el stock y los movimientos mostrados.
-4. Reintentar una recepción confirmada con la misma clave; confirmar que no
-   duplica stock. Probar una carga diferente con esa clave y verificar el
-   rechazo.
-5. Repetir consultas con un trabajador y confirmar lectura sin controles de
-   escritura; intentar la operación de escritura y comprobar su rechazo.
-6. Cerrar sesión, volver a iniciar sesión y verificar los pedidos/recepciones
-   persistidos en modo PostgreSQL.
+- El administrador temporal `qa.admin` inició sesión, abrió **Compras y
+  Recepción** y registró el proveedor `QA Temporary Supplier 20261123`, con
+  identificador ficticio `QA-20261123-001`.
+- Emitió el pedido 1 de una canasta de `COSTENITA_175` (38 unidades). La emisión
+  no alteró el stock. Dos recepciones de 19 unidades mostraron sucesivamente
+  `PARTIAL` y `COMPLETED`; el historial atribuyó ambas a `qa.admin` y mostró
+  claves diferentes. Inventario terminó en 38 unidades y registró dos entradas
+  de 19.
+- Se creó el cliente ficticio `QA-C-20261123` y el vendedor temporal “Vendedor
+  QA temporal”; se creó `qa.worker` y se le asignó ese vendedor. El trabajador
+  pudo iniciar sesión y consultar Compras, pero los controles para registrar
+  proveedores, emitir pedidos y confirmar recepciones aparecieron deshabilitados.
+  El menú del trabajador no mostró administración de usuarios, vendedores ni
+  caja.
+- Desde la sesión del trabajador se registró una venta de una unidad de
+  `COSTENITA_175`: total $ 2.500 COP, pago inicial $ 1.000 COP y saldo $ 1.500
+  COP. El inventario pasó a 37 y apareció una salida de una unidad. La cartera
+  mostró el saldo agregado de $ 1.500 COP, pero la tabla “Ventas pendientes del
+  cliente” no presentó una fila seleccionable incluso tras actualizarla y
+  maximizar la ventana. Por ello no se pudo verificar el abono desde esa
+  pantalla JavaFX; no se alteró el controlador ni el FXML de cartera, que queda
+  fuera del alcance de esta integración y coincide con la modernización visual
+  independiente de Daniel.
+- El cierre de sesión del administrador volvió al login; luego el trabajador
+  inició sesión y también volvió al login al cerrar sesión. Se cerró la
+  aplicación y se descartaron los datos de prueba en memoria.
+
+Este recorrido verificó visualmente login, navegación, administración de
+usuarios, alta de cliente/vendedor/proveedor, pedido, recepción parcial y
+completa, movimientos/stock y registro de venta en modo memoria. No valida
+persistencia ni transacciones PostgreSQL desde la interfaz.
+
+## Comprobaciones manuales restantes en Windows
+
+1. Repetir pedidos y recepciones con la configuración de la aplicación
+   apuntando únicamente al laboratorio `la_exclusiva_test`, después de que
+   Daniel integre el diseño visual.
+2. Verificar desde JavaFX la fila pendiente de venta, selección y abono; la
+   tabla de cartera no mostró una fila durante el recorrido anterior.
+3. Revisar caja, deuda general, datos inválidos, sobreventa y abono superior al
+   saldo con una cuenta administradora y fixtures controlados.
+4. Reiniciar la aplicación conectada al laboratorio y comprobar la persistencia
+   de cuentas, clientes, vendedores, proveedores, pedidos, recepciones,
+   movimientos, ventas y pagos.
 
 ## Límites y preparación de entrega
 
 El módulo de compras no registra pagos a proveedores ni movimientos de caja:
 una recepción representa mercancía recibida, no un egreso de efectivo. La
-modernización visual de Daniel y el ícono oficial siguen pendientes. Por ello
-no se prepara todavía un instalador de Windows; primero se requiere la revisión
-visual manual y la aprobación del diseño y el ícono.
+tabla de ventas pendientes en la pantalla de cartera no mostró filas durante
+la prueba manual, aunque el resumen sí mostró el saldo. La validación visual
+completa con PostgreSQL queda pendiente. La modernización visual de Daniel y el
+ícono oficial también siguen pendientes. Por ello no se prepara todavía un
+instalador de Windows; primero se requiere la revisión visual restante y la
+aprobación del diseño y el ícono.
