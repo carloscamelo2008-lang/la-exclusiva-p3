@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class IdentityServicesTest {
+    private static final String ADMIN_PASSWORD = "Identity-Bootstrap-Only-2026";
+
     @Test
     void memoryCompositionStartsEmptyWithoutProvisioningAccounts() {
         IdentityServices services = IdentityServices.inMemory();
@@ -51,5 +53,48 @@ class IdentityServicesTest {
         assertTrue(session.isActive());
         assertEquals(account.getId(), session.getUserAccount().getId());
         assertEquals("SEL-COMPOSITION", session.getUserAccount().getSellerId());
+    }
+
+    @Test
+    void initialAdministratorBootstrapIsAtomicAndNeverResetsAnExistingAccount() {
+        IdentityServices services = IdentityServices.inMemory();
+        assertTrue(services.bootstrapInitialAdministrator("admin", ADMIN_PASSWORD));
+        var original = services.users().findByUsername("admin").orElseThrow();
+
+        assertFalse(services.bootstrapInitialAdministrator("other", "weak"));
+        assertEquals(1, services.users().findAll().size());
+        assertEquals(original.getPasswordHash(), services.users().findByUsername("admin").orElseThrow().getPasswordHash());
+        assertTrue(services.authentication().createSession("admin", ADMIN_PASSWORD).isPresent());
+    }
+
+    @Test
+    void administrationListsOnlySafeSummariesAndRejectsWorkers() {
+        IdentityServices services = IdentityServices.inMemory();
+        services.bootstrapInitialAdministrator("admin", ADMIN_PASSWORD);
+        services.users().save(new UserAccount(null, "worker", PasswordHasher.hash("Worker-Identity-Only-2026"),
+                UserRole.WORKER, null));
+        var admin = services.authentication().createSession("admin", ADMIN_PASSWORD).orElseThrow();
+        var worker = services.authentication().createSession("worker", "Worker-Identity-Only-2026").orElseThrow();
+
+        var summaries = services.userManagement().listUsers(admin);
+        assertEquals(2, summaries.size());
+        assertEquals("admin", summaries.get(0).username());
+        assertFalse(java.util.Arrays.stream(summaries.get(0).getClass().getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName).anyMatch(name -> name.contains("password") || name.contains("hash")));
+        assertThrows(SecurityException.class, () -> services.userManagement().listUsers(worker));
+        assertThrows(SecurityException.class, () -> services.userManagement().createUser(worker,
+                new com.laexclusiva.service.UserManagementService.CreateUserRequest(
+                        "blocked", "Valid-Worker-Blocked-2026", UserRole.ADMINISTRATOR, true)));
+    }
+
+    @Test
+    void demoBootstrapDoesNotDuplicateOrResetExistingAccounts() {
+        IdentityServices services = IdentityServices.inMemory();
+        assertTrue(services.bootstrapDemoAccounts("Admin-Demo-Only-2026", "Worker-Demo-Only-2026"));
+        var adminHash = services.users().findByUsername("admin").orElseThrow().getPasswordHash();
+
+        assertFalse(services.bootstrapDemoAccounts("Another-Admin-Only-2026", "Another-Worker-Only-2026"));
+        assertEquals(2, services.users().findAll().size());
+        assertEquals(adminHash, services.users().findByUsername("admin").orElseThrow().getPasswordHash());
     }
 }

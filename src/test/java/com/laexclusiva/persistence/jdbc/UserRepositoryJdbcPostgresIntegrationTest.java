@@ -6,6 +6,9 @@ import com.laexclusiva.model.UserRole;
 import com.laexclusiva.repository.jdbc.SellerRepositoryJdbc;
 import com.laexclusiva.repository.jdbc.UserRepositoryJdbc;
 import com.laexclusiva.security.PasswordHasher;
+import com.laexclusiva.service.AuthenticationService;
+import com.laexclusiva.service.AuthorizationService;
+import com.laexclusiva.model.Permission;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -72,6 +75,33 @@ class UserRepositoryJdbcPostgresIntegrationTest {
             restarted.delete(original.getId().toString());
             assertTrue(fixture.users.findById(original.getId().toString()).isEmpty());
             assertDoesNotThrow(() -> restarted.delete(original.getId().toString()));
+        }
+    }
+
+    @Test
+    void authenticationAndAuthorizationRevalidateThePersistedPostgresAccount() {
+        try (Fixture fixture = fixture()) {
+            UserAccount original = fixture.account("authenticated");
+            original.setRole(UserRole.ADMINISTRATOR);
+            fixture.persist(original);
+
+            AuthenticationService authentication = new AuthenticationService(fixture.users);
+            AuthorizationService authorization = new AuthorizationService(authentication.sessions());
+            var issued = authentication.createSession(original.getUsername(), "Temporary-Integration-Only").orElseThrow();
+            assertTrue(authorization.hasPermission(issued, Permission.MANAGE_USERS));
+            assertTrue(authentication.createSession(original.getUsername(), "incorrecta").isEmpty());
+
+            UserAccount changed = fixture.users.findById(original.getId().toString()).orElseThrow();
+            changed.setRole(UserRole.WORKER);
+            fixture.users.update(changed);
+            assertFalse(authorization.hasPermission(issued, Permission.MANAGE_USERS),
+                    "El cambio de rol en PostgreSQL debe invalidar la sesión anterior.");
+
+            var worker = authentication.createSession(original.getUsername(), "Temporary-Integration-Only").orElseThrow();
+            assertFalse(authorization.hasPermission(worker, Permission.MANAGE_USERS));
+            assertTrue(authorization.hasPermission(worker, Permission.REGISTER_SALE));
+            authentication.revoke(worker);
+            assertFalse(authorization.hasPermission(worker, Permission.REGISTER_SALE));
         }
     }
 

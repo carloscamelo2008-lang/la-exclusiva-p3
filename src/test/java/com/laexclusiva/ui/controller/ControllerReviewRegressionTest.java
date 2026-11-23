@@ -356,12 +356,12 @@ class ControllerReviewRegressionTest {
             button(inventoryLoader, "Registrar entrada").fire();
 
             FXMLLoader portfolioLoader = load("portfolio_view.fxml");
-            ((PortfolioController) portfolioLoader.getController()).configure(customers, sales, workerSession);
+            ((PortfolioController) portfolioLoader.getController()).configure(customers, sales, activeWorker);
             button(portfolioLoader, "Registrar abono").fire();
 
             FXMLLoader salesLoader = load("sales_view.fxml");
             ((SalesController) salesLoader.getController()).configure(products, inventory, customers,
-                    sellers, sales, workerSession);
+                    sellers, sales, activeWorker);
             button(salesLoader, "Registrar venta").fire();
 
             assertAll(

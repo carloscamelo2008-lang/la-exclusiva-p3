@@ -188,6 +188,8 @@ public class AuthenticationServiceTest {
         assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
                 "/com/laexclusiva/ui/fxml/inventory_view.fxml")).load());
         assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
+                "/com/laexclusiva/ui/fxml/user_management_view.fxml")).load());
+        assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
                 "/com/laexclusiva/ui/fxml/sales_view.fxml")).load());
         assertDoesNotThrow(() -> new FXMLLoader(getClass().getResource(
                 "/com/laexclusiva/ui/fxml/portfolio_view.fxml")).load());
@@ -331,7 +333,7 @@ public class AuthenticationServiceTest {
                     () -> assertEquals(expectedVisibility, sellers.isManaged(), "Espacio de Vendedores"),
                     () -> assertEquals(expectedVisibility, adminUsers.isVisible(), "Visibilidad de Gestión de Usuarios"),
                     () -> assertEquals(expectedVisibility, adminUsers.isManaged(), "Espacio de Gestión de Usuarios"),
-                    () -> assertTrue(adminUsers.isDisabled(), "Gestión de Usuarios sigue pendiente")
+                    () -> assertFalse(adminUsers.isDisabled(), "La gestión se protege en la operación, no se deja deshabilitada")
             );
             return null;
         });
@@ -689,13 +691,13 @@ public class AuthenticationServiceTest {
             assertFalse(authorization.hasPermission(session, com.laexclusiva.model.Permission.VIEW_CUSTOMER));
             ((Button) menu.lookup("#btnCustomers")).fire();
             assertEquals("No tiene permiso para consultar clientes.", ((Label) menu.getBottom()).getText());
-            assertThrows(IllegalArgumentException.class, () -> controller.initSession(session));
+            assertThrows(SecurityException.class, () -> controller.initSession(session));
             return null;
         });
     }
 
     @Test
-    void testLogoutFailurePreservesActiveSession() throws Exception {
+    void testLogoutFailureStillRevokesTheSession() throws Exception {
         onFxThread(() -> {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
@@ -706,10 +708,47 @@ public class AuthenticationServiceTest {
             controller.initSession(session);
             controller.setOnLogout(() -> { throw new IllegalStateException("Carga no disponible."); });
             ((Button) menu.lookup("#btnLogout")).fire();
-            assertTrue(session.isActive());
+            assertFalse(session.isActive());
             assertActiveNavigation(menu, "btnDashboard");
             assertEquals("No se pudo volver al inicio de sesión. Intente de nuevo.",
                     ((Label) menu.getBottom()).getText());
+            return null;
+        });
+    }
+
+    @Test
+    void applicationOperationsRejectAFormerAdministratorAndLogoutRevokesTheIssuedSession() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE,
+                    java.util.Map.of());
+            String password = "Current-Identity-Admin-Test-2026";
+            UserAccount account = new UserAccount(null, "admin", com.laexclusiva.security.PasswordHasher.hash(password),
+                    UserRole.ADMINISTRATOR, null);
+            services.identity().users().save(account);
+            UserSession session = services.identity().authentication().createSession("admin", password).orElseThrow();
+
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
+            BorderPane menu = loader.load();
+            MainController controller = loader.getController();
+            controller.setApplicationServices(services);
+            controller.setOnLogout(() -> { });
+            controller.initSession(session);
+
+            UserAccount persisted = services.identity().users().findById(account.getId().toString()).orElseThrow();
+            persisted.setRole(UserRole.WORKER);
+            services.identity().users().update(persisted);
+            assertEquals(UserRole.ADMINISTRATOR, session.getUserAccount().getRole(),
+                    "El snapshot antiguo aún afirma administrador, pero no debe autorizar la acción.");
+            ((Button) menu.lookup("#btnAdminUsers")).fire();
+            assertEquals("No tiene permiso para administrar usuarios.",
+                    ((Label) menu.getBottom()).getText());
+            assertNull(menu.lookup("#usersTable"), "No debe cargarse la pantalla administrativa con el rol anterior.");
+
+            ((Button) menu.lookup("#btnLogout")).fire();
+            assertFalse(session.isValid());
+            assertThrows(SecurityException.class,
+                    () -> services.identity().sessions().validate(session));
             return null;
         });
     }
@@ -733,7 +772,9 @@ public class AuthenticationServiceTest {
                 enterLogin(stage, "admin", "Admin-Test-2026-Valid-Only");
                 BorderPane adminMenu = (BorderPane) stage.getScene().getRoot();
                 assertTrue(adminMenu.lookup("#btnSellers").isVisible());
-                assertTrue(adminMenu.lookup("#btnAdminUsers").isDisabled());
+                assertFalse(adminMenu.lookup("#btnAdminUsers").isDisabled());
+                ((Button) adminMenu.lookup("#btnAdminUsers")).fire();
+                assertNotNull(adminMenu.lookup("#usersTable"), "La pantalla administrativa debe cargar la tabla de usuarios");
                 ((Button) adminMenu.lookup("#btnCustomers")).fire();
                 stage.setMaximized(true);
                 ((Button) adminMenu.lookup("#btnLogout")).fire();
