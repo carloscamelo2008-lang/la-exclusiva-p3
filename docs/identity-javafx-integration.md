@@ -174,11 +174,15 @@ con JavaFX/FXML. Las 59 omisiones corresponden a integraciones PostgreSQL
 opcionales sin configuración local; no se cuentan como aprobadas. No se ejecutó
 ninguna migración ni se accedió a una base local.
 
-El workflow PostgreSQL efímero debe validar el nuevo HEAD publicado porque esta
-revisión toca la administración autenticada. Sus resultados se registran cuando
-finalice; no se atribuyen a esta ejecución local. Las advertencias de JavaFX sobre
-el módulo no nombrado/modelo efectivo siguen sin bloquear Maven. Una ejecución
-completa preliminar durante el desarrollo falló por cambios temporales a los
-contratos de excepciones del servicio de usuarios; se restauraron dichos
-contratos, se mantuvo el filtrado seguro de mensajes y la verificación final
-posterior pasó completamente.
+Para el HEAD de implementación `bc399920b6c87c2b2a9c096dd5a27446998c2edd`, el
+workflow PostgreSQL efímero `identity-postgres` terminó `success` (run
+[45133861022](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/actions/runs/45133861022))
+y generó el artefacto `identity-postgres-45133861022-1`. Ambos checks `Compile and
+verify` también terminaron `success` (runs 45133861065 y 45133855050). El conteo
+local de 59 omisiones sigue correspondiendo únicamente a integraciones no
+configuradas localmente. Las advertencias de JavaFX sobre el módulo no
+nombrado/modelo efectivo siguen sin bloquear Maven. Una ejecución completa
+preliminar durante el desarrollo falló por cambios temporales a los contratos de
+excepciones del servicio de usuarios; se restauraron dichos contratos, se mantuvo
+el filtrado seguro de mensajes y la verificación final posterior pasó
+completamente.
