@@ -268,6 +268,94 @@ class VisualRefreshTest {
     }
 
     @Test
+    void compactDashboardKeepsLogoutAndNavigationInsideSidebar() throws Exception {
+        onFx(() -> {
+            ApplicationServices services = ApplicationServices.create("memory", Map.of());
+            FXMLLoader loader = loader("main_menu_view.fxml");
+            BorderPane root = loader.load();
+            MainController controller = loader.getController();
+            controller.setApplicationServices(services); controller.initSession(issue(services, UserRole.ADMINISTRATOR));
+            new Scene(root, 800, 600); root.applyCss(); root.layout();
+            snapshot(root, "dashboard-800x600");
+            for (String id : new String[]{"btnDashboard", "btnCustomers", "btnCredit", "btnInventory", "btnAdminUsers", "btnLogout"}) {
+                var bounds = button(loader, id).localToScene(button(loader, id).getBoundsInLocal());
+                var sidebar = root.getLeft().localToScene(root.getLeft().getBoundsInLocal());
+                assertTrue(bounds.getMaxY() <= sidebar.getMaxY() + .5, id + " queda fuera del lateral");
+            }
+            button(loader, "btnInventory").fire(); root.applyCss(); root.layout();
+            var table = (javafx.scene.control.TableView<?>) root.getCenter().lookup("#inventoryTable");
+            assertNotNull(table); assertFalse(table.getItems().isEmpty());
+            javafx.scene.control.ScrollBar horizontal = table.lookupAll(".scroll-bar").stream()
+                    .filter(node -> node instanceof javafx.scene.control.ScrollBar bar && bar.getOrientation() == javafx.geometry.Orientation.HORIZONTAL)
+                    .map(node -> (javafx.scene.control.ScrollBar) node).findFirst().orElseThrow();
+            assertTrue(horizontal.isVisible()); assertTrue(horizontal.getMax() > horizontal.getMin());
+            horizontal.setValue(horizontal.getMax()); root.layout();
+            assertEquals(horizontal.getMax(), horizontal.getValue());
+            snapshot(root, "inventory-800x600-last-columns");
+            return null;
+        });
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void compactInventoryReservesSpaceForEveryContainerType() throws Exception {
+        onFx(() -> {
+            FXMLLoader loader = loader("inventory_view.fxml");
+            Parent root = loader.load();
+            new Scene(root, 560, 600); root.applyCss(); root.layout();
+            var types = (javafx.scene.control.ComboBox<com.laexclusiva.model.ContainerType>) loader.getNamespace().get("containerTypeCombo");
+            var cell = (javafx.scene.control.ListCell<?>) types.lookup(".list-cell");
+            assertNotNull(cell);
+            for (var type : com.laexclusiva.model.ContainerType.values()) {
+                var text = new javafx.scene.text.Text(types.getConverter().toString(type));
+                text.setFont(cell.getFont());
+                assertTrue(text.getLayoutBounds().getWidth() + 4 <= types.getWidth() - 48,
+                        "Espacio para texto, márgenes y flecha: " + type);
+            }
+            snapshot(root, "inventory-560x600");
+            return null;
+        });
+    }
+
+    @Test
+    void compactFinancialFormsShowCompletePromptsAndKeepActionsInsideViewport() throws Exception {
+        onFx(() -> {
+            for (String name : new String[]{"inventory", "portfolio"}) {
+                FXMLLoader loader = loader(name + "_view.fxml");
+                Parent root = loader.load();
+                new Scene(root, 560, 600); root.applyCss(); root.layout();
+                snapshot(root, name + "-560x600");
+                var checks = new java.util.ArrayList<org.junit.jupiter.api.function.Executable>();
+                for (var entry : loader.getNamespace().entrySet()) {
+                    if (entry.getValue() instanceof TextField field && field.getPromptText() != null && !field.getPromptText().isEmpty()) {
+                        javafx.scene.text.Text prompt = new javafx.scene.text.Text(field.getPromptText());
+                        prompt.setFont(field.getFont());
+                        double available = field.getWidth() - field.getInsets().getLeft() - field.getInsets().getRight();
+                        checks.add(() -> assertTrue(prompt.getLayoutBounds().getWidth() + 4 <= available,
+                                name + ": ayuda recortada en " + entry.getKey()));
+                    }
+                    if (entry.getValue() instanceof Button button) {
+                        checks.add(() -> assertTrue(button.localToScene(button.getBoundsInLocal()).getMaxX() <= root.getLayoutBounds().getWidth() + .5,
+                                name + ": acción fuera del viewport " + entry.getKey()));
+                    }
+                }
+                assertAll(checks);
+                if (name.equals("portfolio")) {
+                    ScrollPane scroll = (ScrollPane) root;
+                    TextField description = (TextField) loader.getNamespace().get("generalDebtDescriptionField");
+                    double top = scroll.getContent().sceneToLocal(description.localToScene(0, 0)).getY();
+                    double extent = scroll.getContent().getLayoutBounds().getHeight() - scroll.getViewportBounds().getHeight();
+                    scroll.setVvalue(Math.max(0, Math.min(1, (top - 120) / extent))); root.layout();
+                    var bounds = description.localToScene(description.getBoundsInLocal());
+                    assertTrue(bounds.getMinY() >= 0 && bounds.getMaxY() <= 600);
+                    snapshot(root, "portfolio-form-560x600");
+                }
+            }
+            return null;
+        });
+    }
+
+    @Test
     void approvedMascotLoadsUnchangedWithRealTransparency() throws Exception {
         try (var input = getClass().getResourceAsStream("/com/laexclusiva/ui/images/mascot/mascot-blue-transparent.png")) {
             assertNotNull(input);

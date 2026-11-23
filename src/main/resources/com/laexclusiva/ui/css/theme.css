@@ -84,3 +84,7 @@
 .notice { -fx-text-fill: #834b0a; -fx-background-color: #fff3d7; -fx-padding: 12; -fx-background-radius: 9; }
 
 .sidebar .label { -fx-text-fill: white; }
+
+
+/* Evita recortar la ayuda del campo sin tocar el FXML que modifica el PR #26. */
+.workspace #generalDebtDescriptionField { -fx-pref-width: 230; }

@@ -16,7 +16,7 @@
 <VBox spacing="10.0" minHeight="-Infinity" styleClass="workspace">
     <padding><Insets top="14.0" right="16.0" bottom="14.0" left="16.0" /></padding>
     <Label text="Catálogo e inventario" style="-fx-font-size: 21px; -fx-font-weight: bold;" />
-    <TableView minHeight="160" fx:id="inventoryTable" prefHeight="185.0">
+    <TableView minHeight="160" prefHeight="200" fx:id="inventoryTable">
         <columns>
             <TableColumn fx:id="productIdColumn" text="ID" prefWidth="170.0" />
             <TableColumn fx:id="productNameColumn" text="Producto" prefWidth="200.0" />
@@ -30,12 +30,12 @@
         <FlowPane hgap="6.0" vgap="8">
             <TextField fx:id="productIdField" promptText="ID del producto" prefWidth="125.0" />
             <TextField fx:id="productNameField" promptText="Nombre" prefWidth="190.0" />
-            <TextField fx:id="volumeField" promptText="Volumen ml" prefWidth="90.0" />
-            <TextField fx:id="unitsPerBasketField" promptText="Unidades/canasta" prefWidth="120.0" />
-            <ComboBox fx:id="containerTypeCombo" promptText="Tipo de envase" prefWidth="175.0" />
+            <TextField fx:id="volumeField" promptText="Volumen ml" prefWidth="115.0" />
+            <TextField fx:id="unitsPerBasketField" promptText="Unidades/canasta" prefWidth="150.0" />
+            <ComboBox fx:id="containerTypeCombo" promptText="Tipo de envase" prefWidth="250.0" />
         </FlowPane>
         <FlowPane hgap="6.0" vgap="8">
-            <TextField fx:id="containerGroupField" promptText="Grupo de envase retornable" prefWidth="185.0" />
+            <TextField fx:id="containerGroupField" promptText="Grupo de envase retornable" prefWidth="220.0" />
             <TextField fx:id="unitPriceField" promptText="Precio unidad" prefWidth="120.0" />
             <TextField fx:id="halfBasketPriceField" promptText="Precio media canasta" prefWidth="150.0" />
             <TextField fx:id="fullBasketPriceField" promptText="Precio canasta" prefWidth="125.0" />
@@ -45,14 +45,14 @@
     <HBox fx:id="stockEntryPane" spacing="8.0"><FlowPane hgap="8" vgap="8" minWidth="0" prefWidth="0" HBox.hgrow="ALWAYS">
         <ComboBox fx:id="productCombo" promptText="Producto" prefWidth="220.0" />
         <TextField fx:id="fullBasketsField" text="0" promptText="Canastas" prefWidth="95.0" />
-        <TextField fx:id="looseUnitsField" text="0" promptText="Unidades sueltas" prefWidth="120.0" />
+        <TextField fx:id="looseUnitsField" text="0" promptText="Unidades sueltas" prefWidth="150.0" />
         <TextField fx:id="reasonField" promptText="Motivo de entrada" prefWidth="220.0" />
         <Button fx:id="registerStockButton" text="Registrar entrada" onAction="#handleAddStock" />
     </FlowPane></HBox>
     <Label fx:id="messageLabel" wrapText="true" />
     <Button fx:id="refreshInventoryButton" text="Actualizar inventario" onAction="#handleRefreshInventory" />
     <Label text="Movimientos de inventario" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
-    <TableView minHeight="160" fx:id="movementTable" VBox.vgrow="ALWAYS">
+    <TableView minHeight="160" prefHeight="200" fx:id="movementTable" VBox.vgrow="ALWAYS">
         <columns>
             <TableColumn fx:id="movementProductColumn" text="Producto" prefWidth="180.0" />
             <TableColumn fx:id="movementTypeColumn" text="Tipo" prefWidth="90.0" />

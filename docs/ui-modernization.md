@@ -36,9 +36,9 @@ Temurin 17.0.21+9, Maven 3.9.12, JavaFX 17.0.2. Comando local, con variables de 
 mvn -o -Dlaexclusiva.test.postgres.users=false -Dlaexclusiva.test.postgres.userSecurityVersion=false -Dlaexclusiva.test.postgres.accountInstance=false clean verify
 ```
 
-**830 casos: 771 aprobados, 59 integraciones PostgreSQL omitidas, 0 fallos y 0 errores; BUILD SUCCESS.** `git diff --check` también se revisa antes de publicar.
+**833 casos: 774 aprobados, 59 integraciones PostgreSQL omitidas, 0 fallos y 0 errores; BUILD SUCCESS.** `git diff --check` también se revisa antes de publicar.
 
-Once pruebas de VisualRefreshTest: carga de ocho vistas, navegación/admin real, distribución de Clientes, permisos por rol, rechazo de sesión sintética/revocada, logout y recuperación, paridad entre dashboard principal/alternativo, mensajes de login y contraste, desplazamiento de Cartera/Inventario, integridad y alfa del PNG aprobado, carga desde classpath, proporción y límites del banner a 1280/800/700 px sin recorte ni solapamiento del texto. Son pruebas automatizadas sobre JavaFX real, no una revisión manual ni validación de PostgreSQL.
+Catorce pruebas de VisualRefreshTest: carga de ocho vistas, navegación/admin real, distribución de Clientes, permisos por rol, rechazo de sesión sintética/revocada, logout y recuperación, paridad entre dashboard principal/alternativo, mensajes de login y contraste, desplazamiento de Cartera/Inventario, integridad y alfa del PNG aprobado, carga desde classpath, proporción y límites del banner a 1280/800/700 px sin recorte ni solapamiento del texto, navegación completa a 800×600 y métricas de formularios/selector a 560×600. Son pruebas automatizadas sobre JavaFX real, no una revisión manual ni validación de PostgreSQL.
 
 En la revisión anterior (`eceb23f`), la primera suite completa detectó diez errores de montaje visual en pruebas antiguas que hacían `lookup()` antes de aplicar CSS a ScrollPane; otra repetición aisló tres casos de Cartera sin Scene. Se añadió Scene/CSS/layout a esos montajes, **sin quitar ni debilitar ninguna aserción de contraseñas, autorización o saldos**. No se modificó código de autenticación ni servicios comerciales.
 
@@ -49,3 +49,50 @@ Capturas reales mediante JavaFX `Node.snapshot`, con datos ficticios únicamente
 - Usuario/Carlos: logo original independiente y aprobación de sus variantes PNG/ICO; revisión visual de la mascota ya integrada y del conjunto final.
 - Carlos: integración Stage/launcher, fuentes de indicadores y recorrido manual coordinado de login, administración y logout.
 - El PR permanece en Draft; no se hace merge a develop. No se ejecutan SQL, migraciones ni PostgreSQL en esta actividad.
+## Revisión de ventanas compactas y coordinación del PR #26
+
+El 23/11/2026 se verificó que el PR #26 seguía abierto y no fusionado. Se
+inspeccionó su lista de archivos y el patch de `portfolio_view.fxml`: Carlos
+cambia su contenedor y la altura de la tabla principal. No se integra esa rama,
+no se crea un módulo de Compras provisional y no se modifica aquí ninguno de
+sus archivos. Los ensayos locales sobre el FXML de Cartera se retiraron; su
+contenido se conserva igual al de `8be2051`.
+
+Mejoras comprobables de esta continuación:
+
+- Inventario: se amplían volumen, unidades por canasta, grupo de envase y unidades
+  sueltas porque la medición con la fuente real detectó cuatro ayudas recortadas.
+  El selector de envase pasa de 175 a 250 px para que quepan los tres valores
+  del conversor actual, que se conserva sin traducir ni cambiar su lógica.
+- Ambas tablas de Inventario reciben altura preferida de 200 px, con mínimo de
+  160 y desplazamiento nativo; la tabla de movimientos deja de reservar su gran
+  altura por defecto. No se ocultan columnas ni se filtran datos.
+- Cartera: una regla CSS específica da 230 px al campo de descripción. No se
+  cambia su FXML ni se sobreescribe la altura de tabla que prepara Carlos.
+- Dashboard: se comprueba a 800×600 que toda la navegación y logout permanecen
+  dentro del lateral. Al pasar esa comprobación, no se cambia su marcado,
+  disposición aprobada ni la mascota. Una prueba navega al Inventario real en
+  memoria y desplaza horizontalmente su tabla para acceder a las últimas columnas.
+
+Tres nuevas regresiones visuales verifican límites de acciones, ayudas con la
+fuente real a 560×600, espacio para todos los tipos de envase y navegación a
+800×600. Se mantienen las comprobaciones de roles, administración, logout y
+recuperación. Las tablas conservan su comportamiento nativo de redimensionar
+columnas y desplazar contenido: no se afirma que todas las columnas o cualquier
+texto arbitrariamente largo quepan simultáneamente en una ventana estrecha.
+Se descartó un ensayo de ajuste multilínea porque la prueba mostró recorte de
+filas; no se publican ese CSS ni renderizadores/controladores nuevos.
+
+Capturas reales de esta revisión: [dashboard 800×600](ui-review/dashboard-800x600.png),
+[Inventario 560×600](ui-review/inventory-560x600.png),
+[Cartera 560×600](ui-review/portfolio-560x600.png), [formulario de Cartera](ui-review/portfolio-form-560x600.png) e
+[Inventario con las últimas columnas visibles](ui-review/inventory-800x600-last-columns.png).
+Los datos de las capturas de navegación proceden del catálogo de prueba memory;
+no se conectó PostgreSQL ni se usaron datos externos.
+
+Tras la fusión del PR #26 habrá que coordinar el solapamiento previo de ambos PR
+en `main_menu_view.fxml` y `portfolio_view.fxml`, conservar el acceso funcional a
+Compras y repetir el recorrido compacto de Cartera, compras/recepciones, permisos
+y logout. La observación funcional sobre selección de ventas/abonos descrita en
+el PR #26 corresponde a su integración y no se presenta como resuelta por estos
+ajustes visuales. App.java, launcher, iconos y servicios siguen fuera del alcance.
