@@ -41,7 +41,9 @@ public class LoginController {
     }
 
     public void setApplicationServices(ApplicationServices applicationServices) {
+        if (applicationServices == null) throw new IllegalArgumentException("La composición de servicios es obligatoria.");
         this.applicationServices = applicationServices;
+        this.authenticationService = applicationServices.identity().authentication();
     }
 
     public void setOnLogout(Runnable onLogout) {
@@ -58,11 +60,13 @@ public class LoginController {
             return;
         }
 
+        UserSession issuedSession = null;
         try {
             Optional<UserSession> sessionOpt = authenticationService.createSession(username.trim(), password);
             
             if (sessionOpt.isPresent()) {
                 UserSession session = sessionOpt.get();
+                issuedSession = session;
                 
                 // Cargar la vista del menú principal
                 FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
@@ -92,9 +96,14 @@ public class LoginController {
                 errorLabel.setStyle("-fx-text-fill: red;");
                 errorLabel.setText("Credenciales inválidas o cuenta inactiva.");
             }
-        } catch (IllegalArgumentException | IOException e) {
+        } catch (RuntimeException | IOException failure) {
+            if (issuedSession != null && authenticationService != null) {
+                authenticationService.revoke(issuedSession);
+            }
             errorLabel.setStyle("-fx-text-fill: red;");
-            errorLabel.setText("Error al iniciar sesión o cargar la vista.");
+            errorLabel.setText("No fue posible iniciar sesión. Verifique sus credenciales o consulte al administrador.");
+        } finally {
+            if (passwordField != null) passwordField.clear();
         }
     }
 }

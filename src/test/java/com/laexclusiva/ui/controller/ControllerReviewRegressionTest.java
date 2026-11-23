@@ -22,6 +22,7 @@ import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
 import com.laexclusiva.service.SalesWorkflow;
 import com.laexclusiva.service.SellerService;
+import com.laexclusiva.testutil.IdentityTestFixture;
 import com.laexclusiva.ui.ApplicationServices;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -46,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Regresiones de permisos y de confirmación visual en los controladores JavaFX. */
 @SuppressWarnings("unchecked")
 class ControllerReviewRegressionTest {
+    private static final IdentityTestFixture IDENTITY = new IdentityTestFixture();
 
     @BeforeAll
     static void startJavaFx() {
@@ -336,16 +338,14 @@ class ControllerReviewRegressionTest {
             CountingProductService products = new CountingProductService();
             CountingInventoryService inventory = new CountingInventoryService(products);
             CountingWorkflow sales = new CountingWorkflow();
-            UserSession workerSession = new UserSession(
-                    new UserAccount(99L, "worker", "unused", UserRole.WORKER, null));
+            UserSession workerSession = IDENTITY.issue(UserRole.WORKER).session();
 
             FXMLLoader customerLoader = load("customers_view.fxml");
             ((CustomerController) customerLoader.getController()).configure(customers, workerSession);
             workerSession.invalidate();
             button(customerLoader, "Registrar cliente").fire();
 
-            UserSession activeWorker = new UserSession(
-                    new UserAccount(100L, "worker-2", "unused", UserRole.WORKER, null));
+            UserSession activeWorker = IDENTITY.issue(UserRole.WORKER).session();
             FXMLLoader sellerLoader = load("sellers_view.fxml");
             ((SellerController) sellerLoader.getController()).configure(sellers, activeWorker);
             button(sellerLoader, "Registrar vendedor").fire();
@@ -356,12 +356,12 @@ class ControllerReviewRegressionTest {
             button(inventoryLoader, "Registrar entrada").fire();
 
             FXMLLoader portfolioLoader = load("portfolio_view.fxml");
-            ((PortfolioController) portfolioLoader.getController()).configure(customers, sales, workerSession);
+            ((PortfolioController) portfolioLoader.getController()).configure(customers, sales, activeWorker);
             button(portfolioLoader, "Registrar abono").fire();
 
             FXMLLoader salesLoader = load("sales_view.fxml");
             ((SalesController) salesLoader.getController()).configure(products, inventory, customers,
-                    sellers, sales, workerSession);
+                    sellers, sales, activeWorker);
             button(salesLoader, "Registrar venta").fire();
 
             assertAll(
@@ -387,8 +387,8 @@ class ControllerReviewRegressionTest {
             FXMLLoader loader = load("sales_view.fxml");
             SalesController controller = loader.getController();
             controller.configure(services.products(), services.inventory(), services.customers(),
-                    services.sellers(), sales, new UserSession(new UserAccount(
-                            101L, "assigned", "unused", UserRole.WORKER, assigned.getId())));
+                    services.sellers(), sales,
+                    IDENTITY.issue("assigned-worker", UserRole.WORKER, assigned.getId()).session());
             ((ComboBox<BeerProduct>) loader.getNamespace().get("productCombo")).setValue(product);
             ((ComboBox<Seller>) loader.getNamespace().get("sellerCombo")).setValue(other);
             ((ComboBox<SalePresentation>) loader.getNamespace().get("presentationCombo"))
@@ -427,13 +427,20 @@ class ControllerReviewRegressionTest {
     }
 
     private static UserSession adminSession() {
-        return new UserSession(new UserAccount(1L, "admin", "unused", UserRole.ADMINISTRATOR, null));
+        return IDENTITY.issue(UserRole.ADMINISTRATOR).session();
     }
 
     private static FXMLLoader load(String name) throws Exception {
         FXMLLoader loader = new FXMLLoader(ControllerReviewRegressionTest.class.getResource(
                 "/com/laexclusiva/ui/fxml/" + name));
         loader.load();
+        Object controller = loader.getController();
+        if (controller instanceof CustomerController value) value.setAuthorizationService(IDENTITY.authorization());
+        if (controller instanceof SellerController value) value.setAuthorizationService(IDENTITY.authorization());
+        if (controller instanceof InventoryController value) value.setAuthorizationService(IDENTITY.authorization());
+        if (controller instanceof SalesController value) value.setAuthorizationService(IDENTITY.authorization());
+        if (controller instanceof PortfolioController value) value.setAuthorizationService(IDENTITY.authorization());
+        if (controller instanceof CashController value) value.setAuthorizationService(IDENTITY.authorization());
         return loader;
     }
 

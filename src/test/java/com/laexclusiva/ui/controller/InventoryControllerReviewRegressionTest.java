@@ -18,6 +18,7 @@ import com.laexclusiva.repository.ProductRepository;
 import com.laexclusiva.repository.StockMovementRepository;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
+import com.laexclusiva.testutil.IdentityTestFixture;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -39,6 +40,7 @@ import org.junit.jupiter.api.Test;
 
 /** Regresiones JavaFX para distinguir escrituras confirmadas de fallos de refresco del inventario. */
 class InventoryControllerReviewRegressionTest {
+    private static final IdentityTestFixture IDENTITY = new IdentityTestFixture();
 
     @BeforeAll
     static void startJavaFxToolkit() {
@@ -168,11 +170,12 @@ class InventoryControllerReviewRegressionTest {
         FXMLLoader loader = new FXMLLoader(InventoryControllerReviewRegressionTest.class.getResource(
                 "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
         loader.load();
+        ((InventoryController) loader.getController()).setAuthorizationService(IDENTITY.authorization());
         return loader;
     }
 
     private static UserSession adminSession() {
-        return new UserSession(new UserAccount(1L, "admin-test", "unused", UserRole.ADMINISTRATOR, null));
+        return IDENTITY.issue(UserRole.ADMINISTRATOR).session();
     }
 
     private static void text(FXMLLoader loader, String id, String value) {

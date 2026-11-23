@@ -31,7 +31,14 @@ public class SellerController {
 
     private SellerService sellerService;
     private UserSession session;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
+
+    /** Inyecta la autorización respaldada por la identidad de la aplicación. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
+        this.authorizationService = authorizationService;
+    }
 
     @FXML
     private void initialize() {
@@ -43,6 +50,7 @@ public class SellerController {
 
     /** Reemplaza las filas visibles por los vendedores obtenidos del servicio configurado. */
     public void showSellers(List<Seller> sellers) {
+        requirePermission(Permission.VIEW_SELLERS, "No tiene permiso para consultar vendedores.");
         sellersTable.getItems().setAll(sellers);
     }
 
@@ -53,6 +61,7 @@ public class SellerController {
      * @throws IllegalArgumentException si falta el servicio o la sesión
      */
     public void configure(SellerService service, UserSession session) {
+        requireSessionAuthority();
         if (service == null) throw new IllegalArgumentException("El servicio de vendedores es obligatorio.");
         if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         sellerService = service;
@@ -66,23 +75,30 @@ public class SellerController {
     private void handleRegisterSeller() {
         try {
             requirePermission(Permission.REGISTER_SELLERS, "No tiene permiso para registrar vendedores.");
-            sellerService.registerSeller(nameField.getText(), phoneField.getText(), addressField.getText());
+            authorizationService.execute(session, Permission.REGISTER_SELLERS, () ->
+                    sellerService.registerSeller(nameField.getText(), phoneField.getText(), addressField.getText()));
             messageLabel.setText("Vendedor registrado.");
             nameField.clear();
             phoneField.clear();
             addressField.clear();
-            showSellers(sellerService.getAllSellers());
+            showSellers(authorizationService.execute(session, Permission.VIEW_SELLERS,
+                    sellerService::getAllSellers));
         } catch (RuntimeException failure) {
             messageLabel.setText("No se registró el vendedor: " + safeMessage(failure));
         }
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
     }
 
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
+    }
+
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 }

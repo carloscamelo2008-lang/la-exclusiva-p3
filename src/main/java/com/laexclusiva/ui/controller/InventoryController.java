@@ -57,7 +57,14 @@ public class InventoryController {
     private ProductService products;
     private InventoryService inventory;
     private UserSession session;
-    private final AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
+
+    /** Inyecta la autoridad actual que se revalida en cada acción de inventario. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
+        this.authorizationService = authorizationService;
+    }
 
     @FXML
     private void initialize() {
@@ -92,6 +99,7 @@ public class InventoryController {
      * @throws IllegalArgumentException si falta una dependencia o la sesión
      */
     public void configure(ProductService products, InventoryService inventory, UserSession session) {
+        requireSessionAuthority();
         if (products == null || inventory == null) {
             throw new IllegalArgumentException("Los servicios de producto e inventario son obligatorios.");
         }
@@ -99,7 +107,10 @@ public class InventoryController {
         this.products = products;
         this.inventory = inventory;
         this.session = session;
-        productCombo.getItems().setAll(products.listAll());
+        requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
+        requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar el inventario.");
+        productCombo.getItems().setAll(authorizationService.execute(session, Permission.VIEW_CATALOG,
+                products::listAll));
         boolean canManageEntries = authorizationService.hasPermission(session, Permission.MANAGE_INVENTORY_ENTRIES);
         boolean canManageProducts = authorizationService.hasPermission(session, Permission.MANAGE_PRODUCTS);
         stockEntryPane.setVisible(canManageEntries);
@@ -131,7 +142,7 @@ public class InventoryController {
         }
 
         try {
-            products.register(product);
+            authorizationService.execute(session, Permission.MANAGE_PRODUCTS, () -> products.register(product));
         } catch (RuntimeException failure) {
             messageLabel.setText("No se pudo confirmar el registro del producto. Use «Actualizar inventario» "
                     + "y compruebe el catálogo antes de volver a intentarlo. " + safeMessage(failure));
@@ -166,7 +177,8 @@ public class InventoryController {
         }
 
         try {
-            inventory.addStock(product.getId(), baskets, loose, reasonField.getText());
+            authorizationService.execute(session, Permission.MANAGE_INVENTORY_ENTRIES,
+                    () -> inventory.addStock(product.getId(), baskets, loose, reasonField.getText()));
         } catch (RuntimeException failure) {
             messageLabel.setText("No se pudo confirmar el resultado de la entrada. Use «Actualizar inventario» "
                     + "para verificar las existencias y movimientos antes de intentar otra entrada. "
@@ -184,6 +196,8 @@ public class InventoryController {
     @FXML
     private void handleRefreshInventory() {
         try {
+            requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
+            requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar el inventario.");
             refresh();
             messageLabel.setText("Inventario actualizado.");
         } catch (RuntimeException failure) {
@@ -213,15 +227,26 @@ public class InventoryController {
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
     }
 
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
+    }
+
     private void refresh() {
-        java.util.List<BeerProduct> catalog = products.listAll();
+        requirePermission(Permission.VIEW_CATALOG, "No tiene permiso para consultar el catálogo.");
+        requirePermission(Permission.VIEW_INVENTORY, "No tiene permiso para consultar el inventario.");
+        java.util.List<BeerProduct> catalog = authorizationService.execute(session, Permission.VIEW_CATALOG,
+                products::listAll);
         productCombo.getItems().setAll(catalog);
-        inventoryTable.getItems().setAll(catalog.stream()
-                .map(product -> new ProductStock(product, inventory.getStock(product.getId()))).toList());
-        movementTable.getItems().setAll(inventory.allMovements());
+        inventoryTable.getItems().setAll(authorizationService.execute(session, Permission.VIEW_INVENTORY,
+                () -> catalog.stream().map(product -> new ProductStock(product,
+                        inventory.getStock(product.getId()))).toList()));
+        movementTable.getItems().setAll(authorizationService.execute(session, Permission.VIEW_INVENTORY,
+                inventory::allMovements));
     }
 
     private ContainerType productType() {
@@ -237,8 +262,7 @@ public class InventoryController {
     }
 
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 
     private record ProductStock(BeerProduct product, StockSnapshot stock) { }
