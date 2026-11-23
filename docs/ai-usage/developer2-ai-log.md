@@ -445,3 +445,14 @@
 * **Qué se acepta, modifica o descarta y por qué:** Acepté el refuerzo de pruebas y un único bloqueo operativo documentado: falta un laboratorio autorizado e identificado con equipo/VM, digests, caché offline y secreto temporal. No se instaló Docker ni se sustituyó el entorno. La aprobación estática de Carlos no se registra como ejecución PostgreSQL ni aprobación de merge.
 * **Verificación realizada:** mvn -o verify con Temurin 17.0.21+9: 771 casos, 728 aprobados, 43 PostgreSQL omitidos, cero fallos/errores. git diff --check pasó. Se comprobó develop en db9530c y ausencia de solapamientos entrantes de identidad sin integrar ramas. No hubo SQL, conexiones, migraciones ni cambios de producción o módulos ajenos.
 * **Commit o Pull Request relacionado:** PR #22; commit de cierre pendiente de creación al registrar esta entrada.
+
+### Interacción 25 – Laboratorio PostgreSQL autorizado en Actions
+
+* **Fecha:** 22/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Ejecución PostgreSQL del PR #22 (`feature/daniel-identity-users`).
+* **Objetivo de la consulta:** Autoricé implementar y ejecutar un laboratorio efímero en GitHub Actions, sin bases externas ni secretos reales.
+* **Resumen de la respuesta recibida:** Codex agregó un workflow independiente, orquestador con inspección de aislamiento y limpieza, seis casos concurrentes V105 y dos ciclos con recuperación. Resolvió digests oficiales y comprobó SHA-256 de sus manifiestos.
+* **Qué se acepta, modifica o descarta y por qué:** Acepté usar Actions con imágenes fijadas y credenciales aleatorias del job. Se conserva el workflow compartido y no se instala Docker local. La ejecución real y sus resultados deben verificarse tras publicar; no se anticipa su éxito.
+* **Verificación realizada:** Temurin 17.0.21+9, mvn -o verify local: 777 casos, 728 aprobados, 49 PostgreSQL omitidos, cero fallos/errores. bash -n pasó. No hubo SQL local; el resultado PostgreSQL sigue pendiente de Actions al registrar esta entrada.
+* **Commit o Pull Request relacionado:** PR #22; commit de laboratorio pendiente de creación al registrar esta entrada.

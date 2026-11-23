@@ -1,5 +1,31 @@
 # Plan de validación PostgreSQL de identidad — pendiente de autorización
 
+## Ejecución autorizada en GitHub Actions
+
+La instrucción posterior de Carlos autoriza expresamente el laboratorio temporal
+en GitHub Actions. `.github/workflows/identity-postgres.yml` agrega un job aislado
+sin cambiar Maven Build. Los estados de bloqueo anteriores describen las etapas
+previas, no revocan esta autorización específica. No se instala Docker local.
+
+El orquestador actions-lab.py usa un proyecto único por run_id/intento, imágenes
+oficiales fijadas por SHA-256 verificado contra los manifiestos del registro,
+datos PostgreSQL tmpfs, red interna, cero puertos publicados y secreto aleatorio
+del job. Inspecciona Compose antes de crear y Docker antes de SQL. Java comparte
+el namespace de red del servidor y solo se inicia después de inspeccionarlo.
+Los artefactos contienen logs saneados, versiones, inspecciones, checksums,
+catálogos y XML JUnit. Hay destrucción en finally y en un paso always adicional.
+
+Se preparan dependencias Maven online antes de crear PostgreSQL, usando solo
+pruebas sin conexión, y luego las integraciones son offline en el laboratorio.
+Se ejecutan dos ciclos limpios de 19 integraciones más seis casos concurrentes
+automatizados V105 (25 por ciclo), reaplicaciones negativas de las cuatro
+migraciones y recuperación de V105 fallida por duplicados sintéticos. La
+corrección de ese fixture negativo está limitada al laboratorio y se verifica
+antes de aplicar V105/V106. No es reparación automática de cuentas reales.
+
+La implementación del workflow aún debe producir evidencia de ejecución exitosa;
+preparar o publicar este cambio no se registra como éxito de PostgreSQL.
+
 ## Estado de cierre del PR #22 — 22/11/2026
 
 Carlos confirmó en los comentarios del PR que las dos observaciones de código

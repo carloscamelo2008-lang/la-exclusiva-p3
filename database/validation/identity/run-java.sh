@@ -11,8 +11,11 @@ export LAEXCLUSIVA_DB_PASSWORD
 LAEXCLUSIVA_DB_PASSWORD="$(cat /run/secrets/lab_password)"
 # Sin set -x, contraseñas por argumentos, settings del host ni red para descargar dependencias.
 mvn -version
-exec mvn -o \
-  '-Dtest=UserRepositoryJdbcPostgresIntegrationTest,UserSecurityVersionPostgresIntegrationTest,AccountInstancePostgresIntegrationTest' \
+if [[ -d /evidence ]]; then
+  trap 'cp -a /workspace/target/surefire-reports /evidence/ 2>/dev/null && chmod -R a+rwX /evidence/surefire-reports || true' EXIT
+fi
+mvn -o \
+  '-Dtest=UserRepositoryJdbcPostgresIntegrationTest,UserSecurityVersionPostgresIntegrationTest,AccountInstancePostgresIntegrationTest,ActiveSellerConcurrencyPostgresIntegrationTest' \
   -Dlaexclusiva.test.postgres.users=true \
   -Dlaexclusiva.test.postgres.userSecurityVersion=true \
   -Dlaexclusiva.test.postgres.accountInstance=true test

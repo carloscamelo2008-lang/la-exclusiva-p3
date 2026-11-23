@@ -29,7 +29,7 @@ class AccountInstancePostgresIntegrationTest {
     static final String ENABLE = "laexclusiva.test.postgres.accountInstance";
 
     /** Cada conexión valida el destino y las protecciones antes de permitir fixtures. */
-    private static Connection openVerified(DatabaseConfig config) throws SQLException {
+    static Connection openVerified(DatabaseConfig config) throws SQLException {
         UserSecurityVersionPostgresIntegrationTest.validateLocalUrl(config.getUrl());
         Properties properties = new Properties();
         properties.setProperty("user", config.getUser());

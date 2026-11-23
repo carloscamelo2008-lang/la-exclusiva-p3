@@ -60,7 +60,7 @@ class IdentityValidationPlanTest {
         assertTrue(compose.contains("LAEXCLUSIVA_LAB_SECRET_FILE:?"));
         assertFalse(compose.contains("docker-entrypoint-initdb.d")); assertFalse(compose.contains("network_mode: host"));
         String runner = asset("run-java.sh");
-        assertTrue(runner.contains("exec mvn -o")); assertFalse(runner.contains("\nset -x"));
+        assertTrue(runner.contains("mvn -o")); assertFalse(runner.contains("\nset -x"));
         assertTrue(runner.contains("grep -q 'Temurin'"));
         assertTrue(asset(".gitattributes").contains("*.sh text eol=lf"));
     }

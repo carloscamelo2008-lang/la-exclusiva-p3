@@ -1,0 +1,6 @@
+services:
+  java:
+    volumes:
+      - type: bind
+        source: ${LAB_EVIDENCE:?Directorio de evidencia exclusivo requerido}
+        target: /evidence
