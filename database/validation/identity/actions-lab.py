@@ -18,6 +18,7 @@ ENV = os.environ.copy()
 AUTHORIZED_BRANCHES = {
     "feature/daniel-identity-users": "pr22",
     "feature/identity-app-integration": "pr24",
+    "feature/purchases-app-integration": "purchases",
 }
 event = ENV.get("GITHUB_EVENT_NAME")
 branch = ENV.get("GITHUB_HEAD_REF") if event == "pull_request" else ENV.get("GITHUB_REF_NAME")
@@ -156,7 +157,7 @@ def java_tests(cycle):
             totals[key] += int(suite.attrib[key])
     expected = {
         "identity": (4, {"tests": 26, "failures": 0, "errors": 0, "skipped": 0}),
-        "application": (14, {"tests": 52, "failures": 0, "errors": 0, "skipped": 0}),
+        "application": (15, {"tests": 58, "failures": 0, "errors": 0, "skipped": 0}),
         "incomplete": (1, {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}),
     }[scenario]
     assert (len(suites), totals) == expected, {"suites": len(suites), "totals": totals}
@@ -194,7 +195,7 @@ def main():
                 "-w", "/workspace", ENV["LAEXCLUSIVA_JAVA17_IMAGE"], "bash", "-c",
                 "set -e; cp /source/pom.xml .; cp -a /source/src /source/database /source/docs .; java -version; mvn -version; mvn -B -ntp -Dtest=IdentityValidationPlanTest test"], timeout=600)
     save("dependency-preparation.log", warm.stdout)
-    migration_names = ("V001__initial_schema.sql", "V002__payment_idempotency.sql",
+    migration_names = ("V001__initial_schema.sql", "V004__purchase_orders.sql", "V002__payment_idempotency.sql",
                        "V100__sale_creation_idempotency.sql", "V101__general_debt_ledger.sql",
                        "V102__cash_ledger.sql", "V103__enforce_sale_request_identity_coherence.sql",
                        "V104__user_security_version.sql", "V105__unique_active_user_seller.sql",
@@ -257,4 +258,4 @@ finally:
         if "--cleanup" not in sys.argv:
             save("summary.json", json.dumps(report, indent=2))
             if report["completed"] and report.get("destroyed"):
-                print("Laboratorio completado y destruido: ciclos identidad (26 pruebas x 2), aplicación (52 pruebas PostgreSQL) y esquema incompleto (1 prueba); recuperación aprobada.", flush=True)
+                print("Laboratorio completado y destruido: ciclos identidad (26 pruebas x 2), aplicación (58 pruebas PostgreSQL) y esquema incompleto (1 prueba); recuperación aprobada.", flush=True)

@@ -9,11 +9,14 @@ import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.PurchaseOrderRepository.OrderWithLines;
+import com.laexclusiva.repository.jdbc.SellerRepositoryJdbc;
+import com.laexclusiva.security.PasswordHasher;
+import com.laexclusiva.ui.IdentityServices;
+import com.laexclusiva.service.SellerService;
 import com.laexclusiva.service.GoodsReceiptService.IdempotencyConflictException;
 import com.laexclusiva.service.GoodsReceiptService.ReceiptLineRequest;
 import com.laexclusiva.service.PurchaseOrderService.OrderLineRequest;
 import com.laexclusiva.service.PurchasesModuleFactory;
-import com.laexclusiva.testutil.IdentityTestFixture;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -38,13 +41,15 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Integración opcional de compras sobre el esquema ya instalado en la base dedicada de pruebas. */
 class PurchaseWorkflowPostgresIntegrationTest {
-    private final IdentityTestFixture identity = new IdentityTestFixture();
-    private final UserSession admin = identity.issue(UserRole.ADMINISTRATOR).session();
     private final String prefix = "PUR-TST-" + UUID.randomUUID();
+    private final String testPassword = "Purchase-Fixture-" + UUID.randomUUID() + "-R8!";
     private final List<String> productIds = new ArrayList<>();
     private DatabaseConfig config;
     private JdbcConnectionProvider provider;
     private JdbcTransactionManager transactions;
+    private IdentityServices identity;
+    private UserSession admin;
+    private Long userId;
     private PurchasesModuleFactory.Services module;
     private Long supplierId;
 
@@ -57,6 +62,10 @@ class PurchaseWorkflowPostgresIntegrationTest {
         transactions = new JdbcTransactionManager(provider);
         int schemaReady = number(provider, """
                 SELECT CASE WHEN current_database() = 'la_exclusiva_test'
+                     AND EXISTS (SELECT FROM information_schema.columns WHERE table_schema='public'
+                         AND table_name='user_account' AND column_name='security_version')
+                     AND EXISTS (SELECT FROM information_schema.columns WHERE table_schema='public'
+                         AND table_name='user_account' AND column_name='account_instance_id')
                      AND to_regclass('supplier') IS NOT NULL
                      AND to_regclass('purchase_order') IS NOT NULL
                      AND to_regclass('purchase_order_line') IS NOT NULL
@@ -64,14 +73,21 @@ class PurchaseWorkflowPostgresIntegrationTest {
                      AND to_regclass('goods_receipt_line') IS NOT NULL
                      THEN 1 ELSE 0 END
                 """);
-        assumeTrue(schemaReady == 1, "Omitida: V004 debe estar instalada en la_exclusiva_test.");
-        module = PurchasesModuleFactory.postgres(provider, identity.authorization());
+        assumeTrue(schemaReady == 1,
+                "Omitida: V004, V104 y V106 deben estar instaladas en la_exclusiva_test.");
+        identity = IdentityServices.postgres(provider, new SellerService(new SellerRepositoryJdbc(provider)));
+        var account = new com.laexclusiva.model.UserAccount(null, prefix, PasswordHasher.hash(testPassword),
+                UserRole.ADMINISTRATOR, null);
+        identity.users().save(account);
+        userId = account.getId();
+        admin = identity.authentication().createSession(prefix, testPassword).orElseThrow();
+        module = PurchasesModuleFactory.postgres(provider, identity.authorization(), identity.users());
         supplierId = module.suppliers().create(admin, prefix, null, null).id();
     }
 
     @AfterEach
     void deleteOnlyFixtureRows() {
-        if (supplierId == null && productIds.isEmpty()) return;
+        if (supplierId == null && productIds.isEmpty() && userId == null) return;
         transactions.inTransaction(() -> provider.withConnection(connection -> {
             if (supplierId != null) {
                 delete(connection, """
@@ -96,6 +112,7 @@ class PurchaseWorkflowPostgresIntegrationTest {
                 delete(connection, "DELETE FROM product_price WHERE product_id = ?", id);
                 delete(connection, "DELETE FROM beer_product WHERE id = ?", id);
             }
+            if (userId != null) delete(connection, "DELETE FROM user_account WHERE id = ?", userId);
             return null;
         }));
     }
@@ -110,14 +127,16 @@ class PurchaseWorkflowPostgresIntegrationTest {
         assertEquals(PurchaseOrderStatus.PENDING, order.order().status());
         for (String id : productIds) assertNoStock(id);
 
-        var restarted = PurchasesModuleFactory.postgres(new JdbcConnectionProvider(config), identity.authorization());
+        var restarted = PurchasesModuleFactory.postgres(new JdbcConnectionProvider(config),
+                identity.authorization(), identity.users());
         assertEquals(supplierId, restarted.suppliers().findById(admin, supplierId).orElseThrow().id());
         assertEquals(order, restarted.orders().findById(admin, order.order().id()).orElseThrow());
         assertEquals(List.of(38, 30, 16), order.lines().stream().map(line -> line.unitsPerBasketSnapshot()).toList());
         assertEquals(List.of(40, 32, 18), order.lines().stream().map(line -> line.orderedEquivalentUnits()).toList());
         var requests = order.lines().stream().map(line -> new ReceiptLineRequest(line.id(), 1, 2)).toList();
         var receipt = restarted.receipts().receive(admin, order.order().id(), "capacidades", null, requests);
-        var reread = PurchasesModuleFactory.postgres(new JdbcConnectionProvider(config), identity.authorization());
+        var reread = PurchasesModuleFactory.postgres(new JdbcConnectionProvider(config),
+                identity.authorization(), identity.users());
         assertEquals(List.of(receipt), reread.receipts().findByPurchaseOrderId(admin, order.order().id()));
         assertEquals(PurchaseOrderStatus.COMPLETED,
                 reread.orders().findById(admin, order.order().id()).orElseThrow().order().status());
@@ -130,7 +149,9 @@ class PurchaseWorkflowPostgresIntegrationTest {
     void receivesTwoOfFourBasketsThenCompletesAndLinksEachMovement() {
         String id = product(38);
         var order = create(new OrderLineRequest(id, 4, 0));
+        assertEquals(userId, order.order().createdByUserId());
         GoodsReceipt first = receive(order, "primera", 2);
+        assertEquals(userId, first.receivedByUserId());
         assertEquals(PurchaseOrderStatus.PARTIAL, reload(order).order().status());
         assertEquals(76, reload(order).lines().get(0).receivedEquivalentUnits());
         assertEquals(76, stock(id));
@@ -199,7 +220,8 @@ class PurchaseWorkflowPostgresIntegrationTest {
         receive(order, "parcial", 2);
         var secondProvider = new JdbcConnectionProvider(config);
         var secondTransactions = new JdbcTransactionManager(secondProvider);
-        var secondModule = PurchasesModuleFactory.postgres(secondProvider, identity.authorization());
+        var secondModule = PurchasesModuleFactory.postgres(secondProvider,
+                identity.authorization(), identity.users());
         CountDownLatch staged = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         var firstPid = new CompletableFuture<Integer>();
