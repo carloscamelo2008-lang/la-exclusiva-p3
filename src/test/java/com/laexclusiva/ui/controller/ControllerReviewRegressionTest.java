@@ -33,12 +33,19 @@ import java.util.Map;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import javafx.application.Platform;
+import javafx.geometry.Bounds;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TableRow;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -146,6 +153,100 @@ class ControllerReviewRegressionTest {
             assertTrue(label(loader, "messageLabel").getText().contains("actualizada"));
             assertEquals(1, table(loader, "salesTable").getItems().size());
             assertEquals(0, sales.paymentAttempts);
+            return null;
+        });
+    }
+
+    @Test
+    void selectedCustomerPartialSaleIsVisibleAndPaymentRetryAfterLostResponseIsIdempotent() throws Exception {
+        runOnFx(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            Seller seller = services.sellers().registerSeller("Vendedor cartera visible", "3000000241", "Dirección QA");
+            String targetId = "CUS-PORTFOLIO-VISIBLE";
+            String otherId = "CUS-PORTFOLIO-OTHER";
+            services.customers().registerCustomer(targetId, "Cliente cartera objetivo", "3000000242", "Dirección QA");
+            services.customers().registerCustomer(otherId, "Cliente cartera alterno", "3000000243", "Dirección QA");
+            BeerProduct product = services.products().findById("COSTENITA_175");
+            services.inventory().addStock(product.getId(), 0, 4, "Fixture JavaFX de cartera");
+            BigDecimal initialPayment = new BigDecimal("1000.00");
+            Sale targetSale = services.sales().registerSale(List.of(
+                    new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(), targetId,
+                    initialPayment, "ui-portfolio-target-sale");
+            Sale otherSale = services.sales().registerSale(List.of(
+                    new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(), otherId,
+                    initialPayment, "ui-portfolio-other-sale");
+            assertEquals(0, targetSale.calculateTotal().compareTo(new BigDecimal("2500.00")));
+            assertEquals(0, targetSale.calculateBalance().compareTo(new BigDecimal("1500.00")));
+
+            LostResponseOncePaymentWorkflow sales = new LostResponseOncePaymentWorkflow(services.sales());
+            UserSession worker = IDENTITY.issue("portfolio-worker", UserRole.WORKER, seller.getId()).session();
+            FXMLLoader loader = null;
+            Stage stage = new Stage();
+            try {
+                for (WindowSize size : List.of(new WindowSize(1280, 800), new WindowSize(1024, 768),
+                        new WindowSize(800, 600))) {
+                    loader = load("portfolio_view.fxml");
+                    PortfolioController controller = loader.getController();
+                    controller.configure(services.customers(), sales, services.generalDebt(), worker);
+                    controller.showPortfolio(services.customers().getAllCustomers());
+                    @SuppressWarnings("unchecked")
+                    ComboBox<Customer> customerCombo = (ComboBox<Customer>) loader.getNamespace().get("customerCombo");
+                    @SuppressWarnings("unchecked")
+                    TableView<Sale> salesTable = (TableView<Sale>) loader.getNamespace().get("salesTable");
+                    Customer otherCustomer = customerCombo.getItems().stream()
+                            .filter(customer -> otherId.equals(customer.getId())).findFirst().orElseThrow();
+                    Customer targetCustomer = customerCombo.getItems().stream()
+                            .filter(customer -> targetId.equals(customer.getId())).findFirst().orElseThrow();
+
+                    customerCombo.setValue(otherCustomer);
+                    assertEquals(List.of(otherSale.getId()), salesTable.getItems().stream().map(Sale::getId).toList(),
+                            "La selección del cliente alterno no debe mostrar ventas de otro cliente.");
+                    customerCombo.setValue(targetCustomer);
+                    assertEquals(1, salesTable.getItems().size(), "La consulta debe cargar la venta pendiente del cliente elegido.");
+                    assertEquals(targetSale.getId(), salesTable.getItems().get(0).getId());
+                    assertEquals(0, salesTable.getItems().get(0).calculateBalance()
+                            .compareTo(new BigDecimal("1500.00")));
+                    assertEquals("Deuda de ventas: $ 1.500,00", ((Label) loader.getNamespace()
+                            .get("salesDebtLabel")).getText());
+                    assertTrue(((Node) loader.getNamespace().get("paymentPane")).isVisible(),
+                            "El trabajador autorizado conserva el control para registrar abonos.");
+                    assertPortfolioSaleRowCanBeViewed(loader, stage, size);
+
+                    if (size.width() == 800) {
+                        salesTable.getSelectionModel().selectFirst();
+                        assertEquals(targetSale.getId(), salesTable.getSelectionModel().getSelectedItem().getId());
+                        ((TextField) loader.getNamespace().get("paymentAmountField")).setText("500.00");
+                        ((Button) loader.getNamespace().get("registerPaymentButton")).fire();
+                        assertEquals(1, sales.writeCount);
+                        assertEquals(1, sales.attemptCount);
+                        assertEquals(0, services.sales().findById(targetSale.getId()).calculateBalance()
+                                .compareTo(new BigDecimal("1000.00")));
+                        assertTrue(((Label) loader.getNamespace().get("messageLabel")).getText()
+                                .contains("No se pudo confirmar el resultado"));
+
+                        ((Button) loader.getNamespace().get("registerPaymentButton")).fire();
+                        Sale paid = services.sales().findById(targetSale.getId());
+                        assertEquals(2, sales.attemptCount);
+                        assertEquals(1, sales.writeCount, "El reintento con la misma clave no duplica el abono.");
+                        assertEquals(sales.keys.get(0), sales.keys.get(1));
+                        assertEquals(0, paid.calculateTotalPaid().compareTo(new BigDecimal("1500.00")));
+                        assertEquals(0, paid.calculateBalance().compareTo(new BigDecimal("1000.00")));
+                        assertEquals(0, services.customers().getCustomerById(targetId).getBalance()
+                                .compareTo(new BigDecimal("1000.00")));
+                        assertEquals(0, services.customers().getCustomerById(otherId).getBalance()
+                                .compareTo(new BigDecimal("1500.00")), "El pago no debe alterar otra cuenta.");
+                        assertEquals(2, services.sales().listAll().size());
+                        assertEquals(2, services.inventory().getStock(product.getId()).totalUnits(),
+                                "Los abonos no deben tocar el inventario ya descontado por las ventas.");
+                        assertEquals(2, services.inventory().movementsOf(product.getId()).stream()
+                                .filter(movement -> movement.type() == com.laexclusiva.model.MovementType.EXIT).count());
+                        assertEquals(0, sales.outstandingSalesDebt(targetId)
+                                .compareTo(new BigDecimal("1000.00")));
+                    }
+                }
+            } finally {
+                stage.close();
+            }
             return null;
         });
     }
@@ -450,6 +551,56 @@ class ControllerReviewRegressionTest {
         table.getSelectionModel().selectFirst();
     }
 
+    private static void assertPortfolioSaleRowCanBeViewed(FXMLLoader loader, Stage stage, WindowSize size) {
+        ScrollPane scrollPane = assertInstanceOf(ScrollPane.class, loader.getRoot(),
+                "La cartera debe permitir desplazamiento vertical cuando no cabe en la ventana.");
+        VBox content = assertInstanceOf(VBox.class, scrollPane.getContent());
+        @SuppressWarnings("unchecked")
+        TableView<Sale> salesTable = (TableView<Sale>) loader.getNamespace().get("salesTable");
+        stage.setScene(new Scene(scrollPane, size.width(), size.height()));
+        stage.show();
+        scrollPane.applyCss();
+        scrollPane.layout();
+        content.layout();
+        salesTable.layout();
+
+        double scrollRange = content.getLayoutBounds().getHeight() - scrollPane.getViewportBounds().getHeight();
+        double tableTop = salesTable.getBoundsInParent().getMinY();
+        double desiredOffset = tableTop - Math.max(0,
+                (scrollPane.getViewportBounds().getHeight() - salesTable.getHeight()) / 2.0);
+        if (scrollRange > 0) {
+            scrollPane.setVvalue(Math.max(scrollPane.getVmin(),
+                    Math.min(scrollPane.getVmax(), desiredOffset / scrollRange)));
+        }
+        scrollPane.applyCss();
+        scrollPane.layout();
+        content.layout();
+        salesTable.layout();
+
+        Bounds viewport = scrollPane.localToScene(scrollPane.getViewportBounds());
+        Bounds tableBounds = salesTable.localToScene(salesTable.getBoundsInLocal());
+        assertTrue(intersectionHeight(viewport, tableBounds) >= 50.0,
+                "La tabla y su fila deben poder entrar en el área visible con ventana "
+                        + size.width() + "x" + size.height() + ".");
+        String visibleSaleId = salesTable.getItems().get(0).getId();
+        boolean rowVisible = false;
+        for (Node node : salesTable.lookupAll(".table-row-cell")) {
+            if (node instanceof TableRow<?> row && !row.isEmpty() && row.getItem() instanceof Sale sale
+                    && visibleSaleId.equals(sale.getId())
+                    && intersectionHeight(viewport, row.localToScene(row.getBoundsInLocal())) > 0) {
+                rowVisible = true;
+                break;
+            }
+        }
+        assertTrue(rowVisible, "La fila de venta debe renderizarse visible al desplazar la cartera.");
+    }
+
+    private static double intersectionHeight(Bounds first, Bounds second) {
+        double horizontal = Math.min(first.getMaxX(), second.getMaxX()) - Math.max(first.getMinX(), second.getMinX());
+        double vertical = Math.min(first.getMaxY(), second.getMaxY()) - Math.max(first.getMinY(), second.getMinY());
+        return horizontal <= 0 || vertical <= 0 ? 0 : vertical;
+    }
+
     private static Button button(FXMLLoader loader, String text) {
         String id = switch (text) {
             case "Registrar abono" -> "registerPaymentButton";
@@ -486,6 +637,39 @@ class ControllerReviewRegressionTest {
         FutureTask<Void> task = new FutureTask<>(callback);
         Platform.runLater(task);
         task.get(15, TimeUnit.SECONDS);
+    }
+
+    private record WindowSize(double width, double height) { }
+
+    private static final class LostResponseOncePaymentWorkflow implements SalesWorkflow {
+        private final SalesWorkflow delegate;
+        private final List<String> keys = new ArrayList<>();
+        private int attemptCount;
+        private int writeCount;
+
+        private LostResponseOncePaymentWorkflow(SalesWorkflow delegate) { this.delegate = delegate; }
+
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment) {
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment);
+        }
+
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+            attemptCount++;
+            keys.add(idempotencyKey);
+            BigDecimal paidBefore = delegate.findById(saleId).calculateTotalPaid();
+            Sale result = delegate.registerPayment(saleId, amount, idempotencyKey);
+            if (result.calculateTotalPaid().compareTo(paidBefore) > 0) writeCount++;
+            if (attemptCount == 1) throw new IllegalStateException("respuesta perdida tras confirmar el abono");
+            return result;
+        }
+
+        @Override public Sale findById(String saleId) { return delegate.findById(saleId); }
+        @Override public List<Sale> listAll() { return delegate.listAll(); }
+        @Override public BigDecimal outstandingSalesDebt(String customerId) {
+            return delegate.outstandingSalesDebt(customerId);
+        }
+        @Override public boolean supportsDurableIdempotency() { return delegate.supportsDurableIdempotency(); }
     }
 
     private static final class FailingCustomerService extends CustomerService {
