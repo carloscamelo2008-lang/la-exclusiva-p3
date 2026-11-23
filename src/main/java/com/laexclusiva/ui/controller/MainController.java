@@ -18,6 +18,9 @@ import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
+import javafx.geometry.Pos;
+import javafx.geometry.Insets;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -40,6 +43,7 @@ public class MainController {
     @FXML private Button btnCustomers;
     @FXML private Button btnCredit;
     @FXML private Button btnCash;
+    @FXML private Button btnLogout;
 
     private UserSession currentSession;
     private CustomerService customerService;
@@ -50,8 +54,9 @@ public class MainController {
     private CashWorkflow cashWorkflow;
     private CustomerGeneralDebtWorkflow generalDebtWorkflow;
     private Runnable onLogout;
-    private AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
     private ApplicationServices applicationServices;
+    private boolean sessionClosed;
 
     public void setCustomerService(CustomerService customerService) {
         this.customerService = customerService;
@@ -65,6 +70,7 @@ public class MainController {
         if (services == null) {
             throw new IllegalArgumentException("La composición de servicios es obligatoria.");
         }
+        services.authorization().requireSessionAuthority();
         this.applicationServices = services;
         this.authorizationService = services.authorization();
         this.customerService = services.customers();
@@ -76,29 +82,74 @@ public class MainController {
         this.generalDebtWorkflow = services.generalDebt();
     }
 
+    /** Inyecta una autoridad validada para consumidores que configuran servicios por separado. */
+    public void setAuthorizationService(AuthorizationService authorizationService) {
+        if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
+        this.authorizationService = authorizationService;
+    }
+
     public void setOnLogout(Runnable onLogout) {
         this.onLogout = onLogout;
     }
 
     @FXML
     private void handleLogout() {
-        try {
-            if (currentSession != null) {
+        UserSession closingSession = currentSession;
+        currentSession = null;
+        sessionClosed = true;
+        disableProtectedNavigation();
+        showSessionClosedState("La sesión está cerrada.");
+        if (closingSession != null) {
+            try {
                 if (applicationServices != null) {
-                    applicationServices.identity().authentication().revoke(currentSession);
+                    applicationServices.identity().authentication().revoke(closingSession);
                 } else {
-                    currentSession.invalidate();
+                    closingSession.invalidate();
                 }
-                currentSession = null;
+            } catch (RuntimeException failure) {
+                // Aunque falle la autoridad durante el cierre, esta vista queda bloqueada y la sesión local se invalida.
+                closingSession.invalidate();
+                LOGGER.log(Level.WARNING, "No se pudo completar la revocación de la sesión.", failure);
             }
-            if (onLogout == null) {
-                throw new IllegalStateException("El regreso al inicio de sesión no está configurado.");
-            }
+        }
+        attemptReturnToLogin();
+    }
+
+    private void attemptReturnToLogin() {
+        try {
+            if (onLogout == null) throw new IllegalStateException("El regreso al inicio de sesión no está configurado.");
             onLogout.run();
         } catch (RuntimeException failure) {
-            LOGGER.log(Level.WARNING, "No se pudo cerrar la sesión.", failure);
-            navigationMessage.setText("No se pudo volver al inicio de sesión. Intente de nuevo.");
+            LOGGER.log(Level.WARNING, "La sesión quedó cerrada, pero no se pudo abrir el inicio de sesión.", failure);
+            showSessionClosedRecovery();
         }
+    }
+
+    private void disableProtectedNavigation() {
+        for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit,
+                btnInventory, btnSales, btnCash, btnAdminUsers, btnLogout}) {
+            if (button != null) button.setDisable(true);
+        }
+    }
+
+    private void showSessionClosedRecovery() {
+        showSessionClosedState("No se pudo abrir el inicio de sesión. La sesión está cerrada; puede reintentar.");
+    }
+
+    private void showSessionClosedState(String status) {
+        if (rootPane == null) return;
+        Label closedMessage = new Label("La sesión está cerrada. Inicie sesión nuevamente para continuar.");
+        closedMessage.setId("sessionClosedMessage");
+        Button retry = new Button("Volver al inicio de sesión");
+        retry.setId("retryLoginButton");
+        retry.setOnAction(event -> attemptReturnToLogin());
+        VBox recovery = new VBox(14, closedMessage, retry);
+        recovery.setAlignment(Pos.CENTER);
+        recovery.setPadding(new Insets(24));
+        recovery.setId("sessionClosedRecovery");
+        rootPane.setCenter(recovery);
+        navigationMessage.setText(status);
     }
 
     private void selectNavigation(Button selected) {
@@ -110,7 +161,7 @@ public class MainController {
 
     @FXML
     private void handleShowCustomers() {
-        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_CUSTOMER)) {
+        if (!hasPermission(Permission.VIEW_CUSTOMER)) {
             navigationMessage.setText("No tiene permiso para consultar clientes.");
             return;
         }
@@ -135,7 +186,7 @@ public class MainController {
 
     @FXML
     private void handleShowSellers() {
-        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_SELLERS)) {
+        if (!hasPermission(Permission.VIEW_SELLERS)) {
             navigationMessage.setText("No tiene permiso para consultar vendedores.");
             return;
         }
@@ -160,7 +211,7 @@ public class MainController {
 
     @FXML
     private void handleShowPortfolio() {
-        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_PORTFOLIO)) {
+        if (!hasPermission(Permission.VIEW_PORTFOLIO)) {
             navigationMessage.setText("No tiene permiso para consultar la cartera.");
             return;
         }
@@ -185,8 +236,7 @@ public class MainController {
 
     @FXML
     private void handleShowSales() {
-        if (!authorizationService.hasPermission(currentSession, Permission.REGISTER_SALE)
-                || !authorizationService.hasPermission(currentSession, Permission.VIEW_SALES)) {
+        if (!hasPermission(Permission.REGISTER_SALE) || !hasPermission(Permission.VIEW_SALES)) {
             handleShowDashboard();
             navigationMessage.setText("No tiene permiso para registrar ventas.");
             return;
@@ -210,7 +260,7 @@ public class MainController {
 
     @FXML
     private void handleShowCash() {
-        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_CASH)) {
+        if (!hasPermission(Permission.VIEW_CASH)) {
             navigationMessage.setText("No tiene permiso para consultar caja.");
             return;
         }
@@ -232,7 +282,7 @@ public class MainController {
 
     @FXML
     private void handleShowInventory() {
-        if (!authorizationService.hasPermission(currentSession, Permission.VIEW_INVENTORY)) {
+        if (!hasPermission(Permission.VIEW_INVENTORY)) {
             handleShowDashboard();
             navigationMessage.setText("No tiene permiso para consultar el inventario.");
             return;
@@ -256,6 +306,8 @@ public class MainController {
     @FXML
     private void handleShowDashboard() {
         try {
+            requireSessionAuthority();
+            if (sessionClosed) throw new SecurityException("La sesión está cerrada.");
             authorizationService.currentPrincipal(currentSession);
         } catch (RuntimeException invalidSession) {
             navigationMessage.setText("La sesión ya no está activa.");
@@ -267,6 +319,8 @@ public class MainController {
     }
 
     public void initSession(UserSession session) {
+        requireSessionAuthority();
+        if (sessionClosed) throw new SecurityException("No se puede reactivar una vista cuya sesión fue cerrada.");
         var principal = authorizationService.currentPrincipal(session);
         this.currentSession = session;
 
@@ -279,21 +333,21 @@ public class MainController {
         welcomeLabel.setText("¡Bienvenido, " + username + "!");
         roleLabel.setText("Rol actual: " + role);
 
-        boolean hasPermission = authorizationService.hasPermission(session, Permission.MANAGE_USERS);
+        boolean hasPermission = hasPermission(Permission.MANAGE_USERS);
         btnAdminUsers.setVisible(hasPermission);
         btnAdminUsers.setManaged(hasPermission);
 
-        boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
+        boolean canViewSellers = hasPermission(Permission.VIEW_SELLERS);
         btnSellers.setVisible(canViewSellers);
         btnSellers.setManaged(canViewSellers);
-        boolean canViewInventory = authorizationService.hasPermission(session, Permission.VIEW_INVENTORY);
+        boolean canViewInventory = hasPermission(Permission.VIEW_INVENTORY);
         btnInventory.setVisible(canViewInventory);
         btnInventory.setManaged(canViewInventory);
-        boolean canRegisterSales = authorizationService.hasPermission(session, Permission.REGISTER_SALE)
-                && authorizationService.hasPermission(session, Permission.VIEW_SALES);
+        boolean canRegisterSales = hasPermission(Permission.REGISTER_SALE)
+                && hasPermission(Permission.VIEW_SALES);
         btnSales.setVisible(canRegisterSales);
         btnSales.setManaged(canRegisterSales);
-        boolean canViewCash = authorizationService.hasPermission(session, Permission.VIEW_CASH);
+        boolean canViewCash = hasPermission(Permission.VIEW_CASH);
         btnCash.setVisible(canViewCash);
         btnCash.setManaged(canViewCash);
         btnAdminUsers.setDisable(false);
@@ -303,8 +357,7 @@ public class MainController {
     /** Abre la administración completa; las mutaciones vuelven a validarse en el servicio. */
     @FXML
     private void handleShowAdminUsers() {
-        if (applicationServices == null
-                || !authorizationService.hasPermission(currentSession, Permission.MANAGE_USERS)) {
+        if (applicationServices == null || !hasPermission(Permission.MANAGE_USERS)) {
             navigationMessage.setText("No tiene permiso para administrar usuarios.");
             return;
         }
@@ -322,5 +375,15 @@ public class MainController {
             LOGGER.log(Level.WARNING, "No se pudo abrir la administración de usuarios.", failure);
             navigationMessage.setText("No se pudo abrir la administración de usuarios.");
         }
+    }
+
+    private boolean hasPermission(Permission permission) {
+        return !sessionClosed && authorizationService != null && authorizationService.hasSessionAuthority()
+                && currentSession != null && authorizationService.hasPermission(currentSession, permission);
+    }
+
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
     }
 }

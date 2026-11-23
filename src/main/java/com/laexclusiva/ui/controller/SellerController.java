@@ -31,11 +31,12 @@ public class SellerController {
 
     private SellerService sellerService;
     private UserSession session;
-    private AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
 
     /** Inyecta la autorización respaldada por la identidad de la aplicación. */
     public void setAuthorizationService(AuthorizationService authorizationService) {
         if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
         this.authorizationService = authorizationService;
     }
 
@@ -60,6 +61,7 @@ public class SellerController {
      * @throws IllegalArgumentException si falta el servicio o la sesión
      */
     public void configure(SellerService service, UserSession session) {
+        requireSessionAuthority();
         if (service == null) throw new IllegalArgumentException("El servicio de vendedores es obligatorio.");
         if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         sellerService = service;
@@ -87,11 +89,16 @@ public class SellerController {
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
     }
 
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
+    }
+
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 }

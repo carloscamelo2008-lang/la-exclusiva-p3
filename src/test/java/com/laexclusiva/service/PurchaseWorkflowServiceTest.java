@@ -5,12 +5,12 @@ import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.MovementType;
 import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.PurchaseOrderStatus;
-import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.InMemoryInventoryRepository;
 import com.laexclusiva.repository.InMemoryProductRepository;
 import com.laexclusiva.repository.InMemoryStockMovementRepository;
+import com.laexclusiva.testutil.IdentityTestFixture;
 import com.laexclusiva.repository.PurchaseOrderRepository.OrderWithLines;
 import com.laexclusiva.service.GoodsReceiptService.IdempotencyConflictException;
 import com.laexclusiva.service.GoodsReceiptService.ReceiptLineRequest;
@@ -38,14 +38,17 @@ class PurchaseWorkflowServiceTest {
                     ? replacement : super.findById(id);
         }
     };
-    private final PurchasesModuleFactory.Services module =
-            PurchasesModuleFactory.inMemory(products, inventory, movements);
-    private final UserSession admin = session(UserRole.ADMINISTRATOR);
-    private final UserSession worker = session(UserRole.WORKER);
+    private final IdentityTestFixture identity = new IdentityTestFixture();
+    private PurchasesModuleFactory.Services module;
+    private UserSession admin;
+    private UserSession worker;
     private long supplierId;
 
     @BeforeEach
     void setUp() {
+        module = PurchasesModuleFactory.inMemory(products, inventory, movements, identity.authorization());
+        admin = identity.issue(UserRole.ADMINISTRATOR).session();
+        worker = identity.issue(UserRole.WORKER).session();
         for (int capacity : new int[]{38, 30, 16}) {
             catalog.save(product(capacity, capacity));
         }
@@ -181,7 +184,4 @@ class PurchaseWorkflowServiceTest {
         return product;
     }
 
-    private static UserSession session(UserRole role) {
-        return new UserSession(new UserAccount(1L, role.name(), "fixture", role, null));
-    }
 }

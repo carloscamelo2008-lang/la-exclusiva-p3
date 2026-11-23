@@ -38,7 +38,7 @@ import javafx.util.StringConverter;
 public final class PurchasesController {
     private static final String REFRESH_FAILED = " No se pudo actualizar la vista. Use el botón de actualización.";
     private static final DateTimeFormatter RECEIPT_DATE = DateTimeFormatter.ofPattern("dd/MM/uuuu HH:mm");
-    private final AuthorizationService authorization = new AuthorizationService();
+    private AuthorizationService authorization;
 
     @FXML private Pane supplierEditor, orderEditor, receiptEditor;
     @FXML private Label messageLabel, receiptMessageLabel, equivalenceLabel, selectedOrderLabel, receiptKeyLabel;
@@ -73,22 +73,42 @@ public final class PurchasesController {
     public static Parent load(SupplierService supplierService, PurchaseOrderService purchaseOrderService,
                               GoodsReceiptService goodsReceiptService, ProductService productService,
                               UserSession session) throws IOException {
+        throw new SecurityException("La vista de compras requiere el autorizador de la identidad activa.");
+    }
+
+    /** Carga la vista con el autorizador vigente compartido por la aplicación. */
+    public static Parent load(SupplierService supplierService, PurchaseOrderService purchaseOrderService,
+                              GoodsReceiptService goodsReceiptService, ProductService productService,
+                              UserSession session, AuthorizationService authorization) throws IOException {
         FXMLLoader loader = new FXMLLoader(PurchasesController.class.getResource(
                 "/com/laexclusiva/ui/fxml/purchases_view.fxml"));
         Parent view = loader.load();
         PurchasesController controller = loader.getController();
-        controller.configure(supplierService, purchaseOrderService, goodsReceiptService, productService, session);
+        controller.configure(supplierService, purchaseOrderService, goodsReceiptService, productService, session,
+                authorization);
         return view;
     }
 
-    /** Conecta la vista con los servicios del módulo y aplica los permisos de la sesión. */
+    /** Rechaza la configuración histórica que no suministra una autoridad de sesiones. */
     public void configure(SupplierService supplierService, PurchaseOrderService purchaseOrderService,
                           GoodsReceiptService goodsReceiptService, ProductService productService, UserSession session) {
+        throw new SecurityException("La vista de compras requiere el autorizador de la identidad activa.");
+    }
+
+    /** Conecta la vista con servicios y autoridad compartidos y aplica los permisos actuales. */
+    public void configure(SupplierService supplierService, PurchaseOrderService purchaseOrderService,
+                          GoodsReceiptService goodsReceiptService, ProductService productService, UserSession session,
+                          AuthorizationService authorization) {
+        if (authorization == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorization.requireSessionAuthority();
+        Objects.requireNonNull(session, "La sesión de compras es obligatoria.");
+        authorization.currentPrincipal(session);
         suppliers = Objects.requireNonNull(supplierService);
         orders = Objects.requireNonNull(purchaseOrderService);
         receipts = Objects.requireNonNull(goodsReceiptService);
         products = Objects.requireNonNull(productService);
         this.session = session;
+        this.authorization = authorization;
         updatePermissions();
         handleRefresh();
     }
@@ -359,8 +379,9 @@ public final class PurchasesController {
     }
 
     private void updatePermissions() {
-        boolean read = authorization.hasPermission(session, Permission.VIEW_INVENTORY);
-        boolean write = authorization.hasPermission(session, Permission.MANAGE_INVENTORY_ENTRIES);
+        boolean configured = authorization != null && authorization.hasSessionAuthority() && session != null;
+        boolean read = configured && authorization.hasPermission(session, Permission.VIEW_INVENTORY);
+        boolean write = configured && authorization.hasPermission(session, Permission.MANAGE_INVENTORY_ENTRIES);
         refreshButton.setDisable(!read);
         detailButton.setDisable(!read || pending != null);
         refreshHistoryButton.setDisable(!read || selectedOrderId == null);
@@ -373,7 +394,8 @@ public final class PurchasesController {
     }
 
     private boolean allow(Permission permission, Label target) {
-        if (authorization.hasPermission(session, permission)) return true;
+        if (authorization != null && authorization.hasSessionAuthority() && session != null
+                && authorization.hasPermission(session, permission)) return true;
         updatePermissions();
         target.setText("La sesión no tiene permiso para esta operación.");
         return false;
@@ -384,7 +406,7 @@ public final class PurchasesController {
         try {
             operation.run();
         } catch (IllegalArgumentException | SecurityException rejected) {
-            target.setText("Operación rechazada. " + rejected.getMessage());
+            target.setText("Operación rechazada. " + UiErrorMessages.safeMessage(rejected));
             return;
         } catch (RuntimeException uncertain) {
             target.setText("Resultado incierto. Actualice la vista y compruebe el registro antes de repetir.");

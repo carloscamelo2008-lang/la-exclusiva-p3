@@ -71,11 +71,12 @@ public class PortfolioController {
     private CustomerGeneralDebtWorkflow generalDebtWorkflow;
     private boolean canRegisterPayment;
     private UserSession session;
-    private AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
 
     /** Inyecta la autoridad actual compartida con la aplicación. */
     public void setAuthorizationService(AuthorizationService authorizationService) {
         if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
         this.authorizationService = authorizationService;
     }
     private String pendingSaleId;
@@ -145,6 +146,7 @@ public class PortfolioController {
     /** Variante que habilita los movimientos auditables de deuda general al activar persistencia JDBC. */
     public void configure(CustomerService customerService, SalesWorkflow salesWorkflow,
                           CustomerGeneralDebtWorkflow generalDebtWorkflow, UserSession session) {
+        requireSessionAuthority();
         if (customerService == null) throw new IllegalArgumentException("El servicio de clientes es obligatorio.");
         if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         this.customerService = customerService;
@@ -450,7 +452,13 @@ public class PortfolioController {
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
+    }
+
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
     }
 
     @FXML
@@ -484,7 +492,6 @@ public class PortfolioController {
     }
 
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 }

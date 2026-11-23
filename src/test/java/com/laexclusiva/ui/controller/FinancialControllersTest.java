@@ -16,6 +16,7 @@ import com.laexclusiva.model.UserSession;
 import com.laexclusiva.service.CashWorkflow;
 import com.laexclusiva.service.CustomerGeneralDebtWorkflow;
 import com.laexclusiva.ui.ApplicationServices;
+import com.laexclusiva.testutil.IdentityTestFixture;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -42,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Regresiones visuales de permisos de caja y separación de la cartera financiera. */
 class FinancialControllersTest {
+    private static final IdentityTestFixture IDENTITY = new IdentityTestFixture();
 
     @BeforeAll
     static void startJavaFx() {
@@ -197,8 +199,7 @@ class FinancialControllersTest {
         runOnFx(() -> {
             CountingCashWorkflow cash = new CountingCashWorkflow();
             FXMLLoader loader = load("cash_view.fxml");
-            ((CashController) loader.getController()).configure(cash, new UserSession(
-                    new UserAccount(700L, "trabajador-ficticio", "unused", UserRole.WORKER, null)));
+            ((CashController) loader.getController()).configure(cash, IDENTITY.issue(UserRole.WORKER).session());
 
             assertFalse(button(loader, "registerMovementButton").isVisible());
             assertEquals(0, cash.listCalls);
@@ -219,8 +220,7 @@ class FinancialControllersTest {
             ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
             String customerId = "CUS-FINANCE-WORKER";
             services.customers().registerCustomer(customerId, "Cliente ficticio", "3000000103", "Dirección de prueba");
-            UserSession worker = new UserSession(new UserAccount(702L, "trabajador-cartera", "unused",
-                    UserRole.WORKER, null));
+            UserSession worker = IDENTITY.issue(UserRole.WORKER).session();
             FXMLLoader loader = load("portfolio_view.fxml");
             PortfolioController controller = loader.getController();
             controller.configure(services.customers(), services.sales(), services.generalDebt(), worker);
@@ -376,13 +376,16 @@ class FinancialControllersTest {
     }
 
     private static UserSession adminSession() {
-        return new UserSession(new UserAccount(701L, "admin-ficticio", "unused", UserRole.ADMINISTRATOR, null));
+        return IDENTITY.issue(UserRole.ADMINISTRATOR).session();
     }
 
     private static FXMLLoader load(String name) throws Exception {
         FXMLLoader loader = new FXMLLoader(FinancialControllersTest.class.getResource(
                 "/com/laexclusiva/ui/fxml/" + name));
         loader.load();
+        Object controller = loader.getController();
+        if (controller instanceof CashController value) value.setAuthorizationService(IDENTITY.authorization());
+        if (controller instanceof PortfolioController value) value.setAuthorizationService(IDENTITY.authorization());
         return loader;
     }
 

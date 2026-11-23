@@ -4,7 +4,6 @@ import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.GoodsReceipt;
 import com.laexclusiva.model.SalePresentation;
-import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.persistence.jdbc.JdbcPersistenceException;
@@ -15,11 +14,11 @@ import com.laexclusiva.repository.InMemoryProductRepository;
 import com.laexclusiva.repository.InMemoryPurchaseOrderRepository;
 import com.laexclusiva.repository.InMemoryStockMovementRepository;
 import com.laexclusiva.repository.InMemorySupplierRepository;
-import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.GoodsReceiptService;
 import com.laexclusiva.service.ProductService;
 import com.laexclusiva.service.PurchaseOrderService;
 import com.laexclusiva.service.SupplierService;
+import com.laexclusiva.testutil.IdentityTestFixture;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -56,7 +55,7 @@ class PurchasesControllerTest {
             Fixture fixture = new Fixture();
             FXMLLoader view = fixture.load(fixture.admin);
             assertNotNull(PurchasesController.load(fixture.suppliers, fixture.orders, fixture.receipts,
-                    fixture.products, fixture.admin));
+                    fixture.products, fixture.admin, fixture.identity.authorization()));
             createOrder(view);
             assertTrue(message(view, "messageLabel").contains("Pedido creado"));
             assertTrue(fixture.inventory.findAll().isEmpty());
@@ -81,7 +80,7 @@ class PurchasesControllerTest {
     void workerCanReadButCannotUseWriteControls() throws Exception {
         onFxThread(() -> {
             Fixture fixture = new Fixture();
-            FXMLLoader view = fixture.load(session(UserRole.WORKER));
+            FXMLLoader view = fixture.load(fixture.worker);
             for (String id : List.of("createSupplierButton", "toggleSupplierButton", "createOrderButton",
                     "addOrderLineButton", "addReceiptLineButton", "receiveButton")) {
                 assertTrue(button(view, id).isDisabled(), id);
@@ -193,12 +192,10 @@ class PurchasesControllerTest {
         return task.get(15, TimeUnit.SECONDS);
     }
 
-    private static UserSession session(UserRole role) {
-        return new UserSession(new UserAccount(1L, role.name(), "unused", role, null));
-    }
-
     private static final class Fixture {
-        private final UserSession admin = session(UserRole.ADMINISTRATOR);
+        private final IdentityTestFixture identity = new IdentityTestFixture();
+        private final UserSession admin = identity.issue(UserRole.ADMINISTRATOR).session();
+        private final UserSession worker = identity.issue(UserRole.WORKER).session();
         private final InMemoryProductRepository catalog = new InMemoryProductRepository();
         private final InMemoryInventoryRepository inventory = new InMemoryInventoryRepository();
         private final InMemoryStockMovementRepository movements = new InMemoryStockMovementRepository();
@@ -225,7 +222,7 @@ class PurchasesControllerTest {
             products.register(product);
             var supplierRepository = new InMemorySupplierRepository();
             var orderRepository = new InMemoryPurchaseOrderRepository();
-            var authorization = new AuthorizationService();
+            var authorization = identity.authorization();
             suppliers = new SupplierService(supplierRepository, authorization, boundary);
             orders = new PurchaseOrderService(orderRepository, supplierRepository, products, authorization, boundary);
             receipts = new GoodsReceiptService(orderRepository, new InMemoryGoodsReceiptRepository(), products,
@@ -238,7 +235,7 @@ class PurchasesControllerTest {
                     "/com/laexclusiva/ui/fxml/purchases_view.fxml"));
             loader.load();
             PurchasesController controller = loader.getController();
-            controller.configure(suppliers, orders, receipts, products, session);
+            controller.configure(suppliers, orders, receipts, products, session, identity.authorization());
             return loader;
         }
 

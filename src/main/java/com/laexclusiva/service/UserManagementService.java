@@ -24,6 +24,17 @@ public final class UserManagementService {
     private final SellerService sellers;
     private final ActiveAdministratorPolicy policy = new ActiveAdministratorPolicy();
 
+    /** Error conocido de validación que el administrador puede corregir en la pantalla. */
+    public static final class ValidationException extends IllegalArgumentException {
+        /**
+         * Crea un error de validación seguro para presentar al operador.
+         * @param message explicación breve del dato que debe corregirse, sin detalles técnicos
+         */
+        public ValidationException(String message) {
+            super(message);
+        }
+    }
+
     /**
      * @param users repositorio de cuentas compartido con la frontera
      * @param boundary frontera administrativa obligatoria
@@ -79,7 +90,7 @@ public final class UserManagementService {
     public UserChangeResult changeRole(UserSession actor, String userId, long expectedVersion, UserRole role) {
         return boundary.execute(() -> {
             sessions.validate(actor);
-            if (role == null) throw new IllegalArgumentException("El rol es obligatorio.");
+            if (role == null) throw new ValidationException("El rol es obligatorio.");
             return update(userId, expectedVersion, proposed -> proposed.setRole(role));
         });
     }
@@ -121,16 +132,24 @@ public final class UserManagementService {
     public UserChangeResult createUser(UserSession actor, CreateUserRequest request) {
         return boundary.execute(() -> {
             sessions.validate(actor);
-            if (request == null) throw new IllegalArgumentException("Los datos de creación son obligatorios.");
+            if (request == null) throw new ValidationException("Los datos de creación son obligatorios.");
             String username = request.username();
             if (username == null || username.isBlank() || username.length() > 100 || username.indexOf('\0') >= 0) {
-                throw new IllegalArgumentException("El nombre de usuario debe tener entre 1 y 100 caracteres válidos.");
+                throw new ValidationException("El nombre de usuario debe tener entre 1 y 100 caracteres válidos.");
             }
-            PasswordPolicy.validate(request.password());
-            if (request.role() == null) throw new IllegalArgumentException("El rol es obligatorio.");
+            validatePassword(request.password());
+            if (request.role() == null) throw new ValidationException("El rol es obligatorio.");
             UserAccount user = new UserAccount(null, username, PasswordHasher.hash(request.password()), request.role(), null);
             user.setActive(request.active());
-            users.save(user);
+            try {
+                users.save(user);
+            } catch (IllegalArgumentException duplicate) {
+                if ("El nombre de usuario ya se encuentra registrado.".equals(duplicate.getMessage())
+                        || "Ya existe un usuario con el ID o nombre indicado.".equals(duplicate.getMessage())) {
+                    throw new ValidationException("El nombre de usuario ya se encuentra registrado.");
+                }
+                throw duplicate;
+            }
             return new UserChangeResult(user.getId(), user.getRole(), user.isActive(), user.getSecurityVersion());
         });
     }
@@ -173,7 +192,7 @@ public final class UserManagementService {
     public UserChangeResult changePassword(UserSession actor, String userId, long expectedVersion, String newPassword) {
         return boundary.execute(() -> {
             sessions.validate(actor);
-            PasswordPolicy.validate(newPassword);
+            validatePassword(newPassword);
             UserAccount proposed = copy(loadExpected(userId, expectedVersion));
             proposed.setPasswordHash(PasswordHasher.hash(newPassword));
             users.update(proposed);
@@ -203,11 +222,11 @@ public final class UserManagementService {
             UserAccount current = loadExpected(userId, expectedVersion);
             if (sellerId != null) {
                 if (sellerId.isBlank() || sellerId.length() > 32 || sellerId.indexOf('\0') >= 0) {
-                    throw new IllegalArgumentException("El ID de vendedor debe tener entre 1 y 32 caracteres válidos.");
+                    throw new ValidationException("El ID de vendedor debe tener entre 1 y 32 caracteres válidos.");
                 }
                 if (sellers == null) throw new IllegalStateException("La consulta de vendedores no está configurada.");
                 var seller = sellers.getSellerById(sellerId)
-                        .orElseThrow(() -> new IllegalArgumentException("El vendedor no existe."));
+                        .orElseThrow(() -> new ValidationException("El vendedor no existe."));
                 if (!sellerId.equals(seller.getId())) throw new IllegalStateException("La identidad del vendedor es inconsistente.");
             }
             UserAccount proposed = copy(current);
@@ -249,13 +268,13 @@ public final class UserManagementService {
         try {
             id = userId == null ? null : Long.valueOf(userId.trim());
         } catch (NumberFormatException invalid) {
-            throw new IllegalArgumentException("El ID del objetivo debe ser un entero positivo.");
+            throw new ValidationException("El ID del objetivo debe ser un entero positivo.");
         }
         if (id == null || id <= 0 || expectedVersion < 0) {
-            throw new IllegalArgumentException("Se requieren un ID positivo y una versión no negativa.");
+            throw new ValidationException("Se requieren un ID positivo y una versión no negativa.");
         }
         UserAccount current = users.findById(id.toString())
-                .orElseThrow(() -> new IllegalArgumentException("La cuenta objetivo no existe."));
+                .orElseThrow(() -> new ValidationException("La cuenta objetivo no existe."));
         if (!id.equals(current.getId())) throw new IllegalStateException("La identidad de la cuenta objetivo es inconsistente.");
         if (current.getSecurityVersion() != expectedVersion) {
             throw new ConcurrentModificationException("La cuenta cambió; vuelva a cargarla antes de actualizar.");
@@ -270,6 +289,14 @@ public final class UserManagementService {
         result.setSecurityVersion(user.getSecurityVersion());
         if (user.getAccountInstanceId() != null) result.setAccountInstanceId(user.getAccountInstanceId());
         return result;
+    }
+
+    private static void validatePassword(String password) {
+        try {
+            PasswordPolicy.validate(password);
+        } catch (IllegalArgumentException invalid) {
+            throw new ValidationException(invalid.getMessage());
+        }
     }
 
     /** Resultado inmutable sin cuenta mutable, contraseña ni hash. */

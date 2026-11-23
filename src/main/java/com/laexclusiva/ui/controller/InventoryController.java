@@ -57,11 +57,12 @@ public class InventoryController {
     private ProductService products;
     private InventoryService inventory;
     private UserSession session;
-    private AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
 
     /** Inyecta la autoridad actual que se revalida en cada acción de inventario. */
     public void setAuthorizationService(AuthorizationService authorizationService) {
         if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
         this.authorizationService = authorizationService;
     }
 
@@ -98,6 +99,7 @@ public class InventoryController {
      * @throws IllegalArgumentException si falta una dependencia o la sesión
      */
     public void configure(ProductService products, InventoryService inventory, UserSession session) {
+        requireSessionAuthority();
         if (products == null || inventory == null) {
             throw new IllegalArgumentException("Los servicios de producto e inventario son obligatorios.");
         }
@@ -225,7 +227,13 @@ public class InventoryController {
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
+    }
+
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
     }
 
     private void refresh() {
@@ -254,8 +262,7 @@ public class InventoryController {
     }
 
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 
     private record ProductStock(BeerProduct product, StockSnapshot stock) { }

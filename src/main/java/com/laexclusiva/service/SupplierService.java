@@ -75,7 +75,8 @@ public final class SupplierService {
 
     /** Exige una sesión activa y el permiso de inventario solicitado. */
     static void requirePermission(AuthorizationService authorization, UserSession session, Permission permission) {
-        if (session == null || !session.isActive() || !authorization.hasPermission(session, permission)) {
+        authorization.requireSessionAuthority();
+        if (session == null || !authorization.hasPermission(session, permission)) {
             throw new SecurityException("La sesión no tiene permiso para realizar esta operación de compras.");
         }
     }

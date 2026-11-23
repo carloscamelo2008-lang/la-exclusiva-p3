@@ -36,6 +36,24 @@ public class AuthorizationService {
         this.sessions = sessions;
     }
 
+    /** Indica si este servicio valida sesiones emitidas por una autoridad concreta. */
+    public boolean hasSessionAuthority() {
+        return sessions != null;
+    }
+
+    /**
+     * Rechaza el uso de este autorizador como frontera de una ruta productiva.
+     * El constructor sin validador permanece disponible para consumidores de compatibilidad,
+     * pero solo puede evaluar snapshots y nunca habilita operaciones protegidas.
+     *
+     * @throws SecurityException si no se inyectó el validador de la autoridad actual
+     */
+    public void requireSessionAuthority() {
+        if (sessions == null) {
+            throw new SecurityException("La operación requiere una autoridad de sesiones vigente.");
+        }
+    }
+
     public boolean isAdministrator(UserAccount user) {
         return user != null && user.isActive() && user.getRole() == UserRole.ADMINISTRATOR;
     }
@@ -92,6 +110,7 @@ public class AuthorizationService {
         if (permission == null || operation == null) {
             throw new IllegalArgumentException("El permiso y la operación son obligatorios.");
         }
+        requireSessionAuthority();
         if (!hasPermission(session, permission)) {
             throw new SecurityException("La sesión no permite ejecutar esta operación.");
         }

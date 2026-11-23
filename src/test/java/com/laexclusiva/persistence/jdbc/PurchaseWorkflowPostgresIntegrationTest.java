@@ -6,7 +6,6 @@ import com.laexclusiva.model.GoodsReceipt;
 import com.laexclusiva.model.MovementType;
 import com.laexclusiva.model.PurchaseOrderStatus;
 import com.laexclusiva.model.SalePresentation;
-import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.PurchaseOrderRepository.OrderWithLines;
@@ -14,6 +13,7 @@ import com.laexclusiva.service.GoodsReceiptService.IdempotencyConflictException;
 import com.laexclusiva.service.GoodsReceiptService.ReceiptLineRequest;
 import com.laexclusiva.service.PurchaseOrderService.OrderLineRequest;
 import com.laexclusiva.service.PurchasesModuleFactory;
+import com.laexclusiva.testutil.IdentityTestFixture;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -38,8 +38,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Integración opcional de compras sobre el esquema ya instalado en la base dedicada de pruebas. */
 class PurchaseWorkflowPostgresIntegrationTest {
-    private final UserSession admin = new UserSession(
-            new UserAccount(1L, "admin-compras-test", "fixture", UserRole.ADMINISTRATOR, null));
+    private final IdentityTestFixture identity = new IdentityTestFixture();
+    private final UserSession admin = identity.issue(UserRole.ADMINISTRATOR).session();
     private final String prefix = "PUR-TST-" + UUID.randomUUID();
     private final List<String> productIds = new ArrayList<>();
     private DatabaseConfig config;
@@ -65,7 +65,7 @@ class PurchaseWorkflowPostgresIntegrationTest {
                      THEN 1 ELSE 0 END
                 """);
         assumeTrue(schemaReady == 1, "Omitida: V004 debe estar instalada en la_exclusiva_test.");
-        module = PurchasesModuleFactory.postgres(provider);
+        module = PurchasesModuleFactory.postgres(provider, identity.authorization());
         supplierId = module.suppliers().create(admin, prefix, null, null).id();
     }
 
@@ -110,14 +110,14 @@ class PurchaseWorkflowPostgresIntegrationTest {
         assertEquals(PurchaseOrderStatus.PENDING, order.order().status());
         for (String id : productIds) assertNoStock(id);
 
-        var restarted = PurchasesModuleFactory.postgres(new JdbcConnectionProvider(config));
+        var restarted = PurchasesModuleFactory.postgres(new JdbcConnectionProvider(config), identity.authorization());
         assertEquals(supplierId, restarted.suppliers().findById(admin, supplierId).orElseThrow().id());
         assertEquals(order, restarted.orders().findById(admin, order.order().id()).orElseThrow());
         assertEquals(List.of(38, 30, 16), order.lines().stream().map(line -> line.unitsPerBasketSnapshot()).toList());
         assertEquals(List.of(40, 32, 18), order.lines().stream().map(line -> line.orderedEquivalentUnits()).toList());
         var requests = order.lines().stream().map(line -> new ReceiptLineRequest(line.id(), 1, 2)).toList();
         var receipt = restarted.receipts().receive(admin, order.order().id(), "capacidades", null, requests);
-        var reread = PurchasesModuleFactory.postgres(new JdbcConnectionProvider(config));
+        var reread = PurchasesModuleFactory.postgres(new JdbcConnectionProvider(config), identity.authorization());
         assertEquals(List.of(receipt), reread.receipts().findByPurchaseOrderId(admin, order.order().id()));
         assertEquals(PurchaseOrderStatus.COMPLETED,
                 reread.orders().findById(admin, order.order().id()).orElseThrow().order().status());
@@ -199,7 +199,7 @@ class PurchaseWorkflowPostgresIntegrationTest {
         receive(order, "parcial", 2);
         var secondProvider = new JdbcConnectionProvider(config);
         var secondTransactions = new JdbcTransactionManager(secondProvider);
-        var secondModule = PurchasesModuleFactory.postgres(secondProvider);
+        var secondModule = PurchasesModuleFactory.postgres(secondProvider, identity.authorization());
         CountDownLatch staged = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         var firstPid = new CompletableFuture<Integer>();

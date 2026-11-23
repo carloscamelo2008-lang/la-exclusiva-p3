@@ -64,11 +64,12 @@ public class SalesController {
     private UserSession session;
     private String saleOperationKey = UUID.randomUUID().toString();
     private String uncertainSaleFingerprint;
-    private AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
 
     /** Inyecta la autoridad actual compartida con el servicio que procesa las ventas. */
     public void setAuthorizationService(AuthorizationService authorizationService) {
         if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
         this.authorizationService = authorizationService;
     }
 
@@ -111,6 +112,7 @@ public class SalesController {
      */
     public void configure(ProductService products, InventoryService inventory, CustomerService customers,
                           SellerService sellers, SalesWorkflow sales, UserSession session) {
+        requireSessionAuthority();
         this.products = require(products);
         this.inventory = require(inventory);
         this.customers = require(customers);
@@ -306,7 +308,13 @@ public class SalesController {
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
+    }
+
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
     }
 
     private boolean isAuthorizedSeller(Seller seller) {
@@ -325,8 +333,7 @@ public class SalesController {
     }
 
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 
     private static String presentationName(SalePresentation presentation) {

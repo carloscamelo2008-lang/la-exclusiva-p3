@@ -40,13 +40,28 @@ public final class PurchasesModuleFactory {
      */
     public static Services inMemory(ProductService products, InMemoryInventoryRepository inventory,
                                     InMemoryStockMovementRepository movements) {
+        throw new SecurityException("Compras requiere el autorizador de la identidad activa.");
+    }
+
+    /**
+     * Ensambla compras en memoria con la autoridad de sesiones compartida por la aplicación.
+     *
+     * @param products catálogo compartido
+     * @param inventory existencias compartidas
+     * @param movements historial compartido
+     * @param authorization autorizador ligado al AuthenticationService activo
+     * @return servicios de compras que revalidan permisos en cada operación
+     */
+    public static Services inMemory(ProductService products, InMemoryInventoryRepository inventory,
+                                    InMemoryStockMovementRepository movements,
+                                    AuthorizationService authorization) {
+        requireSessionAuthority(authorization);
         TransactionBoundary transactions = new TransactionBoundary() {
             @Override
             public synchronized <T> T inTransaction(Supplier<T> operation) {
                 return operation.get();
             }
         };
-        var authorization = new AuthorizationService();
         var suppliers = new InMemorySupplierRepository();
         var orders = new InMemoryPurchaseOrderRepository();
         return new Services(new SupplierService(suppliers, authorization, transactions),
@@ -63,14 +78,30 @@ public final class PurchasesModuleFactory {
      * @return servicios de compras con transacciones JDBC
      */
     public static Services postgres(JdbcConnectionProvider provider) {
+        throw new SecurityException("Compras requiere el autorizador de la identidad activa.");
+    }
+
+    /**
+     * Ensambla compras PostgreSQL con el autorizador compartido por la composición de aplicación.
+     *
+     * @param provider proveedor JDBC compartido por el módulo y el resto de la aplicación
+     * @param authorization autorizador ligado al AuthenticationService activo
+     * @return servicios de compras con transacciones JDBC y permisos vigentes
+     */
+    public static Services postgres(JdbcConnectionProvider provider, AuthorizationService authorization) {
+        requireSessionAuthority(authorization);
         var transactions = new JdbcTransactionManager(provider);
         var products = new ProductService(new ProductRepositoryJdbc(provider, transactions));
-        var authorization = new AuthorizationService();
         var suppliers = new SupplierRepositoryJdbc(provider);
         var orders = new PurchaseOrderRepositoryJdbc(provider);
         return new Services(new SupplierService(suppliers, authorization, transactions),
                 new PurchaseOrderService(orders, suppliers, products, authorization, transactions),
                 new GoodsReceiptService(orders, new GoodsReceiptRepositoryJdbc(provider), products, authorization,
                         transactions, new InventoryStockAdjusterJdbc(provider), new StockMovementRepositoryJdbc(provider)));
+    }
+
+    private static void requireSessionAuthority(AuthorizationService authorization) {
+        if (authorization == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorization.requireSessionAuthority();
     }
 }

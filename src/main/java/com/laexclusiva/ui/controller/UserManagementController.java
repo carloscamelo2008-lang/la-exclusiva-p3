@@ -19,6 +19,21 @@ import javafx.util.StringConverter;
 
 /** Administra cuentas mediante el servicio que revalida la sesión y serializa cada operación. */
 public final class UserManagementController {
+    private static final java.util.Set<String> SAFE_VALIDATION_MESSAGES = java.util.Set.of(
+            "Seleccione una cuenta.",
+            "Seleccione una asignación de vendedor.",
+            "El rol es obligatorio.",
+            "Los datos de creación son obligatorios.",
+            "El nombre de usuario debe tener entre 1 y 100 caracteres válidos.",
+            "El nombre de usuario ya se encuentra registrado.",
+            "El ID de vendedor debe tener entre 1 y 32 caracteres válidos.",
+            "El vendedor no existe.",
+            "El ID del objetivo debe ser un entero positivo.",
+            "Se requieren un ID positivo y una versión no negativa.",
+            "La cuenta objetivo no existe.",
+            "La contraseña debe contener entre 15 y 128 caracteres Unicode válidos.",
+            "Elija una contraseña menos común o previsible.");
+
     @FXML private TableView<UserManagementService.UserSummary> usersTable;
     @FXML private TableColumn<UserManagementService.UserSummary, String> idColumn;
     @FXML private TableColumn<UserManagementService.UserSummary, String> usernameColumn;
@@ -78,13 +93,15 @@ public final class UserManagementController {
         if (users == null || sellers == null || session == null || authorization == null) {
             throw new IllegalArgumentException("La administración requiere servicios, autorización y sesión.");
         }
+        authorization.requireSessionAuthority();
         this.users = users;
         this.sellers = sellers;
         this.session = session;
         this.authorization = authorization;
         authorization.currentPrincipal(session);
         sellerCombo.getItems().setAll(new SellerChoice(null, "Sin asignar"));
-        sellers.getAllSellers().stream().map(seller -> new SellerChoice(seller.getId(), seller.getName()))
+        authorization.execute(session, Permission.VIEW_SELLERS, sellers::getAllSellers).stream()
+                .map(seller -> new SellerChoice(seller.getId(), seller.getName()))
                 .forEach(sellerCombo.getItems()::add);
         sellerCombo.getSelectionModel().selectFirst();
         refreshUsers();
@@ -117,7 +134,7 @@ public final class UserManagementController {
         var selected = selectedUser();
         try {
             requireAdministrator();
-            if (selected == null) throw new IllegalArgumentException("Seleccione una cuenta.");
+            if (selected == null) throw new UserManagementService.ValidationException("Seleccione una cuenta.");
             users.changeRole(session, selected.id().toString(), selected.securityVersion(), targetRoleCombo.getValue());
             refreshAfterWrite("Rol actualizado.");
         } catch (RuntimeException failure) {
@@ -130,7 +147,7 @@ public final class UserManagementController {
         var selected = selectedUser();
         try {
             requireAdministrator();
-            if (selected == null) throw new IllegalArgumentException("Seleccione una cuenta.");
+            if (selected == null) throw new UserManagementService.ValidationException("Seleccione una cuenta.");
             users.setActive(session, selected.id().toString(), selected.securityVersion(), !selected.active());
             refreshAfterWrite(selected.active() ? "Cuenta desactivada." : "Cuenta activada.");
         } catch (RuntimeException failure) {
@@ -144,7 +161,7 @@ public final class UserManagementController {
         var selected = selectedUser();
         try {
             requireAdministrator();
-            if (selected == null) throw new IllegalArgumentException("Seleccione una cuenta.");
+            if (selected == null) throw new UserManagementService.ValidationException("Seleccione una cuenta.");
             users.changePassword(session, selected.id().toString(), selected.securityVersion(), password);
             refreshAfterWrite("Contraseña actualizada. Las sesiones anteriores deberán volver a iniciar sesión.");
         } catch (RuntimeException failure) {
@@ -159,9 +176,10 @@ public final class UserManagementController {
         var selected = selectedUser();
         try {
             requireAdministrator();
-            if (selected == null) throw new IllegalArgumentException("Seleccione una cuenta.");
+            if (selected == null) throw new UserManagementService.ValidationException("Seleccione una cuenta.");
             SellerChoice choice = sellerCombo.getValue();
-            if (choice == null) throw new IllegalArgumentException("Seleccione una asignación de vendedor.");
+            if (choice == null) throw new UserManagementService.ValidationException(
+                    "Seleccione una asignación de vendedor.");
             users.assignSeller(session, selected.id().toString(), selected.securityVersion(), choice.id());
             refreshAfterWrite("Vendedor actualizado.");
         } catch (RuntimeException failure) {
@@ -206,8 +224,27 @@ public final class UserManagementController {
     }
 
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        if (failure instanceof UserManagementService.ValidationException validation) {
+            return SAFE_VALIDATION_MESSAGES.contains(validation.getMessage())
+                    ? validation.getMessage() : "No se pudo completar la operación. Inténtelo más tarde o contacte al administrador.";
+        }
+        if (failure instanceof SecurityException) {
+            return "La sesión ya no está autorizada para administrar usuarios.";
+        }
+        if (failure instanceof java.util.ConcurrentModificationException) {
+            return "La cuenta cambió. Actualice la lista e inténtelo de nuevo.";
+        }
+        if (failure instanceof IllegalStateException) {
+            String knownValidation = switch (failure.getMessage() == null ? "" : failure.getMessage()) {
+                case "No se puede retirar al último administrador activo." ->
+                        "Debe conservar al menos un administrador activo.";
+                case "El vendedor ya está asignado a otra cuenta activa." ->
+                        "El vendedor ya está asignado a otra cuenta activa.";
+                default -> null;
+            };
+            if (knownValidation != null) return knownValidation;
+        }
+        return "No se pudo completar la operación. Inténtelo más tarde o contacte al administrador.";
     }
 
     private record SellerChoice(String id, String label) { }

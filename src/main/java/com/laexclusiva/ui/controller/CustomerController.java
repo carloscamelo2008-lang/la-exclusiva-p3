@@ -32,11 +32,12 @@ public class CustomerController {
 
     private CustomerService customerService;
     private UserSession session;
-    private AuthorizationService authorizationService = new AuthorizationService();
+    private AuthorizationService authorizationService;
 
     /** Inyecta la autorización respaldada por la identidad de la aplicación. */
     public void setAuthorizationService(AuthorizationService authorizationService) {
         if (authorizationService == null) throw new IllegalArgumentException("La autorización es obligatoria.");
+        authorizationService.requireSessionAuthority();
         this.authorizationService = authorizationService;
     }
 
@@ -61,6 +62,7 @@ public class CustomerController {
      * @throws IllegalArgumentException si falta el servicio o la sesión
      */
     public void configure(CustomerService service, UserSession session) {
+        requireSessionAuthority();
         if (service == null) throw new IllegalArgumentException("El servicio de clientes es obligatorio.");
         if (session == null) throw new IllegalArgumentException("La sesión es obligatoria.");
         customerService = service;
@@ -91,11 +93,16 @@ public class CustomerController {
     }
 
     private void requirePermission(Permission permission, String message) {
+        requireSessionAuthority();
         if (!authorizationService.hasPermission(session, permission)) throw new SecurityException(message);
     }
 
+    private void requireSessionAuthority() {
+        if (authorizationService == null) throw new SecurityException("No se configuró la autoridad de sesión.");
+        authorizationService.requireSessionAuthority();
+    }
+
     private static String safeMessage(Throwable failure) {
-        return failure.getMessage() == null || failure.getMessage().isBlank()
-                ? "Error inesperado." : failure.getMessage();
+        return UiErrorMessages.safeMessage(failure);
     }
 }
