@@ -230,13 +230,13 @@ carga JavaFX desde módulo sin nombre.
 
 ### Comprobaciones que siguen pendientes
 
-1. Repetir el login después del reinicio con una credencial temporal conocida,
-   sin restablecer ni cambiar cuentas que ya existan.
-2. Verificar en la interfaz los permisos y asignación de vendedor para una
-   sesión trabajadora en modo PostgreSQL; la regresión automatizada de cartera
-   usa una sesión trabajadora en memoria.
-3. Repetir las comprobaciones visuales sobre el diseño que Daniel incorpore
-   desde el PR #25, preservando el punto de navegación funcional.
+1. Repetir la inspección visual manual si Daniel modifica el diseño desde el PR
+   #25, conservando el punto de navegación funcional.
+
+El login posterior a reconstruir la aplicación y los permisos de trabajador en
+PostgreSQL se validaron después; véase la sección siguiente. La comprobación
+automática usa escenas FXML y eventos JavaFX reales, pero no sustituye una
+revisión visual manual de cambios futuros de diseño.
 
 ## Límites y preparación de entrega
 
@@ -245,7 +245,84 @@ una recepción representa mercancía recibida, no un egreso de efectivo. La fila
 pendiente de cartera ya se muestra y permite registrar abonos; el reintento con
 respuesta perdida está cubierto en una regresión JavaFX simulada. Los flujos de
 cartera, caja y rechazo de valores inválidos también se recorrieron con JavaFX
-conectado al PostgreSQL efímero; el segundo login después del reinicio queda
-pendiente según se detalla arriba. La modernización visual de Daniel y el ícono
+conectado al PostgreSQL efímero. El login después de reconstruir la aplicación
+y los permisos del trabajador en PostgreSQL se verificaron en la sección
+siguiente. La modernización visual de Daniel y el ícono
 oficial siguen pendientes. Por ello no se prepara todavía un instalador de
 Windows.
+
+## Cierre de login y permisos de trabajador en PostgreSQL (23 de noviembre de 2026)
+
+La observación manual anterior de `qa-pr26-admin` no registró una comparación
+de la contraseña introducida con el valor de entorno ni guardó evidencia de
+que ambos fueran idénticos. Por eso no es posible atribuir retroactivamente ese
+fallo a un defecto de autenticación o a un error de digitación/configuración.
+La reproducción controlada elimina esa ambigüedad: el nombre y la contraseña se
+tomaron una sola vez del entorno privado del proceso; `App` usó esos valores en
+el bootstrap inicial y el formulario JavaFX recibió los mismos valores después
+de reconstruir la aplicación. No se registró la contraseña.
+
+`IdentityJavaFxPostgresIntegrationTest` arrancó dos instancias de `App` sobre
+una composición `postgres` de `ApplicationServices` y `UserRepositoryJdbc`, en
+un clúster PostgreSQL 18.6 desechable enlazado a `127.0.0.1:49713`. La URL de
+pruebas y la URL normal de la aplicación coincidieron exactamente en
+`la_exclusiva_test`. Antes de usarlo se comprobaron los objetos de V001, V002,
+V004 y V100–V106. El test completó el login JavaFX de `qa-pr26-admin` antes y
+después de reconstruir `App`, y verificó el mismo ID y conteo de cuentas: no se
+recreó ni duplicó la cuenta inicial. Esto prueba que el flujo controlado acepta
+credenciales idénticas dentro del proceso; no revela la causa histórica porque
+el valor del intento manual anterior no se conservó para comparación.
+
+Se crearon fixtures ficticios identificables por prefijos `FX`/`QA` y un
+vendedor asignado a `qa-pr26-worker-<sufijo>`. El trabajador inició sesión en
+JavaFX, consultó el proveedor/pedido de prueba, registró una venta de COP 2.500
+con COP 1.000 iniciales y un abono de COP 500. PostgreSQL confirmó dos pagos,
+COP 1.500 pagados y COP 1.000 pendientes; el inventario bajó una unidad por la
+venta y el abono no agregó movimientos de stock. El historial de ventas y la
+cartera se consultaron desde sus pantallas JavaFX.
+
+También se invocaron los servicios con sesión de trabajador: listado y creación
+de usuarios, creación de proveedores, creación/cancelación de pedidos y
+recepciones fueron rechazados con `SecurityException`. Después de esos
+rechazos no cambiaron el número de proveedores/pedidos ni el inventario. La
+limpieza transaccional se limitó a las identidades y claves de los fixtures; la
+consulta de cierre mostró cero usuarios, clientes, vendedores, productos,
+proveedores, pedidos, ventas, pagos y movimientos de caja en el laboratorio.
+
+La ejecución dirigida con Microsoft JDK 17.0.18 y Maven 3.10.0 pasó **1/1**,
+sin omisiones: `mvn -Dtest=IdentityJavaFxPostgresIntegrationTest
+-Dlaexclusiva.test.postgres.javaFxIdentity=true test`. JavaFX abrió la
+aplicación y se interactuó con controles FXML mediante eventos automatizados;
+no se presenta esto como una revisión visual manual del rediseño de Daniel.
+
+### Verificación completa y suites optativas (23 de noviembre de 2026)
+
+`mvn clean verify` con Microsoft JDK 17.0.18 y Maven 3.10.0 terminó en
+`BUILD SUCCESS`: **823 pruebas contabilizadas, 802 aprobadas, 0 fallidas, 0
+errores y 21 omitidas**. Surefire confirma **39 pruebas PostgreSQL reales
+aprobadas**, incluyendo las 2 de `IdentityApplicationPostgresIntegrationTest`,
+las 6 de administración de usuarios, los flujos de compras/ventas/finanzas y
+la prueba JavaFX/PostgreSQL descrita arriba. El JAR se generó correctamente.
+
+Las 21 omisiones no se cuentan como aprobadas: 3 de
+`AccountInstancePostgresIntegrationTest`, 6 de
+`ActiveSellerConcurrencyPostgresIntegrationTest` y 11 de
+`UserSecurityVersionPostgresIntegrationTest` exigen por contrato el puerto
+5432. No se conectó a ese puerto ni se usó una base local existente. La
+integración `IncompleteIdentitySchemaPostgresIntegrationTest` (1 caso) necesita
+un laboratorio distinto con solo V001; no se ejecutó contra el esquema completo
+de este laboratorio.
+
+Una primera invocación de verificación habilitó por error las pruebas de
+V104/V106 que exigen 5432 y falló su preflight al recibir el puerto 49713,
+antes de abrir conexiones para fixtures. Se detuvo antes de ejecutar las suites
+de concurrencia, esquema incompleto y el resto del módulo de seguridad; no se
+accedió a 5432. Se repitió `clean verify` activando solo las suites compatibles
+con el clúster efímero. La corrida final pasó; las consultas de cierre
+confirmaron cero registros de QA en sus tablas de negocio e identidad. No se
+ejecutaron nuevas migraciones en este trabajo.
+
+Advertencias no bloqueantes: Maven informa seis problemas en los modelos
+efectivos de JavaFX, y el toolkit advierte que las clases se cargaron desde un
+módulo sin nombre. No impidieron la ejecución de escenas, los logins ni los
+flujos de PostgreSQL.
