@@ -107,18 +107,7 @@
                   </FlowPane>
                </VBox>
                <CollectionDashboardView fx:id="collectionDashboard" visible="false" managed="false" />
-               <FlowPane hgap="18" vgap="18" prefWrapLength="850">
-                  <VBox styleClass="card" prefWidth="360">
-                     <Label text="Resumen comercial" styleClass="section-title" />
-                     <Label text="Consulta los valores actuales en Ventas, Inventario y Cartera." wrapText="true" />
-                     <Label text="Indicadores y gráfico semanal: pendientes de integración con los servicios." wrapText="true" styleClass="muted" />
-                  </VBox>
-                  <VBox styleClass="card" prefWidth="360">
-                     <Label text="Movimientos recientes" styleClass="section-title" />
-                     <Label text="Los movimientos reales se consultan en Caja y en el historial de cada módulo." wrapText="true" />
-                     <Label text="Sin una fuente de actividad global conectada." wrapText="true" styleClass="muted" />
-                  </VBox>
-               </FlowPane>
+               
             </VBox>
          </content>
       </ScrollPane>

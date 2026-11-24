@@ -48,8 +48,8 @@ public final class CollectionDashboardView extends VBox {
 
     private static VBox metric(String icon, String caption, int value, String severity) {
         Label number = new Label(icon + "  " + value); number.getStyleClass().add("collection-count");
-        Label text = new Label(caption); text.setWrapText(true); text.setMaxWidth(210);
-        VBox box = new VBox(8, number, text); box.setPrefWidth(230); box.setMinWidth(0);
+        Label text = new Label(caption); text.setWrapText(true); text.setMaxWidth(158);
+        VBox box = new VBox(4, number, text); box.setPrefWidth(190); box.setMinWidth(0);
         box.getStyleClass().addAll("collection-metric", severity); box.setAccessibleText(caption + ": " + value);
         return box;
     }

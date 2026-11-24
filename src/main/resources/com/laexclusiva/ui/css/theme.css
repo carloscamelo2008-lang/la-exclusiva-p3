@@ -95,7 +95,7 @@
 .workspace #supplierTaxId { -fx-pref-width: 210; }
 
 /* Indicadores reales de Cartera: prioridad también expresada mediante texto e icono. */
-.collection-metric { -fx-background-color: #edf4ff; -fx-background-radius: 12; -fx-padding: 16; -fx-min-height: 115; }
+.collection-metric { -fx-background-color: #edf4ff; -fx-background-radius: 12; -fx-padding: 12; -fx-min-height: 92; }
 .collection-count { -fx-font-size: 25; -fx-font-weight: bold; -fx-text-fill: #083477; }
 .collection-metric.urgent { -fx-background-color: #ffe9e6; }
 .collection-metric.urgent .collection-count { -fx-text-fill: #941e25; }
