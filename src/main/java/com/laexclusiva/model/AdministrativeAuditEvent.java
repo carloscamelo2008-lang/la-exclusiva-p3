@@ -10,7 +10,7 @@ public record AdministrativeAuditEvent(long id, long actorUserId, Action action,
         PASSWORD_RESET, SELLER_ASSIGNMENT_CHANGED, STATEMENT_SEND_ATTEMPT
     }
     public enum TargetType { USER, CUSTOMER }
-    public enum Result { SUCCESS, FAILED }
+    public enum Result { SUCCESS, FAILED, UNCERTAIN }
 
     /** Rechaza referencias vacías o campos de auditoría incompletos. */
     public AdministrativeAuditEvent {

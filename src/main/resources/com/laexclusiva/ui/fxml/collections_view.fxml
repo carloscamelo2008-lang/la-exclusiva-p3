@@ -90,6 +90,7 @@
                                         <TableColumn fx:id="reminderChannelColumn" text="Canal" prefWidth="130.0" />
                                         <TableColumn fx:id="reminderStatusColumn" text="Estado" prefWidth="180.0" />
                                         <TableColumn fx:id="reminderBalanceColumn" text="Saldo revisado" prefWidth="160.0" />
+                                        <TableColumn fx:id="reminderAttemptColumn" text="Intento" prefWidth="280.0" />
                                     </columns>
                                 </TableView>
                                 <Label text="Auditoría administrativa reciente" style="-fx-font-weight: bold;" />

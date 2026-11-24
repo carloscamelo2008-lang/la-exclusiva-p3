@@ -64,6 +64,7 @@ public final class CollectionsController {
     @FXML private TableColumn<CustomerCollectionReminder, String> reminderChannelColumn;
     @FXML private TableColumn<CustomerCollectionReminder, String> reminderStatusColumn;
     @FXML private TableColumn<CustomerCollectionReminder, String> reminderBalanceColumn;
+    @FXML private TableColumn<CustomerCollectionReminder, String> reminderAttemptColumn;
     @FXML private TableView<AdministrativeAuditEvent> auditTable;
     @FXML private TableColumn<AdministrativeAuditEvent, String> auditDateColumn;
     @FXML private TableColumn<AdministrativeAuditEvent, String> auditActorColumn;
@@ -90,8 +91,10 @@ public final class CollectionsController {
         historyNoteColumn.setCellValueFactory(cell -> text(cell.getValue().note() == null ? "" : cell.getValue().note()));
         reminderCustomerColumn.setCellValueFactory(cell -> text(cell.getValue().customerId()));
         reminderChannelColumn.setCellValueFactory(cell -> text(cell.getValue().channel().name()));
-        reminderStatusColumn.setCellValueFactory(cell -> text(cell.getValue().status().name()));
+        reminderStatusColumn.setCellValueFactory(cell -> text(reminderStatusLabel(cell.getValue().status())));
         reminderBalanceColumn.setCellValueFactory(cell -> text(cell.getValue().balanceSnapshot().toPlainString()));
+        reminderAttemptColumn.setCellValueFactory(cell -> text(cell.getValue().attemptId() == null
+                ? "" : cell.getValue().attemptId().toString()));
         auditDateColumn.setCellValueFactory(cell -> text(cell.getValue().occurredAt().toString()));
         auditActorColumn.setCellValueFactory(cell -> text(cell.getValue().actorUserId()));
         auditActionColumn.setCellValueFactory(cell -> text(cell.getValue().action().name()));
@@ -252,8 +255,11 @@ public final class CollectionsController {
             ButtonType send = new ButtonType("Enviar correo");
             ButtonType cancel = new ButtonType("Cancelar");
             confirm.getButtonTypes().setAll(send, cancel);
-            if (confirm.showAndWait().orElse(cancel) != send) return;
-            CollectionAssistantService.DeliveryResult result = assistant.sendReminder(session, reminder.id());
+            if (confirm.showAndWait().orElse(cancel) != send) {
+                assistant.cancelReminderPreview(session, reminder.id(), preview.previewToken());
+                return;
+            }
+            CollectionAssistantService.DeliveryResult result = deliverConfirmedPreview(reminder.id(), preview.previewToken());
             messageLabel.setText(result.message());
             refreshReminders();
             refreshAudit();
@@ -261,6 +267,13 @@ public final class CollectionsController {
         } catch (RuntimeException | IOException failure) {
             showSafeFailure("No se pudo preparar o entregar el aviso.", failure);
         }
+    }
+
+    /** Consume la revisión mostrada y delega la confirmación final al servicio protegido. */
+    CollectionAssistantService.DeliveryResult deliverConfirmedPreview(long reminderId, String previewToken) {
+        if (!isAdministrator()) throw new SecurityException("Solo administración puede confirmar envíos.");
+        String confirmation = assistant.confirmReminder(session, reminderId, previewToken);
+        return assistant.sendReminder(session, reminderId, confirmation);
     }
 
     private void refreshDashboard() {
@@ -323,6 +336,16 @@ public final class CollectionsController {
             case MEDIUM -> "Media";
             case UPCOMING -> "Próximo seguimiento";
             case GENERAL -> "General";
+        };
+    }
+
+    private static String reminderStatusLabel(CustomerCollectionReminder.Status status) {
+        return switch (status) {
+            case PENDING_REVIEW -> "Pendiente de revisión";
+            case SENDING -> "En envío";
+            case SENT -> "Aceptado por proveedor";
+            case FAILED -> "Rechazado";
+            case RECONCILIATION_REQUIRED -> "Pendiente de conciliación";
         };
     }
 

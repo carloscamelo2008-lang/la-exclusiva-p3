@@ -6,6 +6,6 @@ public final class SimulatedEmailDeliveryProvider implements EmailDeliveryProvid
 
     @Override public Result deliver(Message message) {
         if (message == null) throw new IllegalArgumentException("El mensaje es obligatorio.");
-        return new Result(false, "SIMULATED");
+        return Result.simulated();
     }
 }

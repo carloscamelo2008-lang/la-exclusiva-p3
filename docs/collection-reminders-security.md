@@ -4,7 +4,7 @@
 
 `CollectionAssistantService` ofrece recomendaciones explicables por reglas registradas. No usa un modelo de aprendizaje automático, no predice incumplimiento y no califica moralmente al cliente. La composición se obtiene desde `ApplicationServices.collectionAssistant()`; sus adaptadores en memoria y JDBC usan los puertos `CustomerCollectionRepository` y `AdministrativeAuditRepository`. En PostgreSQL, el seguimiento comparte el `JdbcConnectionProvider` y la frontera transaccional de la aplicación.
 
-La información del perfil se almacena aparte de `Customer`, para no reinterpretar ni reescribir sus campos históricos. V107 crea perfiles de contacto, eventos de seguimiento y avisos; V108 crea eventos administrativos. Las migraciones son manuales y no se ejecutan al iniciar la aplicación. Revisar [database/README.md](../database/README.md) antes de preparar cualquier entorno.
+La información del perfil se almacena aparte de `Customer`, para no reinterpretar ni reescribir sus campos históricos. V107 crea perfiles de contacto, eventos de seguimiento y avisos; V108 crea eventos administrativos; V109 agrega identidad y evidencia cerrada del intento y el estado de conciliación. Las migraciones son manuales y no se ejecutan al iniciar la aplicación. Revisar [database/README.md](../database/README.md) antes de preparar cualquier entorno.
 
 ## Recomendaciones y antigüedad
 
@@ -49,6 +49,10 @@ Un administrador prepara el lote manualmente desde «Actualizar recordatorios».
 
 Cada correo se revisa y confirma de manera individual. La vista previa muestra destinatario, texto y PDF. El modo predeterminado es simulado: no abre una conexión SMTP y el aviso queda pendiente. El envío real requiere `LAEXCLUSIVA_SMTP_ENABLED=true`, servidor TLS correctamente configurado, consentimiento/canal email vigentes, saldo aún idéntico al revisado, instrucciones de pago confirmadas y ventana de contacto habilitada.
 
+La aprobación se ata al destinatario, la versión completa del perfil de cobranza, el saldo, el contenido financiero, la versión del aviso y SHA-256 del PDF que vio el administrador. El token es aleatorio, de un uso, expira a los cinco minutos y se asocia a la misma instancia de sesión, identidad de cuenta y versión de seguridad. El servicio consume y vuelve a validar el token tanto al confirmar como justo antes de enviar; `sendReminder(actor,id)` sin token rechaza la operación. Los cambios de preferencias invalidan las vistas pendientes. El envío usa los bytes del PDF retenidos por esa revisión; la validación compara nuevamente la fuente del documento, sin regenerar otro archivo cuya metadata binaria pueda variar.
+
+El claim PostgreSQL bloquea primero la fila del cliente y luego el perfil y comprueba saldo, datos del cliente, consentimiento/destino y versión antes de pasar a `SENDING`. Abonos que se confirman antes del bloqueo hacen fallar la aprobación anterior y exigen refrescar y revisar otra vez. Una actualización que llegue luego de obtener los bloqueos se serializa después del claim; la operación externa ya iniciada queda identificada como intento y no se duplica silenciosamente.
+
 Variables SMTP leídas del entorno del proceso:
 
 | Variable | Descripción |
@@ -60,7 +64,11 @@ Variables SMTP leídas del entorno del proceso:
 | `LAEXCLUSIVA_SMTP_PASSWORD` | Secreto del proveedor; nunca se registra |
 | `LAEXCLUSIVA_SMTP_FROM` | Remitente autorizado |
 
-El proveedor usa TLS, valida certificados/identidad del servidor, fija tiempos de espera y no activa trazas SMTP. Las pruebas usan proveedores dobles o simulados y nunca envían mensajes reales. Una entrega externa y una transacción de base de datos no pueden confirmarse atómicamente: el registro pasa a `SENDING` antes de llamar al proveedor. Si se pierde la respuesta o falla la persistencia posterior, no se reintenta automáticamente; se debe reconciliar el estado con el proveedor antes de cualquier intervención manual.
+El proveedor usa TLS, valida certificados/identidad del servidor, fija tiempos de espera y no activa trazas SMTP. Las pruebas usan proveedores dobles o simulados y nunca envían mensajes reales. Una entrega externa y una transacción de base de datos no pueden confirmarse atómicamente: el registro pasa a `SENDING` antes de llamar al proveedor. V109 persiste un UUID único de intento, un propietario de instancia y evidencia no sensible (`SMTP_ACCEPTED`, `SMTP_REJECTED`, `SMTP_OUTCOME_UNCERTAIN` o `SIMULATED`). Aceptación, rechazo confirmado e incertidumbre quedan separados; no se guardan dirección, token, credenciales, cuerpo ni PDF en auditoría.
+
+Si se pierde la respuesta, se interrumpe el proceso durante `SENDING` o falla la persistencia tras la llamada externa, el estado pasa o se recupera como `RECONCILIATION_REQUIRED`. El UUID y la evidencia disponible permanecen consultables para administración y la aplicación no reintenta automáticamente. Si el proveedor aceptó el mensaje pero no se pudo confirmar la escritura, la fila se conserva como incierta para revisión aunque el campo de evidencia indique la aceptación observada. La organización debe consultar al proveedor antes de resolver manualmente ese caso.
+
+Al preparar otra vez la semana, el mismo registro solo puede actualizarse si todavía tiene cero intentos y está pendiente de revisión o marcado por saldo cambiado. El saldo nuevo queda en la fila semanal existente y se registra `BALANCE_CHANGED`; cualquier vista previa anterior se invalida. Filas en `SENDING`, `SENT`, con rechazo del proveedor o en conciliación nunca se reactivan automáticamente. La unicidad por cliente/semana permanece impuesta por PostgreSQL.
 
 Los horarios son hora `America/Bogota`: lunes a viernes 07:00–19:00, sábado 08:00–15:00, sin domingos ni festivos configurados. Para habilitar un envío real se debe suministrar el calendario completo del año actual:
 

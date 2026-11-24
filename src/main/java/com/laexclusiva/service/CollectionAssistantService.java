@@ -18,21 +18,31 @@ import com.laexclusiva.persistence.jdbc.TransactionBoundary;
 import com.laexclusiva.repository.AdministrativeAuditRepository;
 import com.laexclusiva.repository.CustomerCollectionRepository;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.time.DayOfWeek;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Coordina recomendaciones explicables, seguimiento, estados comerciales y avisos revisables.
@@ -42,27 +52,33 @@ import java.util.TreeMap;
 public final class CollectionAssistantService {
     public static final ZoneId COLOMBIA = ZoneId.of("America/Bogota");
     private static final String BUSINESS_NAME = "La Exclusiva";
+    private static final Duration REVIEW_TOKEN_LIFETIME = Duration.ofMinutes(5);
 
     /** Resumen de una preparación idempotente de avisos para una semana ISO. */
-    public record PreparationResult(int created, List<CustomerCollectionReminder> pendingReview) {
+    public record PreparationResult(int created, int refreshed, List<CustomerCollectionReminder> pendingReview) {
         public PreparationResult { pendingReview = List.copyOf(pendingReview); }
+        public PreparationResult(int created, List<CustomerCollectionReminder> pendingReview) {
+            this(created, 0, pendingReview);
+        }
     }
 
-    /** Vista previa efímera; nunca se persiste ni registra el correo o el PDF. */
-    public record EmailPreview(String recipient, String subject, String text, byte[] pdf) {
+    /** Vista previa efímera; nunca se persiste ni registra el correo, el PDF o su token. */
+    public record EmailPreview(String recipient, String subject, String text, byte[] pdf, String previewToken) {
         public EmailPreview {
-            if (recipient == null || subject == null || text == null || pdf == null) {
+            if (recipient == null || subject == null || text == null || pdf == null || previewToken == null) {
                 throw new IllegalArgumentException("La vista previa requiere destinatario y documento.");
             }
             pdf = pdf.clone();
         }
         @Override public byte[] pdf() { return pdf.clone(); }
+        @Override public String toString() { return "EmailPreview[contenido y token protegidos]"; }
     }
 
-    /** Resultado de la operación sin datos internos del proveedor ni excepción SMTP. */
+    /** Resultado seguro que identifica un intento sin incluir destinatario ni contenido. */
     public record DeliveryResult(CustomerCollectionReminder.Status status,
                                  CustomerCollectionReminder.ResultCode resultCode,
-                                 boolean providerAccepted, boolean outcomeUncertain, String message) { }
+                                 boolean providerAccepted, boolean outcomeUncertain, String message,
+                                 UUID attemptId) { }
 
     private final CustomerService customers;
     private final SalesWorkflow sales;
@@ -78,6 +94,10 @@ public final class CollectionAssistantService {
     private final String paymentKey;
     private final boolean paymentKeyOwnerConfirmed;
     private final boolean paymentKeyVerifiedByAdministrator;
+    private final UUID instanceId = UUID.randomUUID();
+    private final SecureRandom tokenRandom = new SecureRandom();
+    private final Map<String, ReviewBinding> pendingPreviews = new ConcurrentHashMap<>();
+    private final Map<String, ReviewBinding> pendingConfirmations = new ConcurrentHashMap<>();
 
     /**
      * Construye el servicio con las dependencias de la composición seleccionada.
@@ -193,7 +213,9 @@ public final class CollectionAssistantService {
                 events.add(event(customerId, actorId, CollectionFollowUp.EventType.NOTE_ADDED,
                         commitmentDate, balance.aggregateBalance(), normalizedNote, now));
             }
-            return collections.saveProfile(profile, events);
+            CollectionProfile saved = collections.saveProfile(profile, events);
+            invalidateReviews(customerId);
+            return saved;
         });
     }
 
@@ -219,17 +241,50 @@ public final class CollectionAssistantService {
     /** Prepara un archivo y un correo revisables por un administrador antes de cualquier entrega. */
     public EmailPreview previewReminder(UserSession actor, long reminderId) {
         return authorization.execute(actor, Permission.MANAGE_COLLECTION,
-                () -> transactions.inReadOnlyRepeatableRead(() -> {
-                    CustomerCollectionReminder reminder = requireReminder(reminderId);
-                    if (reminder.status() != CustomerCollectionReminder.Status.PENDING_REVIEW) {
-                        throw new IllegalStateException("El aviso ya no está pendiente de revisión.");
+                () -> {
+                    var principal = authorization.currentPrincipal(actor);
+                    ReviewSnapshot snapshot = transactions.inReadOnlyRepeatableRead(
+                            () -> loadReviewSnapshot(reminderId));
+                    if (!balanceMatches(snapshot)) {
+                        markBalanceChanged(snapshot, principal.userId());
+                        throw new IllegalStateException("El saldo cambió; actualice el aviso semanal antes de revisarlo.");
                     }
-                    CollectionProfile profile = collections.findProfile(reminder.customerId())
-                            .orElseThrow(() -> new IllegalStateException("El cliente no tiene preferencias de contacto."));
-                    requireConsent(profile, reminder);
-                    AccountStatementData document = createStatement(reminder.customerId());
-                    return emailPreview(profile.email(), document);
-                }));
+                    String previewToken = issueToken(pendingPreviews,
+                            binding(snapshot, actor, principal, snapshot.content().pdf()));
+                    return new EmailPreview(snapshot.content().recipient(), snapshot.content().subject(),
+                            snapshot.content().text(), snapshot.content().pdf(), previewToken);
+                });
+    }
+
+    /** Confirma la vista previa vigente y devuelve un token de envío único de cinco minutos. */
+    public String confirmReminder(UserSession actor, long reminderId, String previewToken) {
+        try {
+            return authorization.execute(actor, Permission.MANAGE_COLLECTION, () -> {
+                var principal = authorization.currentPrincipal(actor);
+                ReviewBinding reviewed = consumeToken(pendingPreviews, actor, principal, reminderId, previewToken);
+                ReviewSnapshot current = transactions.inReadOnlyRepeatableRead(() -> loadReviewSnapshot(reminderId));
+                if (!sameContent(reviewed, current)) {
+                    failStaleBalanceIfNeeded(reviewed, current, principal.userId());
+                    throw new IllegalStateException("El destinatario, el saldo o el documento cambió; genere y confirme una nueva vista previa.");
+                }
+                return issueToken(pendingConfirmations,
+                        binding(current, actor, principal, reviewed.approvedPdf()));
+            });
+        } catch (SecurityException revokedOrDenied) {
+            invalidateReviews(actor);
+            throw revokedOrDenied;
+        }
+    }
+
+    /** Descarta una vista previa que el administrador canceló; nunca escribe ni envía. */
+    public void cancelReminderPreview(UserSession actor, long reminderId, String previewToken) {
+        authorization.execute(actor, Permission.MANAGE_COLLECTION, () -> {
+            String digest = tokenDigest(previewToken);
+            ReviewBinding binding = pendingPreviews.get(digest);
+            if (binding != null && binding.session() == actor && binding.reminderId() == reminderId) {
+                pendingPreviews.remove(digest, binding);
+            }
+        });
     }
 
     /**
@@ -243,6 +298,7 @@ public final class CollectionAssistantService {
             LocalDate weekStart = now.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
             List<CustomerFinancialSnapshot> snapshots = transactions.inReadOnlyRepeatableRead(this::financialSnapshots);
             int created = 0;
+            int refreshed = 0;
             for (CustomerFinancialSnapshot snapshot : snapshots) {
                 if (snapshot.breakdown().aggregateBalance().signum() <= 0) continue;
                 requireConsistent(snapshot.breakdown());
@@ -258,9 +314,14 @@ public final class CollectionAssistantService {
                 CollectionFollowUp prepared = event(snapshot.customer().getId(), principal.userId(),
                         CollectionFollowUp.EventType.REMINDER_PREPARED, profile.commitmentDate(),
                         snapshot.breakdown().aggregateBalance(), "Aviso semanal agregado a revisión administrativa.", now);
-                if (collections.createReminderIfAbsent(proposed, prepared).inserted()) created++;
+                var saved = collections.createReminderIfAbsent(proposed, prepared);
+                if (saved.inserted()) created++;
+                if (saved.refreshed()) {
+                    refreshed++;
+                    invalidateReviews(snapshot.customer().getId());
+                }
             }
-            return new PreparationResult(created, collections.findReminders(
+            return new PreparationResult(created, refreshed, collections.findReminders(
                     CustomerCollectionReminder.Status.PENDING_REVIEW));
         });
     }
@@ -268,86 +329,59 @@ public final class CollectionAssistantService {
     /** Lista los estados de avisos para el administrador que revisa el lote semanal. */
     public List<CustomerCollectionReminder> listReminders(UserSession actor,
                                                            CustomerCollectionReminder.Status status) {
-        return authorization.execute(actor, Permission.MANAGE_COLLECTION,
-                () -> collections.findReminders(status));
+        return authorization.execute(actor, Permission.MANAGE_COLLECTION, () -> {
+            collections.reconcileInterruptedAttempts(instanceId);
+            return collections.findReminders(status);
+        });
     }
 
     /**
-     * Entrega el aviso seleccionado. No hay envío masivo: cada correo requiere vista previa y
-     * acción individual. Un estado SENDING nunca se reintenta automáticamente tras incertidumbre.
+     * Rechaza la entrega directa por ID; una vista previa aceptada y su token son obligatorios.
      */
     public DeliveryResult sendReminder(UserSession actor, long reminderId) {
-        return authorization.execute(actor, Permission.MANAGE_COLLECTION,
-                () -> sendAuthorized(actor, reminderId));
+        return authorization.execute(actor, Permission.MANAGE_COLLECTION, () -> {
+            var principal = authorization.currentPrincipal(actor);
+            recordSendAttempt(principal.userId(), reminderCustomerId(reminderId), AdministrativeAuditEvent.Result.FAILED);
+            throw new SecurityException("La entrega requiere confirmar una vista previa vigente.");
+        });
     }
 
-    private DeliveryResult sendAuthorized(UserSession actor, long reminderId) {
+    /**
+     * Entrega solo una confirmación de vista previa ligada a sesión, perfil, saldo y PDF.
+     * La reclamación SQL vuelve a comparar saldo/perfil bajo bloqueos antes de abrir SMTP.
+     */
+    public DeliveryResult sendReminder(UserSession actor, long reminderId, String confirmationToken) {
+        try {
+            return authorization.execute(actor, Permission.MANAGE_COLLECTION,
+                    () -> sendAuthorized(actor, reminderId, confirmationToken));
+        } catch (SecurityException revokedOrDenied) {
+            invalidateReviews(actor);
+            throw revokedOrDenied;
+        }
+    }
+
+    private DeliveryResult sendAuthorized(UserSession actor, long reminderId, String confirmationToken) {
         var principal = authorization.currentPrincipal(actor);
-        CustomerCollectionReminder reminder = requireReminder(reminderId);
-        if (reminder.status() != CustomerCollectionReminder.Status.PENDING_REVIEW
-                || reminder.attemptCount() != 0) {
-            recordSendAttempt(principal.userId(), reminder.customerId(), AdministrativeAuditEvent.Result.FAILED);
-            throw new IllegalStateException("El aviso ya fue intentado o su resultado requiere revisión; no se reenviará.");
+        ReviewBinding approved = consumeToken(pendingConfirmations, actor, principal, reminderId, confirmationToken);
+        ReviewSnapshot snapshot = transactions.inReadOnlyRepeatableRead(() -> loadReviewSnapshot(reminderId));
+        if (!sameContent(approved, snapshot)) {
+            failStaleBalanceIfNeeded(approved, snapshot, principal.userId());
+            throw new IllegalStateException("La aprobación venció o cambió el destinatario, saldo o documento; vuelva a revisar.");
         }
-        CollectionProfile profile = collections.findProfile(reminder.customerId()).orElse(null);
-        if (profile == null || !profile.collectionConsent() || !profile.remindersEnabled()
-                || profile.authorizedChannel() != reminder.channel()) {
-            return finishBeforeDelivery(principal.userId(), reminder,
-                    CustomerCollectionReminder.Status.FAILED,
-                    CustomerCollectionReminder.ResultCode.CONSENT_MISSING,
-                    "El consentimiento o canal ya no está vigente.");
-        }
-        if (reminder.channel() != CollectionChannel.EMAIL) {
-            return finishBeforeDelivery(principal.userId(), reminder,
-                    CustomerCollectionReminder.Status.PENDING_REVIEW,
-                    CustomerCollectionReminder.ResultCode.MANUAL_CONTACT_ONLY,
-                    "El canal autorizado requiere gestión manual; no se enviará correo.");
-        }
-        CustomerDebtBreakdown current = transactions.inReadOnlyRepeatableRead(
-                () -> currentBalanceFor(reminder.customerId()));
-        if (!current.isConsistent() || current.aggregateBalance().signum() <= 0
-                || current.aggregateBalance().compareTo(reminder.balanceSnapshot()) != 0) {
-            return finishBeforeDelivery(principal.userId(), reminder,
-                    CustomerCollectionReminder.Status.FAILED,
-                    CustomerCollectionReminder.ResultCode.BALANCE_CHANGED,
-                    "El saldo cambió; el aviso requiere una nueva revisión.");
-        }
-        ZonedDateTime localNow = ZonedDateTime.now(clock.withZone(COLOMBIA));
-        if (!contactWindow.allows(localNow)) {
-            return finishBeforeDelivery(principal.userId(), reminder,
-                    CustomerCollectionReminder.Status.PENDING_REVIEW,
-                    CustomerCollectionReminder.ResultCode.WINDOW_BLOCKED,
-                    "El envío se bloqueó fuera de la ventana autorizada de contacto.");
-        }
-        AccountStatementData statement = transactions.inReadOnlyRepeatableRead(
-                () -> createStatement(reminder.customerId()));
-        if (statement.totalBalance().compareTo(reminder.balanceSnapshot()) != 0) {
-            return finishBeforeDelivery(principal.userId(), reminder,
-                    CustomerCollectionReminder.Status.FAILED,
-                    CustomerCollectionReminder.ResultCode.BALANCE_CHANGED,
-                    "El saldo cambió durante la revisión; el aviso requiere una nueva revisión.");
-        }
-        profile = collections.findProfile(reminder.customerId()).orElse(null);
-        if (profile == null || !profile.collectionConsent() || !profile.remindersEnabled()
-                || profile.authorizedChannel() != CollectionChannel.EMAIL || profile.email() == null) {
-            return finishBeforeDelivery(principal.userId(), reminder,
-                    CustomerCollectionReminder.Status.FAILED,
-                    CustomerCollectionReminder.ResultCode.CONSENT_MISSING,
-                    "El consentimiento o canal cambió durante la revisión.");
-        }
-        EmailPreview preview = emailPreview(profile.email(), statement);
-        EmailDeliveryProvider.Message message = new EmailDeliveryProvider.Message(preview.recipient(),
-                preview.subject(), preview.text(), "estado-de-cuenta-la-exclusiva.pdf", preview.pdf());
+        CustomerCollectionReminder reminder = snapshot.reminder();
+        CollectionProfile profile = snapshot.profile();
+        AccountStatementData statement = snapshot.statement();
         if (!emailProvider.isRealDelivery()) {
-            EmailDeliveryProvider.Result simulated = emailProvider.deliver(message);
-            CustomerCollectionReminder updated = copyReminder(reminder,
+            EmailDeliveryProvider.Message message = message(withPdf(snapshot.content(), approved.approvedPdf()));
+            emailProvider.deliver(message);
+            CustomerCollectionReminder simulated = copyReminder(reminder,
                     CustomerCollectionReminder.Status.PENDING_REVIEW, LocalDateTime.now(clock.withZone(COLOMBIA)),
-                    reminder.attemptCount(), CustomerCollectionReminder.ResultCode.SIMULATED);
-            persistReminderOutcome(updated, reminder.status(), reminder.attemptCount(), principal.userId(),
+                    reminder.attemptCount(), CustomerCollectionReminder.ResultCode.SIMULATED, null, null,
+                    CustomerCollectionReminder.ProviderEvidence.SIMULATED);
+            persistReminderOutcome(simulated, reminder.status(), reminder.attemptCount(), principal.userId(),
                     AdministrativeAuditEvent.Result.SUCCESS, null);
-            return new DeliveryResult(updated.status(), CustomerCollectionReminder.ResultCode.SIMULATED,
-                    simulated.acceptedByProvider(), false,
-                    "Simulación completada; el correo no salió a la red y el aviso sigue en revisión.");
+            return new DeliveryResult(simulated.status(), CustomerCollectionReminder.ResultCode.SIMULATED,
+                    false, false, "Simulación completada; el correo no salió a la red y el aviso sigue en revisión.", null);
         }
         if (!paymentKeyOwnerConfirmed || !paymentKeyVerifiedByAdministrator || paymentKey == null) {
             return finishBeforeDelivery(principal.userId(), reminder,
@@ -361,22 +395,26 @@ public final class CollectionAssistantService {
                     CustomerCollectionReminder.ResultCode.WINDOW_BLOCKED,
                     "El envío se bloqueó fuera de la ventana autorizada de contacto.");
         }
+
         LocalDateTime attemptAt = LocalDateTime.now(clock.withZone(COLOMBIA));
-        boolean claimed = transactions.inTransaction(() -> collections.claimReminder(reminder, attemptAt));
+        UUID attemptId = UUID.randomUUID();
+        boolean claimed = transactions.inTransaction(() -> collections.claimReminder(reminder, attemptId,
+                instanceId, attemptAt, statement.totalBalance(), statement.customer(), profile));
         if (!claimed) {
-            throw new java.util.ConcurrentModificationException("Otro proceso reclamó el aviso; vuelva a consultarlo.");
+            throw new java.util.ConcurrentModificationException(
+                    "El perfil, el saldo o el aviso cambió antes del envío; genere y confirme una nueva vista previa.");
         }
-        boolean accepted;
+        CustomerCollectionReminder claimedReminder = copyReminder(reminder,
+                CustomerCollectionReminder.Status.SENDING, attemptAt, reminder.attemptCount() + 1,
+                CustomerCollectionReminder.ResultCode.PREPARED, attemptId, instanceId, null);
+        EmailDeliveryProvider.Result providerResult;
         try {
-            accepted = emailProvider.deliver(message).acceptedByProvider();
-        } catch (RuntimeException uncertainProviderResult) {
-            return finishClaimedDelivery(principal.userId(), reminder, attemptAt, false,
-                    CustomerCollectionReminder.ResultCode.PROVIDER_FAILED);
+            providerResult = emailProvider.deliver(message(withPdf(snapshot.content(), approved.approvedPdf())));
+        } catch (RuntimeException responseLostOrNetworkFailure) {
+            providerResult = EmailDeliveryProvider.Result.uncertain();
         }
-        CustomerCollectionReminder.ResultCode code = accepted
-                ? CustomerCollectionReminder.ResultCode.SENT
-                : CustomerCollectionReminder.ResultCode.PROVIDER_FAILED;
-        return finishClaimedDelivery(principal.userId(), reminder, attemptAt, accepted, code);
+        if (providerResult == null) providerResult = EmailDeliveryProvider.Result.uncertain();
+        return finishClaimedDelivery(principal.userId(), claimedReminder, attemptAt, providerResult);
     }
 
     private DeliveryResult finishBeforeDelivery(long actorId,
@@ -384,34 +422,59 @@ public final class CollectionAssistantService {
             CustomerCollectionReminder.ResultCode code, String message) {
         LocalDateTime attemptedAt = LocalDateTime.now(clock.withZone(COLOMBIA));
         CustomerCollectionReminder updated = copyReminder(reminder, status, attemptedAt,
-                reminder.attemptCount(), code);
+                reminder.attemptCount(), code, reminder.attemptId(), null, null);
         AdministrativeAuditEvent.Result result = status == CustomerCollectionReminder.Status.FAILED
                 ? AdministrativeAuditEvent.Result.FAILED : AdministrativeAuditEvent.Result.SUCCESS;
         persistReminderOutcome(updated, reminder.status(), reminder.attemptCount(), actorId, result,
                 status == CustomerCollectionReminder.Status.FAILED
                         ? CollectionFollowUp.EventType.REMINDER_FAILED : null);
-        return new DeliveryResult(status, code, false, false, message);
+        return new DeliveryResult(status, code, false, false, message, reminder.attemptId());
     }
 
-    private DeliveryResult finishClaimedDelivery(long actorId,
-            CustomerCollectionReminder previous, LocalDateTime attemptAt, boolean accepted,
-            CustomerCollectionReminder.ResultCode resultCode) {
+    private DeliveryResult finishClaimedDelivery(long actorId, CustomerCollectionReminder claimed,
+            LocalDateTime attemptAt, EmailDeliveryProvider.Result providerResult) {
+        boolean accepted = providerResult.outcome() == EmailDeliveryProvider.Outcome.ACCEPTED;
+        boolean rejected = providerResult.outcome() == EmailDeliveryProvider.Outcome.REJECTED;
+        // Un proveedor configurado como real que devuelve SIMULATED contradice su contrato;
+        // se bloquea en conciliación en lugar de asumir que no hubo efecto externo.
+        boolean uncertain = !accepted && !rejected;
         CustomerCollectionReminder.Status status = accepted ? CustomerCollectionReminder.Status.SENT
+                : uncertain ? CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED
                 : CustomerCollectionReminder.Status.FAILED;
-        CustomerCollectionReminder updated = copyReminder(previous, status, attemptAt,
-                previous.attemptCount() + 1, resultCode);
+        CustomerCollectionReminder.ResultCode code = accepted ? CustomerCollectionReminder.ResultCode.SENT
+                : uncertain ? CustomerCollectionReminder.ResultCode.PROVIDER_OUTCOME_UNCERTAIN
+                : CustomerCollectionReminder.ResultCode.PROVIDER_REJECTED;
+        CustomerCollectionReminder updated = copyReminder(claimed, status, attemptAt,
+                claimed.attemptCount(), code, claimed.attemptId(), null,
+                providerEvidence(accepted, rejected));
+        AdministrativeAuditEvent.Result auditResult = uncertain ? AdministrativeAuditEvent.Result.UNCERTAIN
+                : accepted ? AdministrativeAuditEvent.Result.SUCCESS : AdministrativeAuditEvent.Result.FAILED;
+        CollectionFollowUp.EventType followUp = accepted ? CollectionFollowUp.EventType.REMINDER_SENT
+                : uncertain ? CollectionFollowUp.EventType.REMINDER_UNCERTAIN
+                : CollectionFollowUp.EventType.REMINDER_FAILED;
         try {
             persistReminderOutcome(updated, CustomerCollectionReminder.Status.SENDING,
-                    previous.attemptCount() + 1, actorId,
-                    accepted ? AdministrativeAuditEvent.Result.SUCCESS : AdministrativeAuditEvent.Result.FAILED,
-                    accepted ? CollectionFollowUp.EventType.REMINDER_SENT : CollectionFollowUp.EventType.REMINDER_FAILED);
-            return new DeliveryResult(status, resultCode, accepted, false, accepted
-                    ? "El proveedor aceptó el correo; se registró el resultado."
-                    : "El proveedor no confirmó el correo; no se reintentará automáticamente.");
+                    claimed.attemptCount(), actorId, auditResult, followUp);
+            return new DeliveryResult(status, code, accepted, uncertain, uncertain
+                    ? "El resultado del proveedor es incierto. El aviso requiere conciliación y no se reenviará."
+                    : accepted ? "El proveedor confirmó la aceptación del correo."
+                    : "El proveedor confirmó el rechazo; el aviso no se reintentará automáticamente.", claimed.attemptId());
         } catch (RuntimeException persistenceFailure) {
-            return new DeliveryResult(CustomerCollectionReminder.Status.SENDING,
-                    CustomerCollectionReminder.ResultCode.PROVIDER_FAILED, accepted, true,
-                    "El proveedor pudo haber aceptado el correo, pero no se confirmó el registro. No vuelva a enviarlo; revise el estado y el registro del proveedor.");
+            CustomerCollectionReminder uncertainReminder = copyReminder(claimed,
+                    CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED, attemptAt,
+                    claimed.attemptCount(), CustomerCollectionReminder.ResultCode.PROVIDER_OUTCOME_UNCERTAIN,
+                    claimed.attemptId(), null, providerEvidence(accepted, rejected));
+            try {
+                persistReminderOutcome(uncertainReminder, CustomerCollectionReminder.Status.SENDING,
+                        claimed.attemptCount(), actorId, AdministrativeAuditEvent.Result.UNCERTAIN,
+                        CollectionFollowUp.EventType.REMINDER_UNCERTAIN);
+            } catch (RuntimeException reconciliationPersistenceFailure) {
+                // SENDING ya está confirmado antes del correo; la próxima instancia lo conciliará sin reenvío.
+            }
+            return new DeliveryResult(CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED,
+                    CustomerCollectionReminder.ResultCode.PROVIDER_OUTCOME_UNCERTAIN, accepted, true,
+                    "El resultado del proveedor no pudo guardarse con certeza. El intento quedó bloqueado para conciliación; no lo reenvíe.",
+                    claimed.attemptId());
         }
     }
 
@@ -607,12 +670,202 @@ public final class CollectionAssistantService {
                 profile == null ? null : profile.commitmentDate(), configuredKey);
     }
 
-    private EmailPreview emailPreview(String recipient, AccountStatementData statement) {
+    private ReviewSnapshot loadReviewSnapshot(long reminderId) {
+        CustomerCollectionReminder reminder = requireReminder(reminderId);
+        if (reminder.status() != CustomerCollectionReminder.Status.PENDING_REVIEW || reminder.attemptCount() != 0) {
+            if (reminder.status() == CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED) {
+                throw new IllegalStateException("El resultado del intento requiere conciliación; no se reenviará.");
+            }
+            throw new IllegalStateException("El aviso ya no está pendiente de revisión.");
+        }
+        CollectionProfile profile = collections.findProfile(reminder.customerId())
+                .orElseThrow(() -> new IllegalStateException("El cliente no tiene preferencias de contacto."));
+        requireConsent(profile, reminder);
+        AccountStatementData statement = createStatement(reminder.customerId());
+        return new ReviewSnapshot(reminder, profile, statement, emailContent(profile.email(), statement));
+    }
+
+    private EmailPreview emailPreview(String recipient, AccountStatementData statement, String previewToken) {
+        EmailPreviewContent content = emailContent(recipient, statement);
+        return new EmailPreview(content.recipient(), content.subject(), content.text(), content.pdf(), previewToken);
+    }
+
+    private EmailPreviewContent emailContent(String recipient, AccountStatementData statement) {
         byte[] pdf = pdfGenerator.generate(statement);
         String text = "Adjuntamos el estado de cuenta comercial actualizado de La Exclusiva. "
                 + "El documento separa deuda de ventas y deuda general. Un pago requiere confirmación "
                 + "administrativa; el envío de este correo no registra la deuda como pagada.";
-        return new EmailPreview(recipient, "Estado de cuenta comercial - La Exclusiva", text, pdf);
+        return new EmailPreviewContent(recipient, "Estado de cuenta comercial - La Exclusiva", text, pdf);
+    }
+
+    private static EmailDeliveryProvider.Message message(EmailPreviewContent content) {
+        return new EmailDeliveryProvider.Message(content.recipient(), content.subject(), content.text(),
+                "estado-de-cuenta-la-exclusiva.pdf", content.pdf());
+    }
+
+    private ReviewBinding binding(ReviewSnapshot snapshot, UserSession actor,
+            com.laexclusiva.service.AuthenticatedPrincipal principal, byte[] approvedPdf) {
+        return new ReviewBinding(actor, principal.userId(), principal.accountInstanceId(),
+                principal.securityVersion(), snapshot.reminder().id(), snapshot.reminder().customerId(),
+                snapshot.reminder().balanceSnapshot(), profileVersion(snapshot.profile()), snapshot.content().recipient(),
+                pdfDigest(approvedPdf), contentDigest(withPdf(snapshot.content(), approvedPdf)),
+                statementDigest(snapshot.statement()), approvedPdf,
+                reminderVersion(snapshot.reminder()), LocalDateTime.now(clock.withZone(COLOMBIA))
+                .plus(REVIEW_TOKEN_LIFETIME));
+    }
+
+    private String issueToken(Map<String, ReviewBinding> tokens, ReviewBinding binding) {
+        expireTokens(tokens);
+        byte[] bytes = new byte[32];
+        tokenRandom.nextBytes(bytes);
+        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        tokens.put(tokenDigest(token), binding);
+        return token;
+    }
+
+    private ReviewBinding consumeToken(Map<String, ReviewBinding> tokens, UserSession actor,
+            com.laexclusiva.service.AuthenticatedPrincipal principal, long reminderId, String token) {
+        if (token == null || token.isBlank()) throw new SecurityException("La confirmación del aviso es obligatoria.");
+        String digest = tokenDigest(token);
+        ReviewBinding binding = tokens.get(digest);
+        if (binding == null || binding.session() != actor || binding.userId() != principal.userId()
+                || !java.util.Objects.equals(binding.accountInstanceId(), principal.accountInstanceId())
+                || binding.securityVersion() != principal.securityVersion() || binding.reminderId() != reminderId) {
+            throw new SecurityException("La confirmación no pertenece a esta sesión o ya fue utilizada.");
+        }
+        if (!LocalDateTime.now(clock.withZone(COLOMBIA)).isBefore(binding.expiresAt())) {
+            tokens.remove(digest, binding);
+            throw new SecurityException("La confirmación venció; genere una nueva vista previa.");
+        }
+        if (!tokens.remove(digest, binding)) {
+            throw new SecurityException("La confirmación ya fue utilizada.");
+        }
+        return binding;
+    }
+
+    private static boolean sameContent(ReviewBinding reviewed, ReviewSnapshot current) {
+        return reviewed.customerId().equals(current.reminder().customerId())
+                && reviewed.balanceSnapshot().compareTo(current.statement().totalBalance()) == 0
+                && current.reminder().balanceSnapshot().compareTo(current.statement().totalBalance()) == 0
+                && reviewed.profileVersion().equals(profileVersion(current.profile()))
+                && reviewed.recipient().equals(current.content().recipient())
+                && reviewed.pdfDigest().equals(pdfDigest(reviewed.approvedPdf()))
+                && reviewed.contentDigest().equals(contentDigest(withPdf(current.content(), reviewed.approvedPdf())))
+                && reviewed.statementDigest().equals(statementDigest(current.statement()))
+                && reviewed.reminderVersion().equals(reminderVersion(current.reminder()));
+    }
+
+    private static EmailPreviewContent withPdf(EmailPreviewContent content, byte[] pdf) {
+        return new EmailPreviewContent(content.recipient(), content.subject(), content.text(), pdf);
+    }
+
+    /** Huella estable del contenido comercial; no depende de metadatos variables del archivo PDF. */
+    private static String statementDigest(AccountStatementData statement) {
+        List<String> fields = new ArrayList<>();
+        Customer customer = statement.customer();
+        fields.addAll(List.of(statement.businessName(), customer.getId(), customer.getName(),
+                Objects.toString(customer.getPhone(), ""), Objects.toString(customer.getAddress(), ""),
+                statement.generatedDate().toString(), statement.generalDebt().toPlainString(),
+                statement.totalBalance().toPlainString(), Objects.toString(statement.commitmentDate(), ""),
+                Objects.toString(statement.paymentKey(), "")));
+        for (Sale sale : statement.pendingSales()) {
+            fields.addAll(List.of(sale.getId(), sale.getCreatedAt().toString(),
+                    sale.calculateTotal().toPlainString(), sale.calculateBalance().toPlainString()));
+            sale.getLines().forEach(line -> {
+                var product = line.getProduct();
+                fields.addAll(List.of(product.getId(), product.getName(),
+                        line.getPresentation().code(), Integer.toString(line.getQuantity()),
+                        line.getUnitPrice().toPlainString(), Integer.toString(line.getUnitsPerBasketSnapshot())));
+            });
+            sale.getPayments().forEach(payment -> fields.addAll(List.of(
+                    payment.getTimestamp().toString(), payment.getAmount().toPlainString())));
+        }
+        return digestFields(fields.toArray(String[]::new));
+    }
+
+    private static boolean balanceMatches(ReviewSnapshot snapshot) {
+        return snapshot.reminder().balanceSnapshot().compareTo(snapshot.statement().totalBalance()) == 0;
+    }
+
+    private void failStaleBalanceIfNeeded(ReviewBinding reviewed, ReviewSnapshot current, long actorId) {
+        if (!balanceMatches(current)) markBalanceChanged(current, actorId);
+    }
+
+    private void markBalanceChanged(ReviewSnapshot snapshot, long actorId) {
+        CustomerCollectionReminder reminder = snapshot.reminder();
+        if (reminder.status() != CustomerCollectionReminder.Status.PENDING_REVIEW || reminder.attemptCount() != 0) return;
+        finishBeforeDelivery(actorId, reminder, CustomerCollectionReminder.Status.FAILED,
+                CustomerCollectionReminder.ResultCode.BALANCE_CHANGED,
+                "El saldo cambió; el aviso se debe actualizar y revisar nuevamente.");
+    }
+
+    private static String profileVersion(CollectionProfile profile) {
+        return digestFields(profile.customerId(), profile.email(), profile.authorizedChannel().name(),
+                Boolean.toString(profile.collectionConsent()), Objects.toString(profile.consentRecordedAt(), null),
+                Boolean.toString(profile.remindersEnabled()), Objects.toString(profile.commitmentDate(), null),
+                Objects.toString(profile.observedBalance(), null), Objects.toString(profile.observedAt(), null));
+    }
+
+    private static String reminderVersion(CustomerCollectionReminder reminder) {
+        return digestFields(Long.toString(reminder.id()), reminder.customerId(), reminder.weekStart().toString(),
+                reminder.channel().name(), reminder.status().name(), reminder.balanceSnapshot().toPlainString(),
+                reminder.generatedAt().toString(), Objects.toString(reminder.lastAttemptAt(), null),
+                Integer.toString(reminder.attemptCount()), reminder.resultCode().name(),
+                Objects.toString(reminder.attemptId(), null));
+    }
+
+    private static String pdfDigest(byte[] bytes) { return digestFields(HexFormat.of().formatHex(sha256(bytes))); }
+
+    private static String contentDigest(EmailPreviewContent content) {
+        return digestFields(content.recipient(), content.subject(), content.text(), pdfDigest(content.pdf()));
+    }
+
+    private static String digestFields(String... fields) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (String field : fields) {
+                if (field == null) {
+                    digest.update(new byte[]{-1, -1, -1, -1});
+                } else {
+                    byte[] bytes = field.getBytes(StandardCharsets.UTF_8);
+                    digest.update(java.nio.ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
+                    digest.update(bytes);
+                }
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("No está disponible SHA-256.", impossible);
+        }
+    }
+
+    private static byte[] sha256(byte[] value) {
+        try { return MessageDigest.getInstance("SHA-256").digest(value); }
+        catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("No está disponible SHA-256.", impossible);
+        }
+    }
+
+    private static String tokenDigest(String token) {
+        return digestFields(token == null ? "" : token);
+    }
+
+    private void expireTokens(Map<String, ReviewBinding> tokens) {
+        LocalDateTime now = LocalDateTime.now(clock.withZone(COLOMBIA));
+        tokens.entrySet().removeIf(entry -> !now.isBefore(entry.getValue().expiresAt()));
+    }
+
+    private void invalidateReviews(String customerId) {
+        pendingPreviews.entrySet().removeIf(entry -> entry.getValue().customerId().equals(customerId));
+        pendingConfirmations.entrySet().removeIf(entry -> entry.getValue().customerId().equals(customerId));
+    }
+
+    private void invalidateReviews(UserSession session) {
+        pendingPreviews.entrySet().removeIf(entry -> entry.getValue().session() == session);
+        pendingConfirmations.entrySet().removeIf(entry -> entry.getValue().session() == session);
+    }
+
+    private String reminderCustomerId(long reminderId) {
+        return requireReminder(reminderId).customerId();
     }
 
     private CustomerCollectionReminder requireReminder(long id) {
@@ -644,10 +897,17 @@ public final class CollectionAssistantService {
 
     private static CustomerCollectionReminder copyReminder(CustomerCollectionReminder source,
             CustomerCollectionReminder.Status status, LocalDateTime attemptedAt, int attemptCount,
-            CustomerCollectionReminder.ResultCode result) {
+            CustomerCollectionReminder.ResultCode result, UUID attemptId, UUID attemptOwnerId,
+            CustomerCollectionReminder.ProviderEvidence providerEvidence) {
         return new CustomerCollectionReminder(source.id(), source.customerId(), source.weekStart(),
                 source.channel(), status, source.balanceSnapshot(), source.generatedAt(), attemptedAt,
-                attemptCount, result);
+                attemptCount, result, attemptId, attemptOwnerId, providerEvidence);
+    }
+
+    private static CustomerCollectionReminder.ProviderEvidence providerEvidence(boolean accepted, boolean rejected) {
+        if (accepted) return CustomerCollectionReminder.ProviderEvidence.SMTP_ACCEPTED;
+        if (rejected) return CustomerCollectionReminder.ProviderEvidence.SMTP_REJECTED;
+        return CustomerCollectionReminder.ProviderEvidence.SMTP_OUTCOME_UNCERTAIN;
     }
 
     private static String normalizeEmail(String email) {
@@ -683,4 +943,18 @@ public final class CollectionAssistantService {
     private record CustomerFinancialSnapshot(Customer customer, CustomerDebtBreakdown breakdown,
                                              List<Sale> sales) { }
     private record AgeInfo(String label, boolean hasThirtyDaysOrMore) { }
+    private record EmailPreviewContent(String recipient, String subject, String text, byte[] pdf) {
+        private EmailPreviewContent { pdf = pdf.clone(); }
+        @Override public byte[] pdf() { return pdf.clone(); }
+    }
+    private record ReviewSnapshot(CustomerCollectionReminder reminder, CollectionProfile profile,
+                                  AccountStatementData statement, EmailPreviewContent content) { }
+    private record ReviewBinding(UserSession session, long userId, UUID accountInstanceId, long securityVersion,
+                                 long reminderId, String customerId, BigDecimal balanceSnapshot,
+                                 String profileVersion, String recipient, String pdfDigest,
+                                 String contentDigest, String statementDigest, byte[] approvedPdf,
+                                 String reminderVersion, LocalDateTime expiresAt) {
+        private ReviewBinding { approvedPdf = approvedPdf.clone(); }
+        @Override public byte[] approvedPdf() { return approvedPdf.clone(); }
+    }
 }

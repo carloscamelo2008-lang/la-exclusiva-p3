@@ -11,7 +11,7 @@ public record CollectionFollowUp(long id, String customerId, long actorUserId, E
     /** Tipos cerrados de eventos; el historial nunca conserva contraseñas ni cuerpos de correo. */
     public enum EventType {
         COMMITMENT_SET, CONSENT_CHANGED, BALANCE_CHANGED, NOTE_ADDED,
-        REMINDER_PREPARED, REMINDER_SENT, REMINDER_FAILED
+        REMINDER_PREPARED, REMINDER_SENT, REMINDER_FAILED, REMINDER_UNCERTAIN
     }
 
     /** Comprueba campos auditables sin incluir datos sensibles adicionales. */

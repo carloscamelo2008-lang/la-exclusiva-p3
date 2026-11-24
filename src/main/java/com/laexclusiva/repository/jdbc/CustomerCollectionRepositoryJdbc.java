@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Adaptador JDBC de preferencias y recordatorios con unicidad por cliente y semana ISO. */
 public final class CustomerCollectionRepositoryJdbc implements CustomerCollectionRepository {
@@ -132,6 +133,19 @@ public final class CustomerCollectionRepositoryJdbc implements CustomerCollectio
             throw new IllegalArgumentException("El recordatorio y su evento de preparación deben corresponder.");
         }
         return transactions.inTransaction(() -> connections.withConnection(connection -> {
+            java.math.BigDecimal currentBalance;
+            try (PreparedStatement lockCustomer = connection.prepareStatement(
+                    "SELECT balance FROM customer WHERE id=? FOR UPDATE")) {
+                lockCustomer.setString(1, reminder.customerId());
+                try (ResultSet rows = lockCustomer.executeQuery()) {
+                    if (!rows.next()) throw new IllegalArgumentException("El cliente del aviso ya no existe.");
+                    currentBalance = rows.getBigDecimal(1);
+                }
+            }
+            if (currentBalance == null || currentBalance.compareTo(reminder.balanceSnapshot()) != 0) {
+                throw new java.util.ConcurrentModificationException(
+                        "El saldo cambió durante la preparación; vuelva a actualizar los avisos.");
+            }
             boolean inserted;
             try (PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO customer_collection_reminder
@@ -152,35 +166,130 @@ public final class CustomerCollectionRepositoryJdbc implements CustomerCollectio
             }
             if (inserted) insertFollowUp(connection, preparedEvent);
             try (PreparedStatement statement = connection.prepareStatement(reminderSelect()
-                    + " WHERE customer_id = ? AND week_start = ?")) {
+                    + " WHERE customer_id = ? AND week_start = ? FOR UPDATE")) {
                 statement.setString(1, reminder.customerId());
                 statement.setObject(2, reminder.weekStart());
                 try (ResultSet rows = statement.executeQuery()) {
                     if (!rows.next()) throw new java.sql.SQLException("No se pudo reservar el recordatorio semanal.");
-                    return new ReminderSaveResult(reminder(rows), inserted);
+                    CustomerCollectionReminder current = reminder(rows);
+                    if (inserted) return new ReminderSaveResult(current, true, false);
+                    boolean refreshable = current.attemptCount() == 0
+                            && (current.status() == CustomerCollectionReminder.Status.PENDING_REVIEW
+                            || (current.status() == CustomerCollectionReminder.Status.FAILED
+                            && current.resultCode() == CustomerCollectionReminder.ResultCode.BALANCE_CHANGED));
+                    if (!refreshable || current.balanceSnapshot().compareTo(reminder.balanceSnapshot()) == 0) {
+                        return new ReminderSaveResult(current, false, false);
+                    }
+                    try (PreparedStatement update = connection.prepareStatement("""
+                            UPDATE customer_collection_reminder
+                            SET channel=?,status='PENDING_REVIEW',balance_snapshot=?,generated_at=?,
+                                last_attempt_at=NULL,attempt_count=0,result_code='PREPARED',
+                                attempt_id=NULL,attempt_owner_id=NULL,provider_evidence=NULL
+                            WHERE id=? AND status=? AND attempt_count=0 AND balance_snapshot=?
+                            """)) {
+                        update.setString(1, reminder.channel().name());
+                        update.setBigDecimal(2, reminder.balanceSnapshot());
+                        update.setObject(3, reminder.generatedAt());
+                        update.setLong(4, current.id());
+                        update.setString(5, current.status().name());
+                        update.setBigDecimal(6, current.balanceSnapshot());
+                        if (update.executeUpdate() != 1) {
+                            throw new java.util.ConcurrentModificationException("El aviso cambió; vuelva a consultarlo.");
+                        }
+                    }
+                    insertFollowUp(connection, new CollectionFollowUp(0, preparedEvent.customerId(),
+                            preparedEvent.actorUserId(), CollectionFollowUp.EventType.BALANCE_CHANGED,
+                            preparedEvent.commitmentDate(), reminder.balanceSnapshot(),
+                            "El saldo cambió antes del primer intento; el mismo aviso semanal requiere una nueva revisión.",
+                            preparedEvent.occurredAt()));
+                    CustomerCollectionReminder refreshed = new CustomerCollectionReminder(current.id(),
+                            current.customerId(), current.weekStart(), reminder.channel(),
+                            CustomerCollectionReminder.Status.PENDING_REVIEW, reminder.balanceSnapshot(),
+                            reminder.generatedAt(), null, 0, CustomerCollectionReminder.ResultCode.PREPARED);
+                    return new ReminderSaveResult(refreshed, false, true);
                 }
             }
         }));
     }
 
-    @Override public boolean claimReminder(CustomerCollectionReminder reminder, LocalDateTime attemptedAt) {
-        if (reminder == null || reminder.id() <= 0 || attemptedAt == null) {
+    @Override public boolean claimReminder(CustomerCollectionReminder reminder, UUID attemptId,
+            UUID attemptOwnerId, LocalDateTime attemptedAt, java.math.BigDecimal expectedBalance,
+            com.laexclusiva.model.Customer expectedCustomer, CollectionProfile expectedProfile) {
+        if (reminder == null || reminder.id() <= 0 || attemptId == null || attemptOwnerId == null
+                || attemptedAt == null || expectedBalance == null) {
             throw new IllegalArgumentException("El recordatorio y la fecha de intento son obligatorios.");
         }
-        return connections.withConnection(connection -> {
+        return transactions.inTransaction(() -> connections.withConnection(connection -> {
+            java.math.BigDecimal persistedBalance;
+            try (PreparedStatement lockCustomer = connection.prepareStatement(
+                    "SELECT balance FROM customer WHERE id=? FOR UPDATE")) {
+                lockCustomer.setString(1, reminder.customerId());
+                try (ResultSet rows = lockCustomer.executeQuery()) {
+                    if (!rows.next()) return false;
+                    persistedBalance = rows.getBigDecimal(1);
+                }
+            }
+            if (persistedBalance == null || persistedBalance.compareTo(expectedBalance) != 0
+                    || persistedBalance.compareTo(reminder.balanceSnapshot()) != 0) return false;
+            if (expectedCustomer != null) {
+                try (PreparedStatement readCustomer = connection.prepareStatement(
+                        "SELECT name,phone,address FROM customer WHERE id=?")) {
+                    readCustomer.setString(1, reminder.customerId());
+                    try (ResultSet rows = readCustomer.executeQuery()) {
+                        if (!rows.next() || !java.util.Objects.equals(rows.getString("name"), expectedCustomer.getName())
+                                || !java.util.Objects.equals(rows.getString("phone"), expectedCustomer.getPhone())
+                                || !java.util.Objects.equals(rows.getString("address"), expectedCustomer.getAddress())) return false;
+                    }
+                }
+            }
+            if (expectedProfile != null) {
+                CollectionProfile currentProfile;
+                try (PreparedStatement lockProfile = connection.prepareStatement("""
+                        SELECT customer_id,email,authorized_channel,collection_consent,consent_recorded_at,
+                               reminders_enabled,commitment_date,observed_balance,observed_at
+                        FROM customer_collection_profile WHERE customer_id=? FOR UPDATE
+                        """)) {
+                    lockProfile.setString(1, reminder.customerId());
+                    try (ResultSet rows = lockProfile.executeQuery()) {
+                        if (!rows.next()) return false;
+                        currentProfile = profile(rows);
+                    }
+                }
+                if (!expectedProfile.equals(currentProfile)) return false;
+            }
             try (PreparedStatement statement = connection.prepareStatement("""
                     UPDATE customer_collection_reminder
-                    SET status='SENDING',last_attempt_at=?,attempt_count=attempt_count+1,result_code='PREPARED'
-                    WHERE id=? AND customer_id=? AND week_start=? AND status='PENDING_REVIEW' AND attempt_count=?
+                    SET status='SENDING',last_attempt_at=?,attempt_count=attempt_count+1,result_code='PREPARED',
+                        attempt_id=?,attempt_owner_id=?,provider_evidence=NULL
+                    WHERE id=? AND customer_id=? AND week_start=? AND status='PENDING_REVIEW'
+                      AND attempt_count=? AND balance_snapshot=?
                     """)) {
                 statement.setObject(1, attemptedAt);
-                statement.setLong(2, reminder.id());
-                statement.setString(3, reminder.customerId());
-                statement.setObject(4, reminder.weekStart());
-                statement.setInt(5, reminder.attemptCount());
+                statement.setObject(2, attemptId);
+                statement.setObject(3, attemptOwnerId);
+                statement.setLong(4, reminder.id());
+                statement.setString(5, reminder.customerId());
+                statement.setObject(6, reminder.weekStart());
+                statement.setInt(7, reminder.attemptCount());
+                statement.setBigDecimal(8, reminder.balanceSnapshot());
                 return statement.executeUpdate() == 1;
             }
-        });
+        }));
+    }
+
+    @Override public int reconcileInterruptedAttempts(UUID currentInstanceId) {
+        if (currentInstanceId == null) throw new IllegalArgumentException("La instancia es obligatoria.");
+        return transactions.inTransaction(() -> connections.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    UPDATE customer_collection_reminder
+                    SET status='RECONCILIATION_REQUIRED',result_code='PROVIDER_OUTCOME_UNCERTAIN',
+                        attempt_owner_id=NULL,provider_evidence='SMTP_OUTCOME_UNCERTAIN'
+                    WHERE status='SENDING' AND attempt_owner_id IS DISTINCT FROM ?
+                    """)) {
+                statement.setObject(1, currentInstanceId);
+                return statement.executeUpdate();
+            }
+        }));
     }
 
     @Override public void updateReminder(CustomerCollectionReminder reminder,
@@ -191,18 +300,22 @@ public final class CustomerCollectionRepositoryJdbc implements CustomerCollectio
         connections.withConnection(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("""
                     UPDATE customer_collection_reminder
-                    SET status=?,last_attempt_at=?,attempt_count=?,result_code=?
+                    SET status=?,last_attempt_at=?,attempt_count=?,result_code=?,attempt_id=?,attempt_owner_id=?,
+                        provider_evidence=?
                     WHERE id=? AND customer_id=? AND week_start=? AND status=? AND attempt_count=?
                     """)) {
                 statement.setString(1, reminder.status().name());
                 statement.setObject(2, reminder.lastAttemptAt());
                 statement.setInt(3, reminder.attemptCount());
                 statement.setString(4, reminder.resultCode().name());
-                statement.setLong(5, reminder.id());
-                statement.setString(6, reminder.customerId());
-                statement.setObject(7, reminder.weekStart());
-                statement.setString(8, expectedStatus.name());
-                statement.setInt(9, expectedAttemptCount);
+                statement.setObject(5, reminder.attemptId());
+                statement.setObject(6, reminder.attemptOwnerId());
+                statement.setString(7, reminder.providerEvidence() == null ? null : reminder.providerEvidence().name());
+                statement.setLong(8, reminder.id());
+                statement.setString(9, reminder.customerId());
+                statement.setObject(10, reminder.weekStart());
+                statement.setString(11, expectedStatus.name());
+                statement.setInt(12, expectedAttemptCount);
                 if (statement.executeUpdate() != 1) {
                     throw new java.util.ConcurrentModificationException("El recordatorio cambió; vuelva a consultarlo.");
                 }
@@ -255,11 +368,14 @@ public final class CustomerCollectionRepositoryJdbc implements CustomerCollectio
                 rows.getObject("week_start", LocalDate.class), CollectionChannel.valueOf(rows.getString("channel")),
                 CustomerCollectionReminder.Status.valueOf(rows.getString("status")), rows.getBigDecimal("balance_snapshot"),
                 rows.getObject("generated_at", LocalDateTime.class), rows.getObject("last_attempt_at", LocalDateTime.class),
-                rows.getInt("attempt_count"), CustomerCollectionReminder.ResultCode.valueOf(rows.getString("result_code")));
+                rows.getInt("attempt_count"), CustomerCollectionReminder.ResultCode.valueOf(rows.getString("result_code")),
+                rows.getObject("attempt_id", UUID.class), rows.getObject("attempt_owner_id", UUID.class),
+                rows.getString("provider_evidence") == null ? null
+                        : CustomerCollectionReminder.ProviderEvidence.valueOf(rows.getString("provider_evidence")));
     }
 
     private static String reminderSelect() {
-        return "SELECT id,customer_id,week_start,channel,status,balance_snapshot,generated_at,last_attempt_at,attempt_count,result_code FROM customer_collection_reminder";
+        return "SELECT id,customer_id,week_start,channel,status,balance_snapshot,generated_at,last_attempt_at,attempt_count,result_code,attempt_id,attempt_owner_id,provider_evidence FROM customer_collection_reminder";
     }
 
     private static void requireCustomerId(String id) {

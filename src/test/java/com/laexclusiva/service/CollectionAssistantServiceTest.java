@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 import com.laexclusiva.model.AdministrativeAuditEvent;
 import com.laexclusiva.model.BeerProduct;
@@ -29,6 +30,8 @@ import com.laexclusiva.repository.InMemoryCustomerCollectionRepository;
 import com.laexclusiva.testutil.IdentityTestFixture;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -37,7 +40,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.UUID;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
@@ -155,10 +168,13 @@ class CollectionAssistantServiceTest {
         assertTrue(preview.text().contains("no registra la deuda como pagada"));
         assertEquals(0, email.calls.get(), "La vista previa no debe enviar correo.");
 
-        var outcome = fixture.service.sendReminder(fixture.admin.session(), reminder.id());
+        String confirmation = fixture.service.confirmReminder(fixture.admin.session(), reminder.id(), preview.previewToken());
+        var outcome = fixture.service.sendReminder(fixture.admin.session(), reminder.id(), confirmation);
         assertEquals(CustomerCollectionReminder.ResultCode.SIMULATED, outcome.resultCode());
         assertEquals(CustomerCollectionReminder.Status.PENDING_REVIEW, outcome.status());
         assertFalse(outcome.providerAccepted());
+        assertEquals(CustomerCollectionReminder.ProviderEvidence.SIMULATED,
+                fixture.collectionRepository.findReminder("email-client", reminder.weekStart()).orElseThrow().providerEvidence());
         assertEquals(1, email.calls.get());
         assertEquals(1, fixture.audit.find(null, null, 100).size());
         assertEquals(1, fixture.service.dashboard(fixture.worker.session()).statementsPendingReview());
@@ -172,13 +188,18 @@ class CollectionAssistantServiceTest {
         fixture.service.saveProfile(fixture.admin.session(), "send-once", "once@example.test",
                 CollectionChannel.EMAIL, true, true, null, null);
         var reminder = fixture.service.prepareWeeklyReminders(fixture.admin.session()).pendingReview().get(0);
+        var preview = fixture.service.previewReminder(fixture.admin.session(), reminder.id());
+        String confirmation = fixture.service.confirmReminder(fixture.admin.session(), reminder.id(), preview.previewToken());
 
-        var result = fixture.service.sendReminder(fixture.admin.session(), reminder.id());
+        var result = fixture.service.sendReminder(fixture.admin.session(), reminder.id(), confirmation);
 
         assertEquals(CustomerCollectionReminder.Status.SENT, result.status());
         assertTrue(result.providerAccepted());
+        assertEquals(CustomerCollectionReminder.ProviderEvidence.SMTP_ACCEPTED,
+                fixture.collectionRepository.findReminder("send-once", reminder.weekStart()).orElseThrow().providerEvidence());
         assertEquals(1, email.calls.get());
-        assertThrows(IllegalStateException.class, () -> fixture.service.sendReminder(fixture.admin.session(), reminder.id()));
+        assertThrows(SecurityException.class,
+                () -> fixture.service.sendReminder(fixture.admin.session(), reminder.id(), confirmation));
         assertEquals(1, email.calls.get());
 
         FakeEmail uncertainEmail = new FakeEmail(true, true);
@@ -187,11 +208,22 @@ class CollectionAssistantServiceTest {
         uncertain.service.saveProfile(uncertain.admin.session(), "uncertain", "uncertain@example.test",
                 CollectionChannel.EMAIL, true, true, null, null);
         var uncertainReminder = uncertain.service.prepareWeeklyReminders(uncertain.admin.session()).pendingReview().get(0);
-        var failed = uncertain.service.sendReminder(uncertain.admin.session(), uncertainReminder.id());
-        assertEquals(CustomerCollectionReminder.Status.FAILED, failed.status());
-        assertEquals(CustomerCollectionReminder.ResultCode.PROVIDER_FAILED, failed.resultCode());
-        assertThrows(IllegalStateException.class,
-                () -> uncertain.service.sendReminder(uncertain.admin.session(), uncertainReminder.id()));
+        var uncertainPreview = uncertain.service.previewReminder(uncertain.admin.session(), uncertainReminder.id());
+        String uncertainConfirmation = uncertain.service.confirmReminder(uncertain.admin.session(), uncertainReminder.id(),
+                uncertainPreview.previewToken());
+        var failed = uncertain.service.sendReminder(uncertain.admin.session(), uncertainReminder.id(), uncertainConfirmation);
+        assertEquals(CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED, failed.status());
+        assertEquals(CustomerCollectionReminder.ResultCode.PROVIDER_OUTCOME_UNCERTAIN, failed.resultCode());
+        assertTrue(failed.outcomeUncertain());
+        assertNotNull(failed.attemptId());
+        assertEquals(CustomerCollectionReminder.ProviderEvidence.SMTP_OUTCOME_UNCERTAIN,
+                uncertain.collectionRepository.findReminder("uncertain", uncertainReminder.weekStart())
+                        .orElseThrow().providerEvidence());
+        assertEquals(CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED,
+                uncertain.service.listReminders(uncertain.admin.session(), CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED)
+                        .get(0).status());
+        assertThrows(SecurityException.class,
+                () -> uncertain.service.sendReminder(uncertain.admin.session(), uncertainReminder.id(), uncertainConfirmation));
         assertEquals(1, uncertainEmail.calls.get(), "Una respuesta SMTP incierta no habilita un segundo envío.");
     }
 
@@ -203,7 +235,9 @@ class CollectionAssistantServiceTest {
         unconfirmed.service.saveProfile(unconfirmed.admin.session(), "unconfirmed", "safe@example.test",
                 CollectionChannel.EMAIL, true, true, null, null);
         var reminder = unconfirmed.service.prepareWeeklyReminders(unconfirmed.admin.session()).pendingReview().get(0);
-        var blockedByKey = unconfirmed.service.sendReminder(unconfirmed.admin.session(), reminder.id());
+        var preview = unconfirmed.service.previewReminder(unconfirmed.admin.session(), reminder.id());
+        String confirmation = unconfirmed.service.confirmReminder(unconfirmed.admin.session(), reminder.id(), preview.previewToken());
+        var blockedByKey = unconfirmed.service.sendReminder(unconfirmed.admin.session(), reminder.id(), confirmation);
         assertEquals(CustomerCollectionReminder.ResultCode.PAYMENT_INSTRUCTIONS_UNVERIFIED, blockedByKey.resultCode());
         assertEquals(0, email.calls.get());
 
@@ -215,6 +249,224 @@ class CollectionAssistantServiceTest {
                 .allows(ZonedDateTime.of(2026, 11, 22, 10, 0, 0, 0, CollectionAssistantService.COLOMBIA)));
         assertTrue(new ColombiaContactWindow(java.util.Set.of(), true)
                 .allows(ZonedDateTime.of(2026, 11, 23, 10, 0, 0, 0, CollectionAssistantService.COLOMBIA)));
+    }
+
+    @Test
+    void changedRecipientInvalidatesAnotherAdministratorsOpenPreview() {
+        FakeEmail email = new FakeEmail(true, false);
+        Fixture fixture = new Fixture(email, true, true, "configured-key");
+        fixture.customer("recipient-change", "90.00", List.of());
+        fixture.service.saveProfile(fixture.admin.session(), "recipient-change", "old@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+        var reminder = fixture.service.prepareWeeklyReminders(fixture.admin.session()).pendingReview().get(0);
+        var oldPreview = fixture.service.previewReminder(fixture.admin.session(), reminder.id());
+
+        fixture.service.saveProfile(fixture.secondAdmin.session(), "recipient-change", "new@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+
+        assertThrows(SecurityException.class, () -> fixture.service.confirmReminder(
+                fixture.admin.session(), reminder.id(), oldPreview.previewToken()));
+        assertThrows(SecurityException.class, () -> fixture.service.sendReminder(fixture.admin.session(), reminder.id()));
+        assertEquals(0, email.calls.get());
+
+        var newPreview = fixture.service.previewReminder(fixture.admin.session(), reminder.id());
+        assertEquals("new@example.test", newPreview.recipient());
+        String confirmation = fixture.service.confirmReminder(fixture.admin.session(), reminder.id(), newPreview.previewToken());
+        var result = fixture.service.sendReminder(fixture.admin.session(), reminder.id(), confirmation);
+        assertEquals(CustomerCollectionReminder.Status.SENT, result.status());
+        assertEquals("new@example.test", email.lastMessage.get().recipient());
+        assertArrayEquals(newPreview.pdf(), email.lastMessage.get().attachment());
+        assertEquals(1, email.calls.get());
+    }
+
+    @Test
+    void reviewTokensExpireAreSingleUseAndStopWorkingAfterSessionRevocation() {
+        TestClock clock = new TestClock(TODAY.atTime(10, 0).atZone(CollectionAssistantService.COLOMBIA).toInstant());
+        FakeEmail email = new FakeEmail(true, false);
+        Fixture fixture = new Fixture(email, true, true, "configured-key", clock);
+        fixture.customer("token-expiry", "80.00", List.of());
+        fixture.service.saveProfile(fixture.admin.session(), "token-expiry", "token@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+        var reminder = fixture.service.prepareWeeklyReminders(fixture.admin.session()).pendingReview().get(0);
+        var expiredPreview = fixture.service.previewReminder(fixture.admin.session(), reminder.id());
+        clock.advance(Duration.ofMinutes(6));
+        assertThrows(SecurityException.class, () -> fixture.service.confirmReminder(
+                fixture.admin.session(), reminder.id(), expiredPreview.previewToken()));
+
+        var expiredConfirmationPreview = fixture.service.previewReminder(fixture.admin.session(), reminder.id());
+        String expiredConfirmation = fixture.service.confirmReminder(fixture.admin.session(), reminder.id(),
+                expiredConfirmationPreview.previewToken());
+        clock.advance(Duration.ofMinutes(6));
+        assertThrows(SecurityException.class,
+                () -> fixture.service.sendReminder(fixture.admin.session(), reminder.id(), expiredConfirmation));
+
+        var preview = fixture.service.previewReminder(fixture.admin.session(), reminder.id());
+        String confirmation = fixture.service.confirmReminder(fixture.admin.session(), reminder.id(), preview.previewToken());
+        fixture.identity.authentication().revoke(fixture.admin.session());
+        assertThrows(SecurityException.class,
+                () -> fixture.service.sendReminder(fixture.admin.session(), reminder.id(), confirmation));
+        assertEquals(0, email.calls.get());
+    }
+
+    @Test
+    void twoConcurrentUsesOfTheSameConfirmationCanOnlyDeliverOnce() throws Exception {
+        FakeEmail email = new FakeEmail(true, false);
+        Fixture fixture = new Fixture(email, true, true, "configured-key");
+        fixture.customer("concurrent-send", "75.00", List.of());
+        fixture.service.saveProfile(fixture.admin.session(), "concurrent-send", "once@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+        var reminder = fixture.service.prepareWeeklyReminders(fixture.admin.session()).pendingReview().get(0);
+        var preview = fixture.service.previewReminder(fixture.admin.session(), reminder.id());
+        String confirmation = fixture.service.confirmReminder(fixture.admin.session(), reminder.id(), preview.previewToken());
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger delivered = new AtomicInteger();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<?>> calls = List.of(
+                    executor.submit(() -> deliverConcurrent(fixture, reminder.id(), confirmation, start, delivered)),
+                    executor.submit(() -> deliverConcurrent(fixture, reminder.id(), confirmation, start, delivered)));
+            start.countDown();
+            for (Future<?> call : calls) call.get(5, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+        assertEquals(1, delivered.get());
+        assertEquals(1, email.calls.get());
+    }
+
+    @Test
+    void changedBalanceRefreshesTheSameWeeklyReminderAndRequiresNewReview() throws Exception {
+        FakeEmail email = new FakeEmail(false, false);
+        Fixture fixture = new Fixture(email);
+        fixture.customer("balance-refresh", "85000.00", List.of());
+        fixture.service.saveProfile(fixture.admin.session(), "balance-refresh", "balance@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+        var first = fixture.service.prepareWeeklyReminders(fixture.admin.session());
+        var oldReminder = first.pendingReview().get(0);
+        var stalePreview = fixture.service.previewReminder(fixture.admin.session(), oldReminder.id());
+
+        Customer customer = fixture.customers.getCustomerById("balance-refresh");
+        customer.applyPayment(new BigDecimal("20000.00"));
+        fixture.customerRepository.update(customer);
+        fixture.generalMovements.add(new GeneralDebtMovement(2, "balance-refresh",
+                GeneralDebtMovementType.PAYMENT, new BigDecimal("20000.00"),
+                TODAY.atTime(11, 0), "ABONO", "Abono ficticio de prueba", "balance-payment-key"));
+
+        var refreshed = fixture.service.prepareWeeklyReminders(fixture.admin.session());
+
+        assertEquals(0, refreshed.created());
+        assertEquals(1, refreshed.refreshed());
+        assertEquals(1, refreshed.pendingReview().size());
+        assertEquals(oldReminder.id(), refreshed.pendingReview().get(0).id());
+        assertEquals(0, refreshed.pendingReview().get(0).balanceSnapshot().compareTo(new BigDecimal("65000.00")));
+        assertThrows(SecurityException.class, () -> fixture.service.confirmReminder(
+                fixture.admin.session(), oldReminder.id(), stalePreview.previewToken()));
+        var currentPreview = fixture.service.previewReminder(fixture.admin.session(), oldReminder.id());
+        try (var document = Loader.loadPDF(currentPreview.pdf())) {
+            assertTrue(new PDFTextStripper().getText(document).contains("65.000"));
+        }
+        assertEquals(1, fixture.service.listReminders(fixture.admin.session(),
+                CustomerCollectionReminder.Status.PENDING_REVIEW).size());
+        assertTrue(fixture.service.history(fixture.admin.session(), "balance-refresh").stream()
+                .anyMatch(event -> event.eventType() == CollectionFollowUp.EventType.BALANCE_CHANGED
+                        && event.balanceSnapshot().compareTo(new BigDecimal("65000.00")) == 0));
+    }
+
+    @Test
+    void confirmedProviderRejectionIsDistinctFromAnUncertainResponse() {
+        FakeEmail email = new FakeEmail(true, false, EmailDeliveryProvider.Outcome.REJECTED);
+        Fixture fixture = new Fixture(email, true, true, "configured-key");
+        fixture.customer("provider-rejected", "40.00", List.of());
+        fixture.service.saveProfile(fixture.admin.session(), "provider-rejected", "reject@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+        var reminder = fixture.service.prepareWeeklyReminders(fixture.admin.session()).pendingReview().get(0);
+        var preview = fixture.service.previewReminder(fixture.admin.session(), reminder.id());
+        String confirmation = fixture.service.confirmReminder(fixture.admin.session(), reminder.id(), preview.previewToken());
+
+        var result = fixture.service.sendReminder(fixture.admin.session(), reminder.id(), confirmation);
+
+        assertEquals(CustomerCollectionReminder.Status.FAILED, result.status());
+        assertEquals(CustomerCollectionReminder.ResultCode.PROVIDER_REJECTED, result.resultCode());
+        assertFalse(result.outcomeUncertain());
+        assertFalse(result.providerAccepted());
+        assertEquals(CustomerCollectionReminder.ProviderEvidence.SMTP_REJECTED,
+                fixture.collectionRepository.findReminder("provider-rejected", reminder.weekStart())
+                        .orElseThrow().providerEvidence());
+        assertEquals(1, email.calls.get());
+    }
+
+    @Test
+    void failedPersistenceAfterProviderAcceptanceLeavesAnUncertainAttempt() {
+        Fixture fixture = new Fixture(new FakeEmail(false, false));
+        fixture.customer("persistence-failure", "35.00", List.of());
+        fixture.service.saveProfile(fixture.admin.session(), "persistence-failure", "persist@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+        AtomicBoolean failOnce = new AtomicBoolean(true);
+        var repository = (com.laexclusiva.repository.CustomerCollectionRepository) Proxy.newProxyInstance(
+                com.laexclusiva.repository.CustomerCollectionRepository.class.getClassLoader(),
+                new Class<?>[]{com.laexclusiva.repository.CustomerCollectionRepository.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("updateReminder") && failOnce.getAndSet(false)) {
+                        throw new IllegalStateException("Fallo de persistencia simulado.");
+                    }
+                    try { return method.invoke(fixture.collectionRepository, args); }
+                    catch (InvocationTargetException failure) { throw failure.getCause(); }
+                });
+        FakeEmail accepted = new FakeEmail(true, false);
+        CollectionAssistantService service = fixture.newService(repository, accepted, fixture.clock);
+        var reminder = service.prepareWeeklyReminders(fixture.admin.session()).pendingReview().get(0);
+        var preview = service.previewReminder(fixture.admin.session(), reminder.id());
+        String confirmation = service.confirmReminder(fixture.admin.session(), reminder.id(), preview.previewToken());
+
+        var result = service.sendReminder(fixture.admin.session(), reminder.id(), confirmation);
+
+        assertEquals(1, accepted.calls.get());
+        assertEquals(CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED, result.status());
+        assertTrue(result.outcomeUncertain());
+        assertNotNull(result.attemptId());
+        assertEquals(CustomerCollectionReminder.ProviderEvidence.SMTP_ACCEPTED,
+                fixture.collectionRepository.findReminder("persistence-failure", reminder.weekStart())
+                        .orElseThrow().providerEvidence());
+        assertEquals(CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED,
+                fixture.collectionRepository.findReminder("persistence-failure", reminder.weekStart()).orElseThrow().status());
+    }
+
+    @Test
+    void startupRecoversPersistedSendingAttemptWithoutRetrying() {
+        FakeEmail email = new FakeEmail(true, false);
+        Fixture fixture = new Fixture(email, true, true, "configured-key");
+        fixture.customer("restart-recovery", "65.00", List.of());
+        fixture.service.saveProfile(fixture.admin.session(), "restart-recovery", "restart@example.test",
+                CollectionChannel.EMAIL, true, true, null, null);
+        var reminder = fixture.service.prepareWeeklyReminders(fixture.admin.session()).pendingReview().get(0);
+        var profile = fixture.collectionRepository.findProfile("restart-recovery").orElseThrow();
+        UUID attemptId = UUID.randomUUID();
+        assertTrue(fixture.collectionRepository.claimReminder(reminder, attemptId, UUID.randomUUID(),
+                TODAY.atTime(10, 1), new BigDecimal("65.00"), fixture.customers.getCustomerById("restart-recovery"), profile));
+
+        CollectionAssistantService restarted = fixture.newService(fixture.collectionRepository, email, fixture.clock);
+        var reconciled = restarted.listReminders(fixture.admin.session(),
+                CustomerCollectionReminder.Status.RECONCILIATION_REQUIRED);
+
+        assertEquals(1, reconciled.size());
+        assertEquals(attemptId, reconciled.get(0).attemptId());
+        assertEquals(CustomerCollectionReminder.ResultCode.PROVIDER_OUTCOME_UNCERTAIN, reconciled.get(0).resultCode());
+        assertEquals(CustomerCollectionReminder.ProviderEvidence.SMTP_OUTCOME_UNCERTAIN,
+                reconciled.get(0).providerEvidence());
+        assertEquals(0, email.calls.get(), "La recuperación nunca reenvía un intento interrumpido.");
+    }
+
+    private static void deliverConcurrent(Fixture fixture, long reminderId, String token,
+            CountDownLatch start, AtomicInteger delivered) {
+        try {
+            start.await(5, TimeUnit.SECONDS);
+            fixture.service.sendReminder(fixture.admin.session(), reminderId, token);
+            delivered.incrementAndGet();
+        } catch (SecurityException expected) {
+            // El token de confirmación es de un solo uso.
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(interrupted);
+        }
     }
 
     @Test
@@ -314,6 +566,7 @@ class CollectionAssistantServiceTest {
     private static final class Fixture {
         private final IdentityTestFixture identity = new IdentityTestFixture();
         private final IdentityTestFixture.IssuedUser admin = identity.issue(UserRole.ADMINISTRATOR);
+        private final IdentityTestFixture.IssuedUser secondAdmin = identity.issue(UserRole.ADMINISTRATOR);
         private final IdentityTestFixture.IssuedUser worker = identity.issue(UserRole.WORKER);
         private final CustomerRepository customerRepository = new CustomerRepository();
         private final CustomerService customers = new CustomerService(customerRepository);
@@ -321,18 +574,33 @@ class CollectionAssistantServiceTest {
         private final List<GeneralDebtMovement> generalMovements = new ArrayList<>();
         private final InMemoryCustomerCollectionRepository collectionRepository = new InMemoryCustomerCollectionRepository();
         private final InMemoryAdministrativeAuditRepository audit = new InMemoryAdministrativeAuditRepository();
+        private final Clock clock;
         private final CollectionAssistantService service;
 
         private Fixture(FakeEmail email) { this(email, false, false, null); }
 
         private Fixture(FakeEmail email, boolean ownerConfirmed, boolean keyVerified, String paymentKey) {
-            var salesWorkflow = new FakeSalesWorkflow(sales);
-            var generalWorkflow = new FakeGeneralDebtWorkflow(generalMovements);
-            Clock clock = Clock.fixed(TODAY.atTime(10, 0).atZone(CollectionAssistantService.COLOMBIA).toInstant(),
-                    CollectionAssistantService.COLOMBIA);
-            service = new CollectionAssistantService(customers, salesWorkflow, generalWorkflow, collectionRepository,
+            this(email, ownerConfirmed, keyVerified, paymentKey,
+                    Clock.fixed(TODAY.atTime(10, 0).atZone(CollectionAssistantService.COLOMBIA).toInstant(),
+                            CollectionAssistantService.COLOMBIA));
+        }
+
+        private Fixture(FakeEmail email, boolean ownerConfirmed, boolean keyVerified, String paymentKey, Clock clock) {
+            this.clock = clock;
+            service = newService(collectionRepository, email, clock, ownerConfirmed, keyVerified, paymentKey);
+        }
+
+        private CollectionAssistantService newService(com.laexclusiva.repository.CustomerCollectionRepository repository,
+                FakeEmail email, Clock serviceClock) {
+            return newService(repository, email, serviceClock, true, true, "configured-key");
+        }
+
+        private CollectionAssistantService newService(com.laexclusiva.repository.CustomerCollectionRepository repository,
+                FakeEmail email, Clock serviceClock, boolean ownerConfirmed, boolean keyVerified, String paymentKey) {
+            return new CollectionAssistantService(customers, new FakeSalesWorkflow(sales),
+                    new FakeGeneralDebtWorkflow(generalMovements), repository,
                     audit, identity.authorization(), email, new AccountStatementPdfGenerator(),
-                    new ColombiaContactWindow(java.util.Set.of(LocalDate.of(2026, 12, 25)), true), direct(), clock,
+                    new ColombiaContactWindow(java.util.Set.of(LocalDate.of(2026, 12, 25)), true), direct(), serviceClock,
                     paymentKey, ownerConfirmed, keyVerified);
         }
 
@@ -380,14 +648,45 @@ class CollectionAssistantServiceTest {
     private static final class FakeEmail implements EmailDeliveryProvider {
         private final boolean real;
         private final boolean fail;
+        private final Outcome outcome;
         private final AtomicInteger calls = new AtomicInteger();
-        private FakeEmail(boolean real, boolean fail) { this.real = real; this.fail = fail; }
+        private final AtomicReference<Message> lastMessage = new AtomicReference<>();
+        private FakeEmail(boolean real, boolean fail) {
+            this(real, fail, real ? Outcome.ACCEPTED : Outcome.SIMULATED);
+        }
+        private FakeEmail(boolean real, boolean fail, Outcome outcome) {
+            this.real = real;
+            this.fail = fail;
+            this.outcome = outcome;
+        }
         @Override public boolean isRealDelivery() { return real; }
         @Override public Result deliver(Message message) {
             calls.incrementAndGet();
+            lastMessage.set(message);
             if (fail) throw new IllegalStateException("smtp credentials and SQL must not reach UI");
-            return new Result(real, real ? "ACCEPTED" : "SIMULATED");
+            return switch (outcome) {
+                case ACCEPTED -> Result.accepted();
+                case REJECTED -> Result.rejected();
+                case UNCERTAIN -> Result.uncertain();
+                case SIMULATED -> Result.simulated();
+            };
         }
+    }
+
+    private static final class TestClock extends Clock {
+        private final AtomicReference<Instant> now;
+        private final ZoneId zone;
+        private TestClock(Instant initial) {
+            this(new AtomicReference<>(initial), CollectionAssistantService.COLOMBIA);
+        }
+        private TestClock(AtomicReference<Instant> now, ZoneId zone) {
+            this.now = now;
+            this.zone = zone;
+        }
+        private void advance(Duration duration) { now.updateAndGet(value -> value.plus(duration)); }
+        @Override public ZoneId getZone() { return zone; }
+        @Override public Clock withZone(ZoneId requestedZone) { return new TestClock(now, requestedZone); }
+        @Override public Instant instant() { return now.get(); }
     }
 
     private static TransactionBoundary direct() {

@@ -5,6 +5,7 @@ import jakarta.mail.Authenticator;
 import jakarta.mail.Message.RecipientType;
 import jakarta.mail.PasswordAuthentication;
 import jakarta.mail.Session;
+import jakarta.mail.SendFailedException;
 import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeBodyPart;
@@ -69,9 +70,15 @@ public final class SmtpEmailDeliveryProvider implements EmailDeliveryProvider {
             multipart.addBodyPart(attachment);
             mail.setContent(multipart);
             Transport.send(mail);
-            return new Result(true, "SMTP_ACCEPTED");
+            return Result.accepted();
+        } catch (SendFailedException confirmedRejection) {
+            if (confirmedRejection.getValidSentAddresses() == null
+                    || confirmedRejection.getValidSentAddresses().length == 0) {
+                return Result.rejected();
+            }
+            throw new IllegalStateException("El proveedor no confirmó el resultado del envío.");
         } catch (Exception failure) {
-            throw new IllegalStateException("El proveedor de correo no confirmó el envío.");
+            throw new IllegalStateException("El proveedor no confirmó el resultado del envío.");
         }
     }
 }
