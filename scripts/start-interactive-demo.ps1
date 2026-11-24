@@ -1,4 +1,4 @@
-param([string]$Configuration)
+param([string]$Configuration, [switch]$SeparateReviewInstance)
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $project
@@ -14,7 +14,7 @@ if ($Configuration) { $Configuration = (Resolve-Path -LiteralPath $Configuration
 
 # Se rechaza un segundo arranque, sin cerrar automáticamente ni perder trabajo del usuario.
 $running = Get-Process java,javaw -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like 'La Exclusiva*' }
-if ($running) { throw 'Ya hay una ventana de La Exclusiva abierta. Ciérrela para iniciar una demo nueva.' }
+if ($running -and -not $SeparateReviewInstance) { throw 'Ya hay una ventana de La Exclusiva abierta. Ciérrela para iniciar una demo nueva.' }
 $env:JAVA_HOME = $jdk
 $env:PATH = "$jdk\bin;$env:PATH"
 $env:LAEXCLUSIVA_PERSISTENCE_MODE = 'memory'
@@ -23,17 +23,11 @@ Remove-Item Env:LAEXCLUSIVA_DB_URL,Env:LAEXCLUSIVA_TEST_DB_URL -ErrorAction Sile
 # Solo compilación; no ejecuta SQL, migraciones ni pruebas PostgreSQL.
 & $maven -o '-DskipTests' test-compile
 if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar la herramienta de demostración.' }
-$repository = Join-Path $env:USERPROFILE '.m2\repository'
-$classpath = @((Join-Path $project 'target\classes'), (Join-Path $project 'target\test-classes'))
-foreach ($module in @('javafx-base','javafx-graphics','javafx-controls','javafx-fxml')) {
-    $jar = Join-Path $repository "org\openjfx\$module\17.0.2\$module-17.0.2-win.jar"
-    if (-not (Test-Path -LiteralPath $jar)) { throw "Falta la dependencia local $module 17.0.2 para Windows." }
-    $classpath += $jar
-}
-$jdbc = Join-Path $repository 'org\postgresql\postgresql\42.7.14\postgresql-42.7.14.jar'
-if (-not (Test-Path -LiteralPath $jdbc)) { throw 'Falta el JAR JDBC requerido por las clases compartidas; no se abrirá una conexión.' }
-$classpath += $jdbc
-
+# Se obtiene el classpath real de Maven: incluye PDFBox y el proveedor de correo simulado.
+& $maven -o 'org.apache.maven.plugins:maven-dependency-plugin:3.7.0:build-classpath' '-DincludeScope=runtime' '-Dmdep.outputFile=target/demo-runtime-classpath.txt'
+if ($LASTEXITCODE -ne 0) { throw 'No se pudo resolver el classpath offline. No se alteraron versiones ni configuración.' }
+$runtimeClasspath = [IO.File]::ReadAllText((Join-Path $project 'target/demo-runtime-classpath.txt')).Trim()
+$classpath = @((Join-Path $project 'target\classes'), (Join-Path $project 'target\test-classes'), $runtimeClasspath)
 # No hay contraseña predeterminada ni secretos en archivos, argumentos Java o registros.
 $env:LAEXCLUSIVA_DEMO_ADMIN_PASSWORD = 'Demo-' + [Guid]::NewGuid().ToString('N')
 $env:LAEXCLUSIVA_DEMO_WORKER_PASSWORD = 'Demo-' + [Guid]::NewGuid().ToString('N')

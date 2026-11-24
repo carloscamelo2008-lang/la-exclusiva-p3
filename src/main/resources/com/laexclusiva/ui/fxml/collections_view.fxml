@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.DatePicker?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.ScrollPane?>
+
+<BorderPane minHeight="0" minWidth="0" stylesheets="@../css/theme.css" styleClass="workspace collections-workspace" prefHeight="720.0" prefWidth="980.0"
+            xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.laexclusiva.ui.controller.CollectionsController">
+    <center>
+        <ScrollPane fx:id="collectionsScroll" fitToWidth="true" hbarPolicy="NEVER" minWidth="0">
+            <content>
+                <VBox spacing="12.0" styleClass="workspace" minWidth="0" BorderPane.alignment="CENTER">
+                    <padding><Insets top="18.0" right="20.0" bottom="18.0" left="20.0" /></padding>
+                    <children>
+                        <Label text="Alertas y recordatorios de cartera" styleClass="page-heading" wrapText="true" />
+                        <Label fx:id="metricsLabel" wrapText="true" />
+                        <FlowPane hgap="8" vgap="10">
+                            <children>
+                                <Button wrapText="true" text="Actualizar alertas" onAction="#handleRefresh" />
+                                <Button wrapText="true" text="Generar estado PDF" onAction="#handleGenerateStatement" />
+                                <Label fx:id="messageLabel" wrapText="true" style="-fx-text-fill: #42515c;" />
+                            </children>
+                        </FlowPane>
+                        <TableView fx:id="recommendationsTable" prefHeight="260.0" minHeight="200.0">
+                            <columns>
+                                <TableColumn fx:id="customerIdColumn" text="ID" prefWidth="90.0" />
+                                <TableColumn fx:id="customerNameColumn" text="Cliente" prefWidth="150.0" />
+                                <TableColumn fx:id="balanceColumn" text="Saldo" prefWidth="100.0" />
+                                <TableColumn fx:id="priorityColumn" text="Prioridad" prefWidth="120.0" />
+                                <TableColumn fx:id="ageColumn" text="Antigüedad" prefWidth="160.0" />
+                                <TableColumn fx:id="explanationColumn" text="Explicación" prefWidth="340.0" />
+                            </columns>
+                        </TableView>
+                        <Separator />
+                        <VBox fx:id="administrationPane" spacing="10.0" visible="false" managed="false">
+                            <children>
+                                <Label text="Preferencias de contacto y seguimiento (administración)" styleClass="section-title" wrapText="true" />
+                                <FlowPane hgap="12" vgap="12" minWidth="0">
+ <VBox spacing="5"><Label text="Cliente" labelFor="${customerCombo}"/><ComboBox fx:id="customerCombo" onAction="#handleCustomerSelected" prefWidth="300" accessibleText="Cliente para seguimiento"/></VBox>
+ <VBox spacing="5"><Label text="Correo opcional" labelFor="${emailField}"/><TextField fx:id="emailField" promptText="cliente@example.test" prefWidth="280" accessibleText="Correo autorizado del cliente"/></VBox>
+ <VBox spacing="5"><Label text="Canal autorizado" labelFor="${channelCombo}"/><ComboBox fx:id="channelCombo" prefWidth="260" accessibleText="Canal autorizado"/></VBox>
+ <VBox spacing="5"><Label text="Compromiso de pago" labelFor="${commitmentDatePicker}"/><DatePicker fx:id="commitmentDatePicker" prefWidth="240" accessibleText="Fecha de compromiso de pago"/></VBox>
+ <VBox spacing="5"><Label text="Nota breve" labelFor="${noteField}"/><TextField fx:id="noteField" promptText="Seguimiento operativo" prefWidth="300" accessibleText="Nota de seguimiento sin información sensible"/></VBox>
+</FlowPane>
+                                <FlowPane hgap="12" vgap="10">
+                                    <children>
+                                        <CheckBox fx:id="consentCheck" text="El cliente autorizó este canal" />
+                                        <CheckBox fx:id="remindersCheck" text="Habilitar recordatorios semanales" />
+                                        <Button wrapText="true" text="Guardar preferencias" onAction="#handleSaveProfile" />
+                                    </children>
+                                </FlowPane>
+                                <Label text="Seguimiento del cliente" style="-fx-font-weight: bold;" />
+                                <TableView fx:id="historyTable" prefHeight="120.0" minHeight="90.0">
+                                    <columns>
+                                        <TableColumn fx:id="historyDateColumn" text="Fecha" prefWidth="150.0" />
+                                        <TableColumn fx:id="historyEventColumn" text="Evento" prefWidth="160.0" />
+                                        <TableColumn fx:id="historyNoteColumn" text="Nota" prefWidth="520.0" />
+                                    </columns>
+                                </TableView>
+                                <FlowPane hgap="8" vgap="10">
+                                    <children>
+                                        <Button wrapText="true" text="Actualizar recordatorios" onAction="#handlePrepareReminders" />
+                                        <Button wrapText="true" text="Consultar lote" onAction="#handleRefreshReminders" />
+                                        <Button wrapText="true" text="Revisar correo y PDF" onAction="#handlePreviewAndSend" />
+                                        <Button wrapText="true" text="Actualizar auditoría" onAction="#handleRefreshAudit" />
+                                    </children>
+                                </FlowPane>
+                                <TableView fx:id="remindersTable" prefHeight="150.0" minHeight="110.0">
+                                    <columns>
+                                        <TableColumn fx:id="reminderCustomerColumn" text="ID cliente" prefWidth="150.0" />
+                                        <TableColumn fx:id="reminderChannelColumn" text="Canal" prefWidth="130.0" />
+                                        <TableColumn fx:id="reminderStatusColumn" text="Estado" prefWidth="180.0" />
+                                        <TableColumn fx:id="reminderBalanceColumn" text="Saldo revisado" prefWidth="160.0" />
+                                        <TableColumn fx:id="reminderAttemptColumn" text="Intento" prefWidth="280.0" />
+                                    </columns>
+                                </TableView>
+                                <Label text="Auditoría administrativa reciente" style="-fx-font-weight: bold;" />
+                                <TableView fx:id="auditTable" prefHeight="150.0" minHeight="110.0">
+                                    <columns>
+                                        <TableColumn fx:id="auditDateColumn" text="Fecha" prefWidth="150.0" />
+                                        <TableColumn fx:id="auditActorColumn" text="Actor ID" prefWidth="85.0" />
+                                        <TableColumn fx:id="auditActionColumn" text="Acción" prefWidth="210.0" />
+                                        <TableColumn fx:id="auditTargetColumn" text="Objetivo" prefWidth="200.0" />
+                                        <TableColumn fx:id="auditResultColumn" text="Resultado" prefWidth="100.0" />
+                                    </columns>
+                                </TableView>
+                            </children>
+                        </VBox>
+                    </children>
+                </VBox>
+            </content>
+        </ScrollPane>
+    </center>
+</BorderPane>

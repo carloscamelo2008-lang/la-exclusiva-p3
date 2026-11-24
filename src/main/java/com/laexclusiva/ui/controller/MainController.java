@@ -32,6 +32,7 @@ public class MainController {
 
     @FXML private BorderPane rootPane;
     @FXML private Node dashboard;
+    @FXML private CollectionDashboardView collectionDashboard;
     @FXML private Label navigationMessage;
     @FXML private Label welcomeLabel;
     @FXML private Label roleLabel;
@@ -43,6 +44,7 @@ public class MainController {
     @FXML private Button btnDashboard;
     @FXML private Button btnCustomers;
     @FXML private Button btnCredit;
+    @FXML private Button btnCollections;
     @FXML private Button btnCash;
     @FXML private Button btnLogout;
 
@@ -102,6 +104,7 @@ public class MainController {
         currentSession = null;
         sessionClosed = true;
         disableProtectedNavigation();
+        if (collectionDashboard != null) collectionDashboard.clear();
         showSessionClosedState("La sesión está cerrada.");
         if (closingSession != null) {
             try {
@@ -131,7 +134,7 @@ public class MainController {
 
     private void disableProtectedNavigation() {
         for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit,
-                btnInventory, btnPurchases, btnSales, btnCash, btnAdminUsers, btnLogout}) {
+                btnCollections, btnInventory, btnPurchases, btnSales, btnCash, btnAdminUsers, btnLogout}) {
             if (button != null) button.setDisable(true);
         }
     }
@@ -157,7 +160,7 @@ public class MainController {
 
     private void selectNavigation(Button selected) {
         for (Button button : new Button[]{btnDashboard, btnCustomers, btnSellers, btnCredit,
-                btnInventory, btnPurchases, btnSales, btnCash, btnAdminUsers}) {
+                btnCollections, btnInventory, btnPurchases, btnSales, btnCash, btnAdminUsers}) {
             button.pseudoClassStateChanged(ACTIVE, button == selected);
         }
     }
@@ -234,6 +237,32 @@ public class MainController {
         } catch (IOException | RuntimeException failure) {
             LOGGER.log(Level.WARNING, "No se pudo abrir la consulta de cartera.", failure);
             navigationMessage.setText("No se pudo consultar la cartera.");
+        }
+    }
+
+    /** Abre el tablero de cartera; la edición de preferencias queda reservada al administrador. */
+    @FXML
+    private void handleShowCollections() {
+        if (applicationServices == null || !hasPermission(Permission.VIEW_PORTFOLIO)) {
+            navigationMessage.setText("No tiene permiso para consultar las alertas de cartera.");
+            return;
+        }
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(
+                    "/com/laexclusiva/ui/fxml/collections_view.fxml"));
+            Node view = loader.load();
+            CollectionsController controller = loader.getController();
+            var visibleCustomers = authorizationService.execute(currentSession, Permission.VIEW_CUSTOMER,
+                    customerService::getAllCustomers);
+            controller.configure(applicationServices.collectionAssistant(),
+                    applicationServices.administrativeAudit(), visibleCustomers, currentSession,
+                    authorizationService);
+            rootPane.setCenter(view);
+            selectNavigation(btnCollections);
+            navigationMessage.setText("");
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.log(Level.WARNING, "No se pudo abrir Alertas y recordatorios.", failure);
+            navigationMessage.setText("No se pudo abrir Alertas y recordatorios.");
         }
     }
 
@@ -332,14 +361,22 @@ public class MainController {
             if (sessionClosed) throw new SecurityException("La sesión está cerrada.");
             authorizationService.currentPrincipal(currentSession);
         } catch (RuntimeException invalidSession) {
+            if (collectionDashboard != null) collectionDashboard.clear();
             navigationMessage.setText("La sesión ya no está activa.");
             return;
         }
+        refreshCollectionDashboard();
         rootPane.setCenter(dashboard);
         selectNavigation(btnDashboard);
         navigationMessage.setText("");
     }
 
+    /** La vista consulta indicadores protegidos actuales; nunca completa cantidades por su cuenta. */
+    private void refreshCollectionDashboard() {
+        if (collectionDashboard != null) {
+            collectionDashboard.refresh(applicationServices, currentSession, this::handleShowCollections);
+        }
+    }
     public void initSession(UserSession session) {
         requireSessionAuthority();
         if (sessionClosed) throw new SecurityException("No se puede reactivar una vista cuya sesión fue cerrada.");
@@ -374,7 +411,11 @@ public class MainController {
         boolean canViewCash = hasPermission(Permission.VIEW_CASH);
         btnCash.setVisible(canViewCash);
         btnCash.setManaged(canViewCash);
+        boolean canViewPortfolio = hasPermission(Permission.VIEW_PORTFOLIO);
+        btnCollections.setVisible(canViewPortfolio);
+        btnCollections.setManaged(canViewPortfolio);
         btnAdminUsers.setDisable(false);
+        refreshCollectionDashboard();
         selectNavigation(btnDashboard);
     }
 

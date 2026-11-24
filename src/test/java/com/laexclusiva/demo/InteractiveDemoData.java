@@ -55,6 +55,10 @@ public final class InteractiveDemoData {
                 String id = "CLI-%03d".formatted(i);
                 s.customers().registerCustomer(id, row[0], phone(row[1]), row[2]); customers.add(id);
             }
+            // Observación real previa a compras, ventas y abonos; no se retocan sus fechas.
+            s.collectionAssistant().saveProfile(admin, "CLI-007", "camila.duarte@example.test",
+                    CollectionChannel.EMAIL, true, true, LocalDate.now().minusDays(3),
+                    "Contacto autorizado y seguimiento de la cuenta comercial.");
             List<Seller> sellers = new ArrayList<>();
             for (int i = 1; i <= count(config, "seller.count"); i++) {
                 String[] row = row(config, "seller." + i, 3);
@@ -139,6 +143,7 @@ public final class InteractiveDemoData {
                 s.generalDebt().registerDebt(customer, amount, i % 2 == 0 ? "Envases" : "Servicio de entrega",
                         i % 2 == 0 ? "Cargo por envases pendientes de devolución" : "Cargo por servicio de entrega",
                         "CAR-%03d".formatted(i + 1));
+
                 if (i < 3) s.generalDebt().registerPayment(customer, i == 2 ? amount : money(config, "generalDebt.partialPayment"),
                         "Abonos", "Abono a saldo de cuenta", "PAG-CAR-%03d".formatted(i + 1));
             }
@@ -162,6 +167,13 @@ public final class InteractiveDemoData {
                 if (i != 2) s.identity().userManagement().assignSeller(admin, created.id().toString(),
                         created.securityVersion(), sellers.get(i == 3 ? 2 : i).getId());
             }
+            s.collectionAssistant().saveProfile(admin, "CLI-002", "julian.rivera@example.test",
+                    CollectionChannel.EMAIL, true, true, LocalDate.now().minusDays(2), "Seguimiento de compromiso de pago vencido.");
+            s.collectionAssistant().saveProfile(admin, "CLI-009", "lucia.beltran@example.test",
+                    CollectionChannel.EMAIL, true, true, LocalDate.now().plusDays(2), "Confirmar abono en la próxima visita.");
+            s.collectionAssistant().saveProfile(admin, "CLI-012", null,
+                    CollectionChannel.PHONE, true, false, LocalDate.now().plusDays(3), "Contacto telefónico autorizado, sin avisos automáticos.");
+            s.collectionAssistant().prepareWeeklyReminders(admin);
             verify(s);
             return new LoadedDemo(s, new Report(customers.size(), sellers.size(), s.products().listAll().size(),
                     suppliers.size(), s.purchases().orders().findAll(admin).size(), s.sales().listAll().size(),

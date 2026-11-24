@@ -695,6 +695,9 @@ public class AuthenticationServiceTest {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
+            new Scene(menu, 1000, 800);
+            menu.applyCss();
+            menu.layout();
             MainController controller = loader.getController();
             IdentityTestFixture identity = new IdentityTestFixture();
             var issued = identity.issue(UserRole.ADMINISTRATOR);
@@ -737,6 +740,9 @@ public class AuthenticationServiceTest {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
+            new Scene(menu, 1000, 800);
+            menu.applyCss();
+            menu.layout();
             MainController controller = loader.getController();
             IdentityTestFixture identity = new IdentityTestFixture();
             UserSession session = identity.issue(UserRole.ADMINISTRATOR).session();
@@ -776,6 +782,9 @@ public class AuthenticationServiceTest {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
+            new Scene(menu, 1000, 800);
+            menu.applyCss();
+            menu.layout();
             MainController controller = loader.getController();
             controller.setApplicationServices(services);
             controller.setOnLogout(() -> { });
@@ -910,6 +919,8 @@ public class AuthenticationServiceTest {
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
             new Scene(menu, 1000, 800);
+            menu.applyCss();
+            menu.layout();
             MainController controller = loader.getController();
             currentMenuIdentity = new IdentityTestFixture();
             var issued = currentMenuIdentity.issue(role);

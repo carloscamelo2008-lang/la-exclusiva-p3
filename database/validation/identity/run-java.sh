@@ -24,11 +24,13 @@ case "${LAB_SCENARIO:-identity}" in
     ;;
   application)
     mvn -o \
-      '-Dtest=IdentityApplicationPostgresIntegrationTest,PurchaseWorkflowPostgresIntegrationTest,UserRepositoryJdbcPostgresIntegrationTest,UserSecurityVersionPostgresIntegrationTest,AccountInstancePostgresIntegrationTest,ActiveSellerConcurrencyPostgresIntegrationTest,CustomerDebtQueryJdbcPostgresIntegrationTest,CustomerSellerJdbcPostgresIntegrationTest,FinancialOperationsPostgresIntegrationTest,InventoryRepositoryJdbcPostgresIntegrationTest,JdbcSalesWorkflowPostgresIntegrationTest,ProductRepositoryJdbcPostgresIntegrationTest,SaleRepositoryJdbcPostgresIntegrationTest,SaleRequestIdentityPostgresIntegrationTest,StockMovementRepositoryJdbcPostgresIntegrationTest' \
+      '-Dtest=IdentityApplicationPostgresIntegrationTest,PurchaseWorkflowPostgresIntegrationTest,UserRepositoryJdbcPostgresIntegrationTest,UserSecurityVersionPostgresIntegrationTest,AccountInstancePostgresIntegrationTest,ActiveSellerConcurrencyPostgresIntegrationTest,CustomerDebtQueryJdbcPostgresIntegrationTest,CustomerSellerJdbcPostgresIntegrationTest,CustomerCollectionPostgresIntegrationTest,FinancialOperationsPostgresIntegrationTest,InventoryRepositoryJdbcPostgresIntegrationTest,JdbcSalesWorkflowPostgresIntegrationTest,ProductRepositoryJdbcPostgresIntegrationTest,SaleRepositoryJdbcPostgresIntegrationTest,SaleRequestIdentityPostgresIntegrationTest,StockMovementRepositoryJdbcPostgresIntegrationTest' \
       -Dlaexclusiva.test.postgres.applicationServices=true \
       -Dlaexclusiva.test.postgres.users=true \
       -Dlaexclusiva.test.postgres.userSecurityVersion=true \
-      -Dlaexclusiva.test.postgres.accountInstance=true test
+      -Dlaexclusiva.test.postgres.accountInstance=true \
+      -Dlaexclusiva.test.postgres.collections=true \
+      test
     ;;
   incomplete)
     mvn -o \

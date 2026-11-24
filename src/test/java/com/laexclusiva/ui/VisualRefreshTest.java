@@ -294,6 +294,7 @@ class VisualRefreshTest {
                     assertTrue(caption.getLayoutBounds().getWidth() + purchasesButton.getInsets().getLeft()
                             + purchasesButton.getInsets().getRight() <= purchasesButton.getWidth() + 1,
                             "Compras y Recepción debe leerse completo");
+                    reveal((ScrollPane) root.getLeft(), button(loader, "btnLogout"), 0);
                     var logoutBounds = button(loader, "btnLogout").localToScene(button(loader, "btnLogout").getBoundsInLocal());
                     assertTrue(logoutBounds.getMaxY() <= root.getLeft().localToScene(root.getLeft().getBoundsInLocal()).getMaxY() + .5);
                     button(loader, "btnPurchases").fire(); root.applyCss(); root.layout();
@@ -404,6 +405,7 @@ class VisualRefreshTest {
             new Scene(root, 800, 600); root.applyCss(); root.layout();
             snapshot(root, "dashboard-800x600");
             for (String id : new String[]{"btnDashboard", "btnCustomers", "btnCredit", "btnInventory", "btnPurchases", "btnAdminUsers", "btnLogout"}) {
+                reveal((ScrollPane) root.getLeft(), button(loader, id), 0);
                 var bounds = button(loader, id).localToScene(button(loader, id).getBoundsInLocal());
                 var sidebar = root.getLeft().localToScene(root.getLeft().getBoundsInLocal());
                 assertTrue(bounds.getMaxY() <= sidebar.getMaxY() + .5, id + " queda fuera del lateral");

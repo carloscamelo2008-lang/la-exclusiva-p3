@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -19,6 +20,7 @@ AUTHORIZED_BRANCHES = {
     "feature/daniel-identity-users": "pr22",
     "feature/identity-app-integration": "pr24",
     "feature/purchases-app-integration": "purchases",
+    "feature/smart-reminders-security": "collections",
 }
 event = ENV.get("GITHUB_EVENT_NAME")
 branch = ENV.get("GITHUB_HEAD_REF") if event == "pull_request" else ENV.get("GITHUB_REF_NAME")
@@ -157,7 +159,7 @@ def java_tests(cycle):
             totals[key] += int(suite.attrib[key])
     expected = {
         "identity": (4, {"tests": 26, "failures": 0, "errors": 0, "skipped": 0}),
-        "application": (15, {"tests": 58, "failures": 0, "errors": 0, "skipped": 0}),
+        "application": (16, {"tests": 60, "failures": 0, "errors": 0, "skipped": 0}),
         "incomplete": (1, {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}),
     }[scenario]
     assert (len(suites), totals) == expected, {"suites": len(suites), "totals": totals}
@@ -169,6 +171,38 @@ def java_tests(cycle):
 
 def snapshot():
     return psql(query="SELECT id,account_instance_id,security_version FROM public.user_account ORDER BY id").stdout
+
+
+def seed_maven_repository():
+    """Copia solo los artefactos Maven cacheados a la carpeta temporal de este job."""
+    source = Path.home() / ".m2" / "repository"
+    destination = BASE / "m2" / "repository"
+    home = Path.home().resolve()
+    if source.is_symlink():
+        raise SystemExit("La caché Maven del runner no puede ser un enlace simbólico.")
+    if not source.exists():
+        summary = {"restored": False, "files": 0, "bytes": 0}
+        save("maven-cache.json", json.dumps(summary, indent=2))
+        report["maven_cache"] = summary
+        return
+
+    resolved_source = source.resolve()
+    if not resolved_source.is_relative_to(home) or not resolved_source.is_dir():
+        raise SystemExit("La caché Maven debe ser un directorio dentro del perfil del runner.")
+    files = 0
+    size = 0
+    for entry in resolved_source.rglob("*"):
+        if entry.is_symlink():
+            raise SystemExit("La caché Maven contiene un enlace simbólico no permitido.")
+        if entry.is_file():
+            files += 1
+            size += entry.stat().st_size
+    if destination.exists():
+        raise SystemExit("El destino de caché Maven temporal ya existe.")
+    shutil.copytree(resolved_source, destination)
+    summary = {"restored": True, "files": files, "bytes": size}
+    save("maven-cache.json", json.dumps(summary, indent=2))
+    report["maven_cache"] = summary
 
 
 def main():
@@ -183,6 +217,7 @@ def main():
     with open(os.open(PASSWORD, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444), "w") as file:
         file.write(secret)
     (BASE / "m2").mkdir()
+    seed_maven_repository()
     for key in ("LAEXCLUSIVA_PG18_IMAGE", "LAEXCLUSIVA_JAVA17_IMAGE"):
         image = ENV[key]
         assert re.fullmatch(r"(?:postgres|maven):[^@]+@sha256:[0-9a-f]{64}", image)
@@ -199,7 +234,8 @@ def main():
                        "V100__sale_creation_idempotency.sql", "V101__general_debt_ledger.sql",
                        "V102__cash_ledger.sql", "V103__enforce_sale_request_identity_coherence.sql",
                        "V104__user_security_version.sql", "V105__unique_active_user_seller.sql",
-                       "V106__user_account_instance_identity.sql")
+                       "V106__user_account_instance_identity.sql", "V107__customer_collection_preferences.sql",
+                       "V108__administrative_audit.sql", "V109__reminder_review_and_delivery_reconciliation.sql")
     for name in migration_names:
         report["migrations"][name] = hashlib.sha256((ROOT / "database/migrations" / name).read_bytes()).hexdigest()
     for cycle in ("first", "repeat"):
@@ -258,4 +294,4 @@ finally:
         if "--cleanup" not in sys.argv:
             save("summary.json", json.dumps(report, indent=2))
             if report["completed"] and report.get("destroyed"):
-                print("Laboratorio completado y destruido: ciclos identidad (26 pruebas x 2), aplicación (58 pruebas PostgreSQL) y esquema incompleto (1 prueba); recuperación aprobada.", flush=True)
+                print("Laboratorio completado y destruido: ciclos identidad (26 pruebas x 2), aplicación (60 pruebas PostgreSQL) y esquema incompleto (1 prueba); recuperación aprobada.", flush=True)

@@ -93,3 +93,16 @@
 
 /* La ayuda tributaria debe caber también con las fuentes de Linux. */
 .workspace #supplierTaxId { -fx-pref-width: 210; }
+
+/* Indicadores reales de Cartera: prioridad también expresada mediante texto e icono. */
+.collection-metric { -fx-background-color: #edf4ff; -fx-background-radius: 12; -fx-padding: 16; -fx-min-height: 115; }
+.collection-count { -fx-font-size: 25; -fx-font-weight: bold; -fx-text-fill: #083477; }
+.collection-metric.urgent { -fx-background-color: #ffe9e6; }
+.collection-metric.urgent .collection-count { -fx-text-fill: #941e25; }
+.collection-metric.attention { -fx-background-color: #fff1ce; }
+.collection-metric.attention .collection-count { -fx-text-fill: #734a00; }
+.collection-metric.upcoming { -fx-background-color: #e5f4ef; }
+.collection-metric.upcoming .collection-count { -fx-text-fill: #17533f; }
+.sidebar-scroll, .sidebar-scroll > .viewport { -fx-background-color: #06295e; }
+.collections-workspace .table-view { -fx-min-width: 0; }
+.collections-workspace .check-box { -fx-wrap-text: true; }

@@ -11,11 +11,13 @@
 <?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.image.Image?>
 <?import javafx.scene.image.ImageView?>
+<?import com.laexclusiva.ui.controller.CollectionDashboardView?>
 
 
 
 <BorderPane fx:id="rootPane" minHeight="500.0" minWidth="700.0" prefHeight="820.0" prefWidth="1280.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.MainController" stylesheets="@../css/navigation.css">
    <left>
+      <ScrollPane fitToWidth="true" hbarPolicy="NEVER" prefWidth="256" styleClass="sidebar-scroll"><content>
       <VBox prefHeight="600.0" prefWidth="256.0" styleClass="sidebar" BorderPane.alignment="CENTER">
          <children>
             <Label text="LA EXCLUSIVA" textFill="WHITE">
@@ -46,7 +48,8 @@
                   <Insets left="20.0" top="10.0" />
                </padding>
             </Button>
-            <Button fx:id="btnCash" onAction="#handleShowCash" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Caja y movimientos">
+            <Button fx:id="btnCollections" onAction="#handleShowCollections" mnemonicParsing="false" prefHeight="44" prefWidth="220" styleClass="nav-button" wrapText="true" text="Alertas y recordatorios"/>
+            <Button fx:id="btnCash" onAction="#handleShowCash" mnemonicParsing="false" prefHeight="40" prefWidth="220" styleClass="nav-button" text="Caja y movimientos">
                <padding>
                   <Insets left="20.0" top="10.0" />
                </padding>
@@ -72,6 +75,7 @@
             <Button fx:id="btnLogout" onAction="#handleLogout" text="Cerrar sesión" styleClass="nav-button" prefWidth="220.0" />
          </children>
       </VBox>
+      </content></ScrollPane>
    </left>
    <center>
       <ScrollPane fx:id="dashboard" fitToWidth="true" hbarPolicy="NEVER">
@@ -102,6 +106,7 @@
                      <Button text="Caja y movimientos" onAction="#handleShowCash" styleClass="quick-action" fx:id="quickCash" visible="${btnCash.visible}" managed="${btnCash.managed}" disable="${btnCash.disabled}" />
                   </FlowPane>
                </VBox>
+               <CollectionDashboardView fx:id="collectionDashboard" visible="false" managed="false" />
                <FlowPane hgap="18" vgap="18" prefWrapLength="850">
                   <VBox styleClass="card" prefWidth="360">
                      <Label text="Resumen comercial" styleClass="section-title" />

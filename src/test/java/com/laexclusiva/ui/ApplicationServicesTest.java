@@ -23,12 +23,20 @@ class ApplicationServicesTest {
         assertNull(services.debtQuery());
         assertEquals(6, services.products().listAll().size());
         assertNotNull(services.purchases());
+        assertNotNull(services.collectionAssistant());
+        assertNotNull(services.administrativeAudit());
     }
 
     @Test
     void rejectsUnknownPersistenceModesBeforeOpeningAnyConnection() {
         assertThrows(IllegalArgumentException.class,
                 () -> ApplicationServices.create("mysql", Map.of()));
+    }
+
+    @Test
+    void refusesRealSmtpFromNonDurableMemoryMode() {
+        assertThrows(IllegalArgumentException.class, () -> ApplicationServices.create(
+                ApplicationServices.MEMORY_MODE, Map.of("LAEXCLUSIVA_SMTP_ENABLED", "true")));
     }
 
     @Test
