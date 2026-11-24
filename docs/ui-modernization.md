@@ -321,3 +321,114 @@ adaptan la búsqueda dentro de ScrollPane, el pase de CSS/layout y textos traduc
 Este commit no incorpora carga de datos ni recursos de demostración. La herramienta
 queda para el siguiente commit independiente. No se integra el PR #27 ni se hace merge.
 Validación independiente del índice visual exportado: Temurin 17.0.21+9, Maven offline clean verify, 841 casos; 781 aprobados, 60 PostgreSQL omitidos y cero fallos/errores. La carga y las pruebas de la nueva demo no formaron parte de esa copia.
+
+## Demostración completa y datos de apariencia comercial
+
+Se preparó una carga independiente mediante los servicios reales, conectada a los
+FXML/controladores existentes y con configuración UTF-8 editable. No se modifica
+App.java, Main.java, la composición de producción, SQL ni lógica comercial. La
+herramienta de revisión está separada del arranque habitual; cada ejecución crea
+repositorios nuevos en memoria y conserva sus datos al navegar o cerrar sesión.
+Véase [guía de la demostración](interactive-demo.md) y scripts/start-interactive-demo.ps1.
+
+Contiene 15 clientes, cinco vendedores, 14 productos, cinco proveedores, diez pedidos,
+30 ventas y cinco usuarios. Hay crédito, abonos, deuda general, compras parciales,
+productos agotados y existencias disponibles; todo reconciliado con inventario y caja.
+Las ventas conservan su fecha real por decisión del usuario; caja manual cubre 30 días.
+Los registros tienen direcciones y descripciones naturales, sin marcas de entorno;
+el aviso «Modo demostración» aparece únicamente en el título/pie de la revisión.
+Clientes se ordena por ID en la presentación; sus referencias se conservan en los
+servicios y repositorios, no solo en las celdas de la tabla.
+
+Ajustes visuales demostrados: anchos de encabezados de Compras/Cantidad; envases,
+roles, estados y movimientos en español, manteniendo enums internos; etiquetas
+persistentes para campos numéricos. Ventas, Caja y Usuarios tienen desplazamiento
+para evitar historiales comprimidos o acciones recortadas. Solo cambian renderizado,
+conversores y disposición; no las autorizaciones o cálculos. Se adaptaron selectores
+de las pruebas al contenido de ScrollPane y sus textos esperados a la traducción,
+conservando las aserciones funcionales.
+
+Última suite local: Temurin 17.0.21+9, Maven offline clean verify, 851 casos:
+791 aprobados, 60 PostgreSQL omitidos, cero fallos/errores. Capturas de la carga en
+la guía; ventana Windows real visible y maximizada. El archivo original de la mascota
+y su nueva alineación derecha permanecen intactos. Sin commit o push; aprobación
+visual pendiente, PR #25 Draft y PR #27 no integrado.
+
+## Revisión técnica final y separación de commits propuesta
+
+Estado: pendiente de autorización para commit/push. La auditoría encontró dos ajustes dentro del alcance: excluir del JAR normal la clase/configuración de la demo moviéndolas a src/test, y sustituir literales de contraseñas de las nuevas pruebas por valores aleatorios en memoria. No hay cambios en modelos, servicios, autenticación, autorización, repositorios, App.java, Main.java, ApplicationServices, SQL, migraciones o pom.xml. Los cuatro controladores modificados solo cambian presentación y orden de filas.
+
+Validación repetida: Temurin 17.0.21+9 y Maven 3.9.12, mvn -o clean verify: 851 casos, 791 aprobados, 60 PostgreSQL omitidos, cero fallos/errores. La inspección del JAR confirma ausencia de la nueva demo y su configuración; target/test-classes sí los contiene. No hay carga automática desde el arranque normal. Se mantienen el PNG original y la alineación derecha. La animación de sorbo no está implementada: faltan fotogramas aprobados.
+
+Inventario exacto: 40 archivos (25 texto/código, 15 PNG). No se descartan archivos para ajustarlo al recuento de 20 mencionado en la solicitud. El manifiesto local target/ui-demo-review-manifest.json enumera los grupos; no forma parte del repositorio.
+
+### Grupo visual — fix(ui): refine mascot layout and compact module presentation
+
+19 archivos exclusivos, independientes de la herramienta demo:
+
+```
+src/main/java/com/laexclusiva/ui/controller/CustomerController.java
+src/main/java/com/laexclusiva/ui/controller/InventoryController.java
+src/main/java/com/laexclusiva/ui/controller/PurchasesController.java
+src/main/java/com/laexclusiva/ui/controller/UserManagementController.java
+src/main/resources/com/laexclusiva/ui/fxml/cash_view.fxml
+src/main/resources/com/laexclusiva/ui/fxml/inventory_view.fxml
+src/main/resources/com/laexclusiva/ui/fxml/main_menu_modern.fxml
+src/main/resources/com/laexclusiva/ui/fxml/main_menu_view.fxml
+src/main/resources/com/laexclusiva/ui/fxml/sales_view.fxml
+src/main/resources/com/laexclusiva/ui/fxml/user_management_view.fxml
+src/test/java/com/laexclusiva/service/AuthenticationServiceTest.java
+src/test/java/com/laexclusiva/ui/VisualRefreshTest.java
+src/test/java/com/laexclusiva/ui/controller/PurchasesControllerTest.java
+src/test/java/com/laexclusiva/ui/controller/UserManagementControllerSecurityTest.java
+docs/mascot-animation-resource.md
+docs/ui-review/dashboard-mascot-right-1024x768.png
+docs/ui-review/dashboard-mascot-right-1280x800.png
+docs/ui-review/dashboard-mascot-right-1536x816.png
+docs/ui-review/dashboard-mascot-right-800x600.png
+```
+
+### Grupo demo — test(demo): add isolated interactive review data
+
+19 archivos exclusivos. Sus pruebas y recursos se encuentran en src/test y solo se cargan mediante la herramienta explícita de revisión:
+
+```
+docs/interactive-demo.md
+docs/ui-review/demo-btnAdminUsers-800.png
+docs/ui-review/demo-btnCustomers-1280.png
+docs/ui-review/demo-btnCustomers-800.png
+docs/ui-review/demo-btnInventory-1280.png
+docs/ui-review/demo-btnPurchases-1280.png
+docs/ui-review/demo-btnSellers-1280.png
+docs/ui-review/demo-history-btnCash-800.png
+docs/ui-review/demo-history-btnSales-800.png
+docs/ui-review/demo-labelled-inventory-560.png
+docs/ui-review/demo-labelled-sales-560.png
+docs/ui-review/demo-portfolio-800.png
+scripts/start-interactive-demo.ps1
+src/test/java/com/laexclusiva/demo/InteractiveDemoData.java
+src/test/java/com/laexclusiva/demo/InteractiveDemoDataTest.java
+src/test/java/com/laexclusiva/demo/InteractiveDemoReview.java
+src/test/java/com/laexclusiva/demo/InteractiveDemoReviewTest.java
+src/test/java/com/laexclusiva/ui/InteractiveDemoVisualTest.java
+src/test/resources/com/laexclusiva/demo/interactive-demo.properties
+```
+
+### Documentación compartida
+
+```
+docs/ui-modernization.md
+docs/ai-usage/developer2-ai-log.md
+```
+
+Al autorizarse los commits se separarán los bloques de estos dos documentos: cambios visuales y evidencia de mascota/pantallas con el primero; carga aislada, configuración, credenciales temporales y pruebas de datos con el segundo. No se añadirán archivos de demo al primer commit. El grupo visual debe compilar y verificar por sí solo antes de añadir el grupo demo. Esta organización es un plan revisable: no se hizo git add ni se crearon commits.
+
+Seguridad de credenciales: no hay claves reales o predeterminadas de ejecución guardadas. Las nuevas pruebas generan sus credenciales; permanecen entradas sintéticas preexistentes en otras regresiones y términos en la lista de bloqueo, que no son accesos productivos. El cuadro local de credenciales sigue siendo el mecanismo de la demo, sin escribir sus valores a archivos.
+
+PR #25 confirmado abierto y Draft. No se integró #27 ni se hicieron merge, fetch, push, SQL o migraciones. La aplicación existente permanece abierta para conservar los cambios que el usuario esté probando.
+
+## Publicación autorizada de visuales y demostración — 23/11/2026
+
+Se ejecutó el plan anterior: commit visual independiente 8d7749d y grupo demo separado, con documentación dividida por secciones. El estado anterior «pendiente de autorización» es histórico. La suite del índice visual exportado aprobó 781 pruebas y omitió 60 PostgreSQL (841 casos); el conjunto con demo aprobó 791 y omitió 60 (851 casos), sin fallos ni errores, con Temurin 17.0.21+9 y Maven offline. No se repiten ni se atribuyen estos resultados a versiones futuras.
+
+La demo permanece fuera del artefacto normal, sin cambios de App.java o launcher. Se mantiene la instancia del usuario y sus datos en memoria. Las capturas 1920×1080 solicitadas posteriormente se guardan exclusivamente en el Escritorio, no se publican en GitHub. La animación continúa pendiente del recurso aprobado. La integración posterior de PR #27 se realizará únicamente tras comprobar su fusión y autorización, y requiere nueva revisión visual antes de publicación.
