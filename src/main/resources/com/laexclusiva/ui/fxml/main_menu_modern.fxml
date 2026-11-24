@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import com.laexclusiva.ui.controller.CollectionDashboardView?>
+
+
+
+<BorderPane fx:id="rootPane" minHeight="500.0" minWidth="700.0" prefHeight="820.0" prefWidth="1280.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.MainController" stylesheets="@../css/navigation.css">
+   <left>
+      <ScrollPane fitToWidth="true" hbarPolicy="NEVER" prefWidth="256" styleClass="sidebar-scroll"><content>
+      <VBox prefHeight="600.0" prefWidth="256.0" styleClass="sidebar" BorderPane.alignment="CENTER">
+         <children>
+            <Label text="LA EXCLUSIVA" textFill="WHITE">
+               <font>
+                  <Font name="System Bold" size="18.0" />
+               </font>
+               <VBox.margin>
+                  <Insets bottom="16.0" left="20.0" top="15.0" />
+               </VBox.margin>
+            </Label>
+            <Button fx:id="btnDashboard" onAction="#handleShowDashboard" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Resumen / Inicio">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnCustomers" onAction="#handleShowCustomers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Clientes">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnSellers" onAction="#handleShowSellers" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Vendedores">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnCredit" onAction="#handleShowPortfolio" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Cartera (consulta)">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnCollections" onAction="#handleShowCollections" mnemonicParsing="false" prefHeight="44" prefWidth="220" styleClass="nav-button" wrapText="true" text="Alertas y recordatorios"/>
+            <Button fx:id="btnCash" onAction="#handleShowCash" mnemonicParsing="false" prefHeight="40" prefWidth="220" styleClass="nav-button" text="Caja y movimientos">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnInventory" onAction="#handleShowInventory" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Catálogo e Inventario">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnPurchases" onAction="#handleShowPurchases" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Compras y Recepción">
+               <padding><Insets left="20.0" top="10.0" /></padding>
+            </Button>
+            <Button fx:id="btnSales" onAction="#handleShowSales" mnemonicParsing="false" prefHeight="40.0" prefWidth="220.0" styleClass="nav-button" text="Registrar Venta">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnAdminUsers" onAction="#handleShowAdminUsers" mnemonicParsing="false" prefHeight="44.0" prefWidth="220.0" styleClass="nav-button" wrapText="true" text="Gestión de Usuarios">
+               <padding>
+                  <Insets left="20.0" top="10.0" />
+               </padding>
+            </Button>
+            <Button fx:id="btnLogout" onAction="#handleLogout" text="Cerrar sesión" styleClass="nav-button" prefWidth="220.0" />
+         </children>
+      </VBox>
+      </content></ScrollPane>
+   </left>
+   <center>
+      <ScrollPane fx:id="dashboard" fitToWidth="true" hbarPolicy="NEVER">
+         <content>
+            <VBox spacing="20" styleClass="workspace">
+               <padding><Insets top="24" right="24" bottom="24" left="24" /></padding>
+               <Label text="La Exclusiva · Panel de gestión" styleClass="page-heading" />
+               <Label fx:id="roleLabel" text="Rol actual" styleClass="muted" />
+               <HBox fx:id="welcomeBanner" minWidth="0" alignment="CENTER_LEFT" styleClass="hero">
+                  <VBox spacing="15" prefWidth="420" minWidth="0" maxWidth="Infinity" HBox.hgrow="ALWAYS" alignment="CENTER_LEFT">
+                     <Label fx:id="welcomeLabel" text="¡Bienvenido a La Exclusiva!" wrapText="true" styleClass="hero-title" />
+                     <Label text="Tu comercio, en un solo lugar." styleClass="hero-copy" wrapText="true" />
+                     <Label text="Consulta clientes, inventario y operaciones con los permisos de tu cuenta." wrapText="true" styleClass="hero-copy" />
+                  </VBox>
+                  <ImageView fx:id="mascotImage" fitHeight="300" fitWidth="${welcomeBanner.width * 0.22}" preserveRatio="true" smooth="true" mouseTransparent="true" accessibleText="Mascota de La Exclusiva: botella ámbar con corona dorada y delantal azul">
+                     <image><Image url="@../images/mascot/mascot-blue-transparent.png" backgroundLoading="false" /></image>
+                  </ImageView>
+               </HBox>
+               <VBox styleClass="card">
+                  <Label text="Accesos rápidos" styleClass="section-title" />
+                  <FlowPane hgap="12" vgap="12">
+                     <Button text="Clientes" onAction="#handleShowCustomers" styleClass="quick-action" fx:id="quickCustomers" visible="${btnCustomers.visible}" managed="${btnCustomers.managed}" disable="${btnCustomers.disabled}" />
+                     <Button text="Vendedores" onAction="#handleShowSellers" styleClass="quick-action" fx:id="quickSellers" visible="${btnSellers.visible}" managed="${btnSellers.managed}" disable="${btnSellers.disabled}" />
+                     <Button text="Inventario" onAction="#handleShowInventory" styleClass="quick-action" fx:id="quickInventory" visible="${btnInventory.visible}" managed="${btnInventory.managed}" disable="${btnInventory.disabled}" />
+                     <Button text="Compras y Recepción" onAction="#handleShowPurchases" styleClass="quick-action" fx:id="quickPurchases" visible="${btnPurchases.visible}" managed="${btnPurchases.managed}" disable="${btnPurchases.disabled}" />
+                     <Button text="Registrar venta" onAction="#handleShowSales" styleClass="quick-action" fx:id="quickSales" visible="${btnSales.visible}" managed="${btnSales.managed}" disable="${btnSales.disabled}" />
+                     <Button text="Consultar cartera" onAction="#handleShowPortfolio" styleClass="quick-action" fx:id="quickCredit" visible="${btnCredit.visible}" managed="${btnCredit.managed}" disable="${btnCredit.disabled}" />
+                     <Button text="Caja y movimientos" onAction="#handleShowCash" styleClass="quick-action" fx:id="quickCash" visible="${btnCash.visible}" managed="${btnCash.managed}" disable="${btnCash.disabled}" />
+                  </FlowPane>
+               </VBox>
+               <CollectionDashboardView fx:id="collectionDashboard" visible="false" managed="false" />
+               
+            </VBox>
+         </content>
+      </ScrollPane>
+   </center>
+   <bottom>
+      <Label fx:id="navigationMessage" style="-fx-text-fill: #a01818;" />
+   </bottom>
+</BorderPane>

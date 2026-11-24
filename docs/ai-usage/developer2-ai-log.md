@@ -644,3 +644,149 @@ los resultados; no se usan por sí solos para atribuir uso de IA.
 - **Gemini, 26 y 29/10/2026:** no se consultaron las conversaciones originales de las interacciones 1–3. Se preservan sus registros existentes, sin ampliarlos; para contrastarlos hace falta aportar la fuente original.
 - **Solicitud V105 del 19/11/2026 a las 19:51:** turno Codex `01a1f66f-917b-7000-8c7b-5df334358b7d`, con un adjunto de instrucciones, pero sin respuesta final recuperada. Se requiere el registro completo para atribuir un resultado; no se convirtió en una implementación presunta.
 - **20 y 21/11/2026 u otras conversaciones externas:** no aparecieron interacciones fechadas de esos días en las fuentes consultadas. No se presume que existieran por continuidad del desarrollo. Si hubo consultas, deben aportarse los mensajes y timestamps; no se crearán entradas usando solo commits o recuerdos.
+
+### Interacción 41 – Modernización visual independiente y coordinación
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex; se ensayaron dos ediciones con ImageGen, descartadas por alterar detalles del original.
+* **Fase, tarea y rama:** Interfaz JavaFX e identidad visual; `feature/ui-modernization`, desde develop `cfdc181`.
+* **Objetivo de la consulta:** Implementar el dashboard aprobado, modernizar pantallas y preparar identidad de escritorio sin tocar los archivos reservados a Carlos.
+* **Resumen de la respuesta recibida:** Se creó un tema central, adaptación visual de ocho FXML y un dashboard alternativo con navegación existente. La inspección remota detectó el FXML principal ocupado por Carlos y se dejó la integración documentada.
+* **Qué se acepta, modifica o descarta y por qué:** Tras reiterar el delantal azul y la integración sin fondo, el usuario eligió esperar al original azul transparente; se descartaron ambas ediciones generadas y la captura roja no se integra. No se inventan cifras, logo independiente ni iconos. Dashboard principal, analíticas e iconos quedan delimitados para coordinación y recursos originales.
+* **Verificación realizada:** Temurin 17.0.21+9 y Maven offline verify: 805 pruebas, 750 aprobadas, 55 PostgreSQL omitidas, 0 fallos/errores. Tres pruebas visuales nuevas cargan FXML/CSS, navegan con servicios memory y verifican redistribución. Capturas JavaFX reales en `docs/ui-review`; ventana de revisión visible en memoria. Sin SQL, migraciones ni cambios de controladores/servicios. Evidencia y limitaciones en `docs/ui-modernization.md`.
+* **Commit o Pull Request relacionado:** Commit y PR de modernización visual pendientes al registrar esta entrada; sin modificación del PR #22 fusionado.
+
+### Interacción 42 – Correcciones de revisión del PR visual #25
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Revisión de las cuatro observaciones de Carlos; `feature/ui-modernization`.
+* **Objetivo de la consulta:** Integrar develop/PR #24 y corregir compatibilidad del dashboard, contraste del login, permisos y ventanas compactas, manteniendo el PR como Draft.
+* **Resumen de la respuesta recibida:** Se realizó merge normal sin conflictos (`4766324`); se recuperó la observación completa del PR y el usuario la confirmó. Se adaptaron ambos dashboard FXML a administración real, sesiones y logout; se añadieron enlaces visuales de permisos, aviso de login contrastado y desplazamiento en Login/Cartera/Inventario.
+* **Qué se acepta, modifica o descarta y por qué:** Se mantuvieron intactos App.java, controladores y servicios; el rojo inline se conserva con un fondo CSS que garantiza contraste. No se inventaron recursos de marca: solo se reservaron sus rutas. Se ajustó Scene/CSS/layout en pruebas existentes tras detectar errores de lookup previos a la creación del skin, sin retirar aserciones.
+* **Verificación realizada:** Temurin 17.0.21+9, Maven offline `clean verify`: 828 casos, 769 aprobados, 59 PostgreSQL omitidos, 0 fallos/errores; nueve pruebas visuales aprobadas. Se comprobaron permisos de ambos roles, administración, rechazo de sesión sintética/revocada, logout con recuperación, tres mensajes de login con contraste >= 4.5:1 y desplazamiento compacto. Se renovaron capturas JavaFX reales. Las primeras suites fallidas y la corrección del montaje visual se documentan en `docs/ui-modernization.md`. Sin SQL, migraciones ni revisión manual fingida. Entradas anteriores preservadas byte por byte.
+* **Commit o Pull Request relacionado:** Continuación del [PR #25](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/25), que permanece en Draft; commit de corrección pendiente al registrar esta entrada.
+
+### Interacción 43 – Integración de la mascota original aprobada
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex; inspección local de píxeles/alfa con System.Drawing, sin generar ni reconstruir imágenes con IA.
+* **Fase, tarea y rama:** Identidad visual del dashboard; `feature/ui-modernization`, continuación del PR #25 desde `eceb23f`.
+* **Objetivo de la consulta:** Integrar el PNG original aprobado de la mascota, comprobar transparencia y bordes, conservar las funcionalidades del PR #24 y preparar la coordinación de logo/iconos.
+* **Resumen de la respuesta recibida:** Se copió exactamente `Botella Real La Exclusiva.png` al classpath y se integró con ImageView sobre el degradado del banner en ambos FXML. Se comprobó el alfa sobre fondos azul/blanco/negro; no se observaron residuos visibles que justificaran retocar el archivo. Se preparó documentación concreta de Stage, launcher y accesos directos sin modificar App.java.
+* **Qué se acepta, modifica o descarta y por qué:** Se conserva el adjunto byte por byte, incluidos rostro, corona, sombras, delantal y logo; no se recorta ni se extrae el logo del delantal. El banner distribuye texto e imagen sin solaparlos. El logo independiente y sus variantes PNG/ICO siguen pendientes; no se inventan recursos ni se declara comprobada la barra de tareas.
+* **Verificación realizada:** Temurin 17.0.21+9, Maven offline `clean verify`: 830 casos, 771 aprobados, 59 PostgreSQL omitidos, 0 fallos/errores. Once pruebas visuales, dos adicionales de integridad/alfa y adaptación a 1280/800/700 px. SHA-256 del adjunto, recurso y copia dentro del JAR coincidentes; capturas JavaFX reales actualizadas. La procedencia y los resultados se documentan en el README de la mascota y `docs/ui-modernization.md`. Sin SQL, migraciones, cambios de controladores o servicios; entradas 1–42 preservadas byte por byte.
+* **Commit o Pull Request relacionado:** Continuación del [PR #25](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/25), que permanece en Draft; commit de integración pendiente al registrar esta entrada.
+
+### Interacción 44 – Legibilidad y ventanas compactas sin interferir con Compras
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Mejoras visuales justificadas del PR #25; `feature/ui-modernization` desde `8be2051`.
+* **Objetivo de la consulta:** Revisar CSS, textos, formularios y tablas en ventanas pequeñas, conservando identidad visual, navegación y permisos, sin integrar el PR #26 pendiente.
+* **Resumen de la respuesta recibida:** Se comprobó que #26 seguía abierto y se revisó su patch de Cartera. Se ampliaron cuatro campos y el selector de envase de Inventario, se fijó altura preferida de 200 px para sus tablas y se aplicó un ancho CSS específico a la descripción de Cartera. Se verificaron navegación/logout a 800×600 y formularios a 560×600.
+* **Qué se acepta, modifica o descarta y por qué:** Se retiraron los ensayos sobre el FXML de Cartera al detectar solapamiento con #26. También se descartó el ajuste multilínea porque recortaba filas; no se incorporaron controladores ni renderizadores nuevos. Se conserva la mascota original, el diseño aprobado y la navegación actual, sin Compras provisional ni cambios de App.java, servicios, base de datos o iconos.
+* **Verificación realizada:** Temurin 17.0.21+9, Maven offline `clean verify`: 833 casos, 774 aprobados, 59 PostgreSQL omitidos, 0 fallos/errores. Las 14 pruebas visuales se repitieron al añadir una captura centrada en el formulario de Cartera: 14/14. Las pruebas detectaron y corrigieron cuatro ayudas recortadas; comprueban espacio de los tres tipos de envase, límites de acciones, navegación completa y desplazamiento horizontal del inventario memory. Capturas reales en `docs/ui-review`. Límites y coordinación tras #26 en `docs/ui-modernization.md`; sin SQL ni integración de esa rama. Entradas anteriores conservadas byte por byte.
+* **Commit o Pull Request relacionado:** Continuación del [PR #25](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/25), que sigue en Draft; commit pendiente al registrar esta entrada.
+
+### Continuación de la Interacción 44 – CI multiplataforma y cambio de base
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Validación posterior al push `7100748`; `feature/ui-modernization`.
+* **Objetivo de la consulta:** Completar la comprobación de CI y del estado real del PR #25 dentro de la misma tarea, sin resolver archivos compartidos sin coordinación.
+* **Resumen de la respuesta recibida:** La CI de Ubuntu/Java 17 detectó ayudas recortadas en ID del producto y precio de media canasta. Se ampliaron únicamente esos anchos a 155/185 px. Durante la tarea Carlos fusionó #26 en `6e6db09` a las 15:12:38 de America/Bogota; se actualizó la referencia de develop y se inspeccionó el solapamiento con merge-tree, sin integrar cambios.
+* **Qué se acepta, modifica o descarta y por qué:** Se mantienen estrictas las pruebas de métricas y se corrige el tamaño, en lugar de aceptar texto recortado. No se resuelven automáticamente los conflictos de main_menu_view.fxml, portfolio_view.fxml y AuthenticationServiceTest.java: requieren coordinar conservación de Compras, Cartera y regresiones de sesión con Carlos.
+* **Verificación realizada:** CI fallida inicial: run `45257242567`, 833 casos, 1 error agregado de métricas y 59 omitidos. Tras la corrección, Temurin 17.0.21+9 y Maven offline clean verify local: 833 casos, 774 aprobados, 59 PostgreSQL omitidos, 0 fallos/errores, incluidas 14 visuales. Capturas de Inventario renovadas. No hubo SQL ni merge; la CI posterior se comprobará tras publicar. Entradas anteriores preservadas byte por byte.
+* **Commit o Pull Request relacionado:** [PR #25](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/25) en Draft; corrección posterior a `7100748` pendiente de commit al registrar esta continuación.
+
+### Interacción 45 – Merge autorizado de Compras y Cartera en el dashboard moderno
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Integración del PR #26 en el PR #25; `feature/ui-modernization` desde `bc90f12`.
+* **Objetivo de la consulta:** Fusionar origin/develop mediante merge normal, resolver tres conflictos sin perder diseño, Compras, Cartera, permisos ni logout y verificar los tres tamaños solicitados.
+* **Resumen de la respuesta recibida:** Se incorporó develop `6e6db09`, conservando MainController y servicios de Carlos. Se combinaron los dos FXML del menú moderno con btnPurchases y acceso rápido sujeto al botón real; Cartera conserva ScrollPane y tabla de 150 px. Se combinaron las regresiones de autenticación y se añadieron dos pruebas de recepción/abonos con fixtures memory y capturas reales a 1280×800, 1024×768 y 800×600.
+* **Qué se acepta, modifica o descarta y por qué:** Se preservan ambos historiales y los commits 7100748/bc90f12. Se compacta solo el espaciado lateral para incluir Compras sin ocultar logout; ambos menús quedan idénticos. No se reescribe lógica, permisos ni la mascota original; no se inventan métricas. App.java, launcher e iconos quedan intactos. Las modificaciones funcionales heredadas son las de develop, no cambios propios adicionales.
+* **Verificación realizada:** La ejecución dirigida inicial dio 73 casos, 1 error de selector de bienvenida tras abandonar dashboard; las 16 visuales pasaron. Se corrigió la ubicación de esa aserción sin eliminarla. Suite final Temurin 17.0.21+9, Maven offline clean verify: 839 casos, 779 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores. Se comprobaron recepción con movimiento de stock, abonos sin modificar existencias, roles, administración, login/logout y recuperación; capturas inspeccionadas. Sin SQL ni migraciones. Entradas anteriores preservadas byte por byte.
+* **Commit o Pull Request relacionado:** [PR #25](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/25), permanece Draft; merge y CI pendientes de publicación al registrar esta entrada.
+### Continuación de la Interacción 45 – Ancho de navegación en Ubuntu
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Comprobación de CI del merge 9d7dd84; `feature/ui-modernization`.
+* **Objetivo de la consulta:** Completar la integración y verificar la CI del commit publicado, conservando las pruebas estrictas de legibilidad.
+* **Resumen de la respuesta recibida:** Las ejecuciones 45261680900/45261691421 detectaron recorte de «Compras y Recepción» con la fuente de Ubuntu. Se amplió únicamente el lateral a 256 px en ambos menús y se renovaron capturas reales de las escenas integradas.
+* **Qué se acepta, modifica o descarta y por qué:** Se corrige el ancho sin debilitar la aserción ni alterar permisos, servicios, controladores o mascota. El merge publicado conserva ambos padres y GitHub confirmó ausencia de conflictos; el PR permanece Draft.
+* **Verificación realizada:** CI inicial: 839 casos, 1 error, 60 omitidos. Repetición local final con Temurin 17.0.21+9, Maven offline clean verify: 839 casos, 779 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores, incluidas 16 pruebas visuales. Captura a 800×600 inspeccionada tras ampliar el lateral. La duración incluyó una pausa prolongada del equipo y no es una medición de rendimiento. Sin SQL ni migraciones; entradas previas intactas. CI de la corrección pendiente de publicación al registrar esta continuación.
+* **Commit o Pull Request relacionado:** [PR #25](https://github.com/carloscamelo2008-lang/la-exclusiva-p3/pull/25), sigue Draft; corrección posterior al merge 9d7dd84.
+### Interacción 46 – Accesibilidad y revisión visual independiente de Alertas
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Revisión visual del PR #25; feature/ui-modernization desde a0c7126.
+* **Objetivo de la consulta:** Revisar contraste, teclado, legibilidad y ventanas compactas conservando funcionalidades, mascota y permisos, sin integrar el PR #27.
+* **Resumen de la respuesta recibida:** Se confirmó árbol limpio y PR #27 abierto. Las pruebas detectaron contraste insuficiente del extremo claro del banner y falta de nombres accesibles explícitos en el login. Se corrigieron solo CSS y FXML: banner con contraste mínimo 5,08:1, borde de foco azul profundo sobre tarjetas claras y nombres Usuario/Contraseña. Se amplió a Compras la prueba de formularios 560×600.
+* **Qué se acepta, modifica o descarta y por qué:** Se conservan los controles, eventos, sesiones, permisos, servicios y mascota original. No se aplican ajustes cosméticos a formularios que ya pasan las comprobaciones. Tab/MAYÚS+Tab conserva el orden y el botón predeterminado. El foco y estado deshabilitado se verifican sin modificar controladores. No se integra Alertas ni se inventa logo o información comercial.
+* **Verificación realizada:** Primera dirigida: 18 casos, dos errores agregados por contraste/nombres accesibles; repetición 18/18. Suite final con Temurin 17.0.21+9 y Maven offline clean verify: 841 casos, 781 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores, incluidas 18 visuales. Capturas JavaFX reales inspeccionadas y documentadas; recorridos heredados a 1280×800, 1024×768 y 800×600 conservados. Sin SQL, migraciones o cambios Java de producción. Entradas anteriores preservadas byte por byte.
+* **Commit o Pull Request relacionado:** PR #25 en Draft; commit y CI pendientes de publicación al registrar esta entrada.
+### Continuación de la Interacción 46 – Ayuda tributaria legible en Ubuntu
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Validación de GitHub Actions del commit f278ee1; feature/ui-modernization.
+* **Objetivo de la consulta:** Completar la revisión multiplataforma y corregir únicamente defectos demostrados antes de cerrar la entrega.
+* **Resumen de la respuesta recibida:** La CI 45291073097 detectó recorte de la ayuda de supplierTaxId en el formulario compacto de Compras. Se añadió un ancho CSS preferido de 210 px y se renovaron cinco capturas de Compras, sin tocar su FXML, controlador o servicio.
+* **Qué se acepta, modifica o descarta y por qué:** Se conserva la aserción estricta de legibilidad y se permite que el FlowPane redistribuya sus campos. No se integra el PR #27, no se altera la mascota ni los contratos funcionales.
+* **Verificación realizada:** CI inicial: 841 casos, 1 error, 60 omitidos. Repetición local con Temurin 17.0.21+9 y Maven offline clean verify: 841 casos, 781 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores; 18 visuales aprobadas. Captura a 560×600 inspeccionada tras ampliar el campo. git diff --check correcto; sin SQL ni migraciones. Entradas anteriores conservadas byte por byte. CI de la corrección pendiente de publicación al registrar esta continuación.
+* **Commit o Pull Request relacionado:** PR #25 en Draft; corrección posterior a f278ee1.
+### Interacción 47 – Alineación derecha de Exclusito y revisión local
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Ajuste tras revisión personal del usuario; feature/ui-modernization desde d7780b6.
+* **Objetivo de la consulta:** Alinear la mascota al extremo derecho del banner, mantener texto a la izquierda y adaptar tamaños; evaluar el recurso necesario para el gesto de sorbo y abrir la aplicación, sin publicar antes de aprobación visual.
+* **Resumen de la respuesta recibida:** Se sustituyó solo el contenedor visual del banner por HBox en ambos menús, con texto expansible e ImageView proporcional al ancho y limitado en altura. Se añadieron aserciones del margen derecho y reducción en ventanas pequeñas. La animación queda pendiente de fotogramas aprobados; se documentan formato, duración, reposo, alternativa estática y reducción de movimiento.
+* **Qué se acepta, modifica o descarta y por qué:** Se conserva exactamente el PNG original y los contratos funcionales. No se deforma el personaje ni se improvisa una animación. No se integra PR #27 ni se modifica App.java o lógica comercial. Se usa un arranque temporal ignorado en target para abrir la aplicación real, autenticando por el formulario existente con cuentas memory y dejando el dashboard maximizado para revisión.
+* **Verificación realizada:** Temurin 17.0.21+9, dirigida 18/18; Maven offline clean verify: 841 casos, 781 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores. Escenas reales a 1280×800, 1024×768, 800×600, 700×600 y área de trabajo 1536×816. Se comprobaron visibilidad y maximización nativas de la ventana real. Una captura de escritorio obstruida se descartó; no se presenta como evidencia del banner. Sin SQL ni migraciones. Entradas anteriores intactas.
+* **Commit o Pull Request relacionado:** PR #25 Draft; cambios solo locales, sin commit/push, pendientes de aprobación visual del usuario.
+### Interacción 48 – Demostración completa conectada a servicios reales
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Carga interactiva en memoria y correcciones de presentación; feature/ui-modernization.
+* **Objetivo de la consulta:** Preparar datos modificables para todos los módulos, validar integridad, documentar recarga y abrir la aplicación en Windows sin publicar.
+* **Resumen de la respuesta recibida:** Se creó InteractiveDemoData con configuración editable y una herramienta separada de revisión: 15 clientes, cinco vendedores, 14 productos, cinco proveedores, diez pedidos, 30 ventas y cinco cuentas. Se generan movimientos por servicios, con recepciones completas/parciales, crédito, abonos y deuda general separada. Se corrigieron encabezados, términos en español, etiquetas numéricas y desplazamiento de Ventas/Caja/Usuarios.
+* **Qué se acepta, modifica o descarta y por qué:** El usuario confirmó usar fecha real para ventas porque sus APIs no permiten fechas históricas; caja manual sí cubre 30 días. No se cambian servicios, modelos, permisos, App.java ni launcher habitual. Las contraseñas aleatorias se muestran solo en un cuadro local. La recarga crea repositorios nuevos; no conserva cambios entre procesos ni se implementa persistencia sin aprobación.
+* **Verificación realizada:** Se corrigió el uso inicial incorrecto de values() sobre SalePresentation. Seis pruebas de datos aprobadas y 89 dirigidas. Dos verificaciones completas detectaron un esperado de texto en inglés y un selector sin CSS/layout tras introducir ScrollPane; corregidos sin quitar aserciones. Suite final de esa carga: 849 casos, 789 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores con Temurin 17.0.21+9. Reporte real: 63 movimientos de inventario y 51 de caja, conciliados. Ventana nativa visible y maximizada, PID 5488. Sin SQL ni migraciones; entradas anteriores intactas.
+* **Commit o Pull Request relacionado:** PR #25 Draft; cambios locales sin commit ni push, pendientes de revisión del usuario.
+
+### Interacción 49 – Registros comerciales naturales y entorno identificado
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Revisión del realismo de la demostración; feature/ui-modernization.
+* **Objetivo de la consulta:** Retirar marcadores artificiales de registros, ordenar Clientes por ID, mantener relaciones y volver a abrir la ventana con una indicación general discreta de demostración.
+* **Resumen de la respuesta recibida:** Se regeneró el escenario con IDs CLI-001…CLI-015, nombres/direcciones/proveedores y descripciones comerciales naturales. Se cambiaron conjuntamente las referencias de la carga, no solo sus celdas visibles. La tabla de Clientes se ordena desde TableView. La herramienta añade «Modo demostración» al título y al pie sin sustituir mensajes de navegación ni modificar el arranque de producción.
+* **Qué se acepta, modifica o descarta y por qué:** Los datos siguen siendo sintéticos y modificables por las operaciones existentes, sobre la misma composición en memoria. Se mantienen cantidades, saldos, integridad, permisos y mascota. No se consulta ni copia una ficha real de personas o empresas. No se integra PR #27 ni se modifica SQL; no se publica antes de aprobación.
+* **Verificación realizada:** Se adaptó una prueba al accesor real getProduct().getId(); dirigidas finales 10/10. Maven offline clean verify con Temurin 17.0.21+9: 851 casos, 791 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores. Regresión de contenido en todos los módulos, vínculos y orden de IDs; indicador sin perder el mensaje original. Capturas JavaFX renovadas a los tres tamaños y formularios 560×600. Nueva ventana real visible y maximizada, título con «Modo demostración», PID 21360; reporte sin credenciales conserva 63/51 movimientos y conciliación. Entradas anteriores preservadas byte por byte.
+* **Commit o Pull Request relacionado:** PR #25 sigue Draft; sin commit, push o merge, esperando aprobación visual del usuario.
+### Interacción 50 – Auditoría técnica y separación previa a commits
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Revisión final de visuales y demostración; feature/ui-modernization, HEAD d7780b6.
+* **Objetivo de la consulta:** Verificar aislamiento de la demo, credenciales, alcance, mascota y pruebas; proponer commits separados y entregar el informe antes de commit o push, manteniendo abierta la aplicación.
+* **Resumen de la respuesta recibida:** Se inventariaron 40 archivos pendientes (25 texto/código y 15 capturas), no 20. La clase de carga y configuración, antes en src/main, no se invocaban desde producción pero sí entrarían al JAR: se trasladaron a src/test/java y src/test/resources. Se sustituyeron contraseñas sintéticas literales de las nuevas pruebas por valores generados en memoria. Se preparó un manifiesto local con 19 archivos visuales, 19 de demo y dos documentos a dividir por secciones.
+* **Qué se acepta, modifica o descarta y por qué:** El arranque normal y pom.xml quedan intactos, sin referencias a la nueva demo. La carga crea exclusivamente memoria; el verificador rechaza PostgreSQL. No se modifican servicios, modelos, autenticación, autorización o persistencia. Los cuatro controladores solo cambian presentación/orden de filas. Se conserva el PNG original y alineación derecha; la animación de sorbo sigue pendiente. No hay credenciales reales o predeterminadas guardadas; los fixtures sintéticos antiguos y la lista de bloqueo no son accesos de ejecución.
+* **Verificación realizada:** Temurin 17.0.21+9, Maven 3.9.12, mvn -o clean verify: 851 casos, 791 aprobados, 60 PostgreSQL omitidos, 0 fallos/errores. JAR inspeccionado: nueva carga, herramienta y configuración ausentes; presentes en target/test-classes. git diff --check y nueve textos nuevos comprobados sin staging. SHA-256 de mascota original conservado. Ventana real PID 21360 visible, sin cierre o reinicio. Bitácora anterior preservada byte por byte; sin SQL, migraciones, fetch o merge.
+* **Commit o Pull Request relacionado:** PR #25 confirmado Draft. Ningún commit o push realizado; staging vacío y plan sujeto a autorización del usuario.### Interacción 51 – Separación y autorización de publicación visual y demo
+
+* **Fecha:** 23/11/2026.
+* **Herramienta:** Codex.
+* **Fase, tarea y rama:** Preparación de dos commits autorizados; feature/ui-modernization.
+* **Objetivo de la consulta:** Separar los 40 archivos aprobados, verificar aislamiento, credenciales, integridad y Java 17, sin cerrar la instancia en uso.
+* **Resumen de la respuesta recibida:** Se exportó el índice visual a un directorio temporal independiente y se verificó antes del commit 8d7749d. La carga interactiva y su configuración permanecen exclusivamente en src/test, con repositorios nuevos en memoria y credenciales aleatorias de ejecución no almacenadas.
+* **Qué se acepta, modifica o descarta y por qué:** Se conservan los controles comerciales y de identidad, la mascota original alineada a la derecha y sus sombras. La animación de sorbo requiere recurso aprobado. Las cinco capturas posteriores solicitadas para el Escritorio se generaron en una composición independiente; no se incluyen ni se autorizó publicarlas. La instancia original PID 21360 se comprobó abierta sin reiniciarla.
+* **Verificación realizada:** Temurin 17.0.21+9 y Maven offline: índice visual 841 casos (781 aprobados, 60 PostgreSQL omitidos); conjunto visual/demo 851 casos (791 aprobados, 60 omitidos); cero fallos y errores en ambos. git diff --check correcto. Sin SQL, migraciones o modificación del proceso del usuario. Publicación y CI aún pendientes al registrar esta entrada.
+* **Commit o Pull Request relacionado:** Primer commit 8d7749d; segundo autorizado test(demo): add isolated interactive review data. PR #25 permanece Draft.

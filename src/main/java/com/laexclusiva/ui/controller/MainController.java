@@ -32,6 +32,7 @@ public class MainController {
 
     @FXML private BorderPane rootPane;
     @FXML private Node dashboard;
+    @FXML private CollectionDashboardView collectionDashboard;
     @FXML private Label navigationMessage;
     @FXML private Label welcomeLabel;
     @FXML private Label roleLabel;
@@ -103,6 +104,7 @@ public class MainController {
         currentSession = null;
         sessionClosed = true;
         disableProtectedNavigation();
+        if (collectionDashboard != null) collectionDashboard.clear();
         showSessionClosedState("La sesión está cerrada.");
         if (closingSession != null) {
             try {
@@ -359,14 +361,22 @@ public class MainController {
             if (sessionClosed) throw new SecurityException("La sesión está cerrada.");
             authorizationService.currentPrincipal(currentSession);
         } catch (RuntimeException invalidSession) {
+            if (collectionDashboard != null) collectionDashboard.clear();
             navigationMessage.setText("La sesión ya no está activa.");
             return;
         }
+        refreshCollectionDashboard();
         rootPane.setCenter(dashboard);
         selectNavigation(btnDashboard);
         navigationMessage.setText("");
     }
 
+    /** La vista consulta indicadores protegidos actuales; nunca completa cantidades por su cuenta. */
+    private void refreshCollectionDashboard() {
+        if (collectionDashboard != null) {
+            collectionDashboard.refresh(applicationServices, currentSession, this::handleShowCollections);
+        }
+    }
     public void initSession(UserSession session) {
         requireSessionAuthority();
         if (sessionClosed) throw new SecurityException("No se puede reactivar una vista cuya sesión fue cerrada.");
@@ -405,6 +415,7 @@ public class MainController {
         btnCollections.setVisible(canViewPortfolio);
         btnCollections.setManaged(canViewPortfolio);
         btnAdminUsers.setDisable(false);
+        refreshCollectionDashboard();
         selectNavigation(btnDashboard);
     }
 

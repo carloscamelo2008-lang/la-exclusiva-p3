@@ -54,6 +54,9 @@ public class AuthenticationServiceTest {
         onFxThread(() -> {
             var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
             javafx.scene.Parent root = loader.load();
+            // Los skins ScrollPane se construyen al aplicar CSS, como en una ventana real.
+            new Scene(root, 400, 370);
+            root.applyCss(); root.layout();
             var controller = (com.laexclusiva.ui.controller.LoginController) loader.getController();
             var repository = new com.laexclusiva.repository.InMemoryUserRepository();
             repository.save(new UserAccount(null, "member", com.laexclusiva.security.PasswordHasher.hash(secret),
@@ -83,6 +86,9 @@ public class AuthenticationServiceTest {
         onFxThread(() -> {
             var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
             javafx.scene.Parent root = loader.load();
+            // Los skins ScrollPane se construyen al aplicar CSS, como en una ventana real.
+            new Scene(root, 400, 370);
+            root.applyCss(); root.layout();
             var controller = (com.laexclusiva.ui.controller.LoginController) loader.getController();
             controller.setAuthenticationService(new AuthenticationService(null) {
                 @Override public java.util.Optional<UserSession> createSession(String username, String password) {
@@ -103,6 +109,9 @@ public class AuthenticationServiceTest {
         onFxThread(() -> {
             var loader = new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/login_view.fxml"));
             javafx.scene.Parent root = loader.load();
+            // Los skins ScrollPane se construyen al aplicar CSS, como en una ventana real.
+            new Scene(root, 400, 370);
+            root.applyCss(); root.layout();
             ((TextField) root.lookup("#usernameField")).setText("   ");
             ((PasswordField) root.lookup("#passwordField")).setText("Una frase permitida");
             ((Button) root.lookup("#loginButton")).fire();
@@ -540,6 +549,7 @@ public class AuthenticationServiceTest {
             Button portfolioButton = (Button) sidebar.lookup("#btnCredit");
             portfolioButton.fire();
 
+            menu.applyCss(); menu.layout();
             Node portfolioContent = scrollContent(menu.getCenter());
             TableView<?> table = (TableView<?>) portfolioContent.lookup("#portfolioTable");
             assertNotNull(table);
@@ -553,6 +563,7 @@ public class AuthenticationServiceTest {
             assertSame(dashboard, menu.getCenter());
             assertSame(sidebar, menu.getLeft());
             portfolioButton.fire();
+            menu.applyCss(); menu.layout();
             assertNotNull(scrollContent(menu.getCenter()).lookup("#portfolioTable"));
         });
     }
@@ -563,6 +574,7 @@ public class AuthenticationServiceTest {
         customers.registerCustomer("C-01", "Ana Pérez", "3001234567", "Calle 10");
         withMainMenu(UserRole.WORKER, customers, (menu, account) -> {
             ((Button) menu.getLeft().lookup("#btnCredit")).fire();
+            menu.applyCss(); menu.layout();
             TableView<?> table = (TableView<?>) scrollContent(menu.getCenter()).lookup("#portfolioTable");
             assertNotNull(table);
             assertTrue(table.getItems().isEmpty());
@@ -683,6 +695,9 @@ public class AuthenticationServiceTest {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
+            new Scene(menu, 1000, 800);
+            menu.applyCss();
+            menu.layout();
             MainController controller = loader.getController();
             IdentityTestFixture identity = new IdentityTestFixture();
             var issued = identity.issue(UserRole.ADMINISTRATOR);
@@ -725,6 +740,9 @@ public class AuthenticationServiceTest {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
+            new Scene(menu, 1000, 800);
+            menu.applyCss();
+            menu.layout();
             MainController controller = loader.getController();
             IdentityTestFixture identity = new IdentityTestFixture();
             UserSession session = identity.issue(UserRole.ADMINISTRATOR).session();
@@ -764,6 +782,9 @@ public class AuthenticationServiceTest {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
+            new Scene(menu, 1000, 800);
+            menu.applyCss();
+            menu.layout();
             MainController controller = loader.getController();
             controller.setApplicationServices(services);
             controller.setOnLogout(() -> { });
@@ -807,7 +828,13 @@ public class AuthenticationServiceTest {
                 BorderPane adminMenu = (BorderPane) stage.getScene().getRoot();
                 assertTrue(adminMenu.lookup("#btnSellers").isVisible());
                 assertFalse(adminMenu.lookup("#btnAdminUsers").isDisabled());
+                assertTrue(adminMenu.lookup("#btnPurchases").isVisible());
+                ((Button) adminMenu.lookup("#btnPurchases")).fire();
+                assertActiveNavigation(adminMenu, "btnPurchases");
+                assertNotNull(scrollContent(adminMenu.getCenter()).lookup("#ordersTable"));
+                assertFalse(scrollContent(adminMenu.getCenter()).lookup("#supplierEditor").isDisabled());
                 ((Button) adminMenu.lookup("#btnAdminUsers")).fire();
+                adminMenu.applyCss(); adminMenu.layout();
                 assertNotNull(adminMenu.lookup("#usersTable"), "La pantalla administrativa debe cargar la tabla de usuarios");
                 ((Button) adminMenu.lookup("#btnCustomers")).fire();
                 stage.setMaximized(true);
@@ -824,6 +851,12 @@ public class AuthenticationServiceTest {
                 assertFalse(workerMenu.lookup("#btnSellers").isManaged());
                 assertFalse(workerMenu.lookup("#btnAdminUsers").isVisible());
                 assertEquals("¡Bienvenido, worker!", ((Label) workerMenu.lookup("#welcomeLabel")).getText());
+                assertTrue(workerMenu.lookup("#btnPurchases").isVisible());
+                ((Button) workerMenu.lookup("#btnPurchases")).fire();
+                assertActiveNavigation(workerMenu, "btnPurchases");
+                assertNotNull(scrollContent(workerMenu.getCenter()).lookup("#ordersTable"));
+                assertTrue(scrollContent(workerMenu.getCenter()).lookup("#supplierEditor").isDisabled());
+                assertTrue(scrollContent(workerMenu.getCenter()).lookup("#orderEditor").isDisabled());
                 ((Button) workerMenu.lookup("#btnCustomers")).fire();
                 assertActiveNavigation(workerMenu, "btnCustomers");
                 ((Button) workerMenu.lookup("#btnCredit")).fire();
@@ -859,7 +892,7 @@ public class AuthenticationServiceTest {
 
     private static void assertActiveNavigation(BorderPane menu, String selectedId) {
         PseudoClass active = PseudoClass.getPseudoClass("active");
-        for (String id : List.of("btnDashboard", "btnCustomers", "btnSellers", "btnCredit")) {
+        for (String id : List.of("btnDashboard", "btnCustomers", "btnSellers", "btnCredit", "btnInventory", "btnPurchases", "btnSales", "btnCash", "btnAdminUsers")) {
             assertEquals(id.equals(selectedId), menu.lookup("#" + id).getPseudoClassStates().contains(active), id);
         }
     }
@@ -885,6 +918,9 @@ public class AuthenticationServiceTest {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(
                     "/com/laexclusiva/ui/fxml/main_menu_view.fxml"));
             BorderPane menu = loader.load();
+            new Scene(menu, 1000, 800);
+            menu.applyCss();
+            menu.layout();
             MainController controller = loader.getController();
             currentMenuIdentity = new IdentityTestFixture();
             var issued = currentMenuIdentity.issue(role);

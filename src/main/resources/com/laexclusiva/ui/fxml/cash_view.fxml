@@ -8,46 +8,49 @@
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.VBox?>
 
-<VBox spacing="10.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.laexclusiva.ui.controller.CashController">
+<ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.laexclusiva.ui.controller.CashController" stylesheets="@../css/theme.css" styleClass="workspace"><content>
+<VBox spacing="10.0" minHeight="-Infinity" styleClass="workspace">
     <padding><Insets top="18.0" right="18.0" bottom="18.0" left="18.0" /></padding>
     <Label text="Caja y cierre operativo" style="-fx-font-size: 22px; -fx-font-weight: bold;" />
     <Label text="Las ventas facturadas se muestran separadas del efectivo realmente recibido." wrapText="true" />
     <Label fx:id="historicalCoverageNoticeLabel"
            text="Cobertura histórica: los cobros anteriores a la activación del libro podrían no estar incluidos. No hay una fecha de cobertura verificable y no se reconstruyen cobros automáticamente. La facturación histórica se muestra por separado."
            wrapText="true" style="-fx-text-fill: #8a4b08; -fx-font-weight: bold;" />
-    <HBox spacing="8.0" alignment="CENTER_LEFT">
+    <FlowPane hgap="8.0" alignment="CENTER_LEFT" vgap="8">
         <DatePicker fx:id="fromDatePicker" promptText="Desde" />
         <DatePicker fx:id="throughDatePicker" promptText="Hasta" />
         <ComboBox fx:id="categoryFilterCombo" promptText="Todas las categorías" prefWidth="210.0" />
         <Button fx:id="refreshButton" text="Consultar" onAction="#handleRefresh" />
-    </HBox>
-    <HBox spacing="14.0">
+    </FlowPane>
+    <FlowPane hgap="14.0" vgap="8">
         <Label fx:id="invoicedSalesLabel" text="Ventas facturadas: $ 0,00" />
         <Label fx:id="saleReceiptsLabel" text="Efectivo recibido por ventas: $ 0,00" />
         <Label fx:id="generalDebtReceiptsLabel" text="Pagos de deuda general: $ 0,00" />
-    </HBox>
-    <HBox spacing="14.0">
+    </FlowPane>
+    <FlowPane hgap="14.0" vgap="8">
         <Label fx:id="otherIncomeLabel" text="Otros ingresos: $ 0,00" />
         <Label fx:id="expensesLabel" text="Egresos: $ 0,00" />
         <Label fx:id="cashInLabel" text="Ingresos reales de caja: $ 0,00" />
         <Label fx:id="netCashLabel" text="Saldo neto de caja: $ 0,00" />
-    </HBox>
+    </FlowPane>
     <Label text="Registrar movimiento manual" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
-    <HBox spacing="8.0">
+    <FlowPane hgap="8.0" vgap="8">
         <DatePicker fx:id="movementDatePicker" promptText="Fecha" />
         <ComboBox fx:id="directionCombo" prefWidth="115.0" />
         <ComboBox fx:id="entryCategoryCombo" prefWidth="190.0" />
         <TextField fx:id="amountField" promptText="Importe (COP)" prefWidth="135.0" />
         <TextField fx:id="descriptionField" promptText="Descripción auditable" HBox.hgrow="ALWAYS" />
         <Button fx:id="registerMovementButton" text="Registrar" onAction="#handleRegisterMovement" />
-    </HBox>
+    </FlowPane>
     <Label fx:id="operationKeyLabel" wrapText="true" />
     <Label fx:id="messageLabel" wrapText="true" />
-    <TableView fx:id="movementsTable" VBox.vgrow="ALWAYS" prefHeight="260.0">
+    <TableView fx:id="movementsTable" minHeight="180" VBox.vgrow="ALWAYS" prefHeight="260.0">
         <columns>
             <TableColumn fx:id="dateColumn" text="Fecha y hora" prefWidth="165.0" />
             <TableColumn fx:id="directionColumn" text="Tipo" prefWidth="90.0" />
@@ -57,3 +60,4 @@
         </columns>
     </TableView>
 </VBox>
+</content></ScrollPane>

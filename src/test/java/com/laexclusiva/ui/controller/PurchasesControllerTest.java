@@ -66,11 +66,11 @@ class PurchasesControllerTest {
             queueReceipt(view, "2");
             button(view, "receiveButton").fire();
             assertTrue(message(view, "receiptMessageLabel").contains("Recepción confirmada"));
-            assertTrue(message(view, "selectedOrderLabel").contains("PARTIAL"));
+            assertTrue(message(view, "selectedOrderLabel").contains("Recepción parcial"));
             assertEquals(76, fixture.stock());
             queueReceipt(view, "2");
             button(view, "receiveButton").fire();
-            assertTrue(message(view, "selectedOrderLabel").contains("COMPLETED"));
+            assertTrue(message(view, "selectedOrderLabel").contains("Recibido"));
             assertEquals(152, fixture.stock());
             button(view, "refreshHistoryButton").fire();
             assertEquals(2, table(view, "historyTable").getItems().size());

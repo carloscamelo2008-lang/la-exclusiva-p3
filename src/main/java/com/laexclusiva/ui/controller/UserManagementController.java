@@ -58,7 +58,8 @@ public final class UserManagementController {
     private void initialize() {
         idColumn.setCellValueFactory(cell -> text(cell.getValue().id()));
         usernameColumn.setCellValueFactory(cell -> text(cell.getValue().username()));
-        roleColumn.setCellValueFactory(cell -> text(cell.getValue().role().name()));
+        roleColumn.setCellValueFactory(cell -> text(cell.getValue().role() == UserRole.ADMINISTRATOR
+                ? "Administrador" : "Trabajador"));
         activeColumn.setCellValueFactory(cell -> text(cell.getValue().active() ? "Activa" : "Inactiva"));
         sellerColumn.setCellValueFactory(cell -> text(cell.getValue().sellerId() == null
                 ? "Sin asignar" : cell.getValue().sellerId()));

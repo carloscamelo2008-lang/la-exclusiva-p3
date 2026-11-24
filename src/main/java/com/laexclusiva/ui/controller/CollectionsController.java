@@ -87,20 +87,38 @@ public final class CollectionsController {
         ageColumn.setCellValueFactory(cell -> text(cell.getValue().debtAge()));
         explanationColumn.setCellValueFactory(cell -> text(cell.getValue().explanation()));
         historyDateColumn.setCellValueFactory(cell -> text(cell.getValue().occurredAt().toString()));
-        historyEventColumn.setCellValueFactory(cell -> text(cell.getValue().eventType().name()));
+        historyEventColumn.setCellValueFactory(cell -> text(switch (cell.getValue().eventType()) {
+            case COMMITMENT_SET -> "Compromiso registrado";
+            case CONSENT_CHANGED -> "Consentimiento actualizado";
+            case BALANCE_CHANGED -> "Saldo actualizado";
+            case NOTE_ADDED -> "Nota de seguimiento";
+            case REMINDER_PREPARED -> "Aviso preparado";
+            case REMINDER_SENT -> "Aviso aceptado";
+            case REMINDER_FAILED -> "Aviso rechazado";
+            case REMINDER_UNCERTAIN -> "Requiere conciliación";
+        }));
         historyNoteColumn.setCellValueFactory(cell -> text(cell.getValue().note() == null ? "" : cell.getValue().note()));
         reminderCustomerColumn.setCellValueFactory(cell -> text(cell.getValue().customerId()));
-        reminderChannelColumn.setCellValueFactory(cell -> text(cell.getValue().channel().name()));
+        reminderChannelColumn.setCellValueFactory(cell -> text(switch (cell.getValue().channel()) {
+            case NONE -> "Sin autorización"; case EMAIL -> "Correo electrónico"; case PHONE -> "Teléfono (manual)";
+        }));
         reminderStatusColumn.setCellValueFactory(cell -> text(reminderStatusLabel(cell.getValue().status())));
         reminderBalanceColumn.setCellValueFactory(cell -> text(cell.getValue().balanceSnapshot().toPlainString()));
         reminderAttemptColumn.setCellValueFactory(cell -> text(cell.getValue().attemptId() == null
                 ? "" : cell.getValue().attemptId().toString()));
         auditDateColumn.setCellValueFactory(cell -> text(cell.getValue().occurredAt().toString()));
         auditActorColumn.setCellValueFactory(cell -> text(cell.getValue().actorUserId()));
-        auditActionColumn.setCellValueFactory(cell -> text(cell.getValue().action().name()));
-        auditTargetColumn.setCellValueFactory(cell -> text(cell.getValue().targetType() + ": "
+        auditActionColumn.setCellValueFactory(cell -> text(switch (cell.getValue().action()) {
+            case USER_CREATED -> "Usuario creado"; case ROLE_CHANGED -> "Rol actualizado";
+            case ACCOUNT_ACTIVATED -> "Cuenta activada"; case ACCOUNT_DEACTIVATED -> "Cuenta desactivada";
+            case PASSWORD_RESET -> "Contraseña restablecida"; case SELLER_ASSIGNMENT_CHANGED -> "Vendedor asignado";
+            case STATEMENT_SEND_ATTEMPT -> "Intento de aviso";
+        }));
+        auditTargetColumn.setCellValueFactory(cell -> text((cell.getValue().targetType() == AdministrativeAuditEvent.TargetType.USER ? "Usuario" : "Cliente") + ": "
                 + cell.getValue().targetReference()));
-        auditResultColumn.setCellValueFactory(cell -> text(cell.getValue().result().name()));
+        auditResultColumn.setCellValueFactory(cell -> text(switch (cell.getValue().result()) {
+            case SUCCESS -> "Correcto"; case FAILED -> "Fallido"; case UNCERTAIN -> "Incierto";
+        }));
         customerCombo.setConverter(new StringConverter<>() {
             @Override public String toString(Customer customer) {
                 return customer == null ? "" : customer.getName() + " (" + customer.getId() + ")";

@@ -11,28 +11,29 @@
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.control.ScrollPane?>
 
-<BorderPane minHeight="540.0" minWidth="680.0" prefHeight="720.0" prefWidth="980.0"
+<BorderPane minHeight="0" minWidth="0" stylesheets="@../css/theme.css" styleClass="workspace collections-workspace" prefHeight="720.0" prefWidth="980.0"
             xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="com.laexclusiva.ui.controller.CollectionsController">
     <center>
-        <ScrollPane fitToWidth="true" hbarPolicy="NEVER">
+        <ScrollPane fx:id="collectionsScroll" fitToWidth="true" hbarPolicy="NEVER" minWidth="0">
             <content>
-                <VBox spacing="12.0" style="-fx-background-color: #ecf0f1;" BorderPane.alignment="CENTER">
+                <VBox spacing="12.0" styleClass="workspace" minWidth="0" BorderPane.alignment="CENTER">
                     <padding><Insets top="18.0" right="20.0" bottom="18.0" left="20.0" /></padding>
                     <children>
-                        <Label text="Alertas y recordatorios de cartera" style="-fx-font-size: 20px; -fx-font-weight: bold;" />
+                        <Label text="Alertas y recordatorios de cartera" styleClass="page-heading" wrapText="true" />
                         <Label fx:id="metricsLabel" wrapText="true" />
-                        <HBox spacing="8.0">
+                        <FlowPane hgap="8" vgap="10">
                             <children>
-                                <Button text="Actualizar alertas" onAction="#handleRefresh" />
-                                <Button text="Generar estado PDF" onAction="#handleGenerateStatement" />
+                                <Button wrapText="true" text="Actualizar alertas" onAction="#handleRefresh" />
+                                <Button wrapText="true" text="Generar estado PDF" onAction="#handleGenerateStatement" />
                                 <Label fx:id="messageLabel" wrapText="true" style="-fx-text-fill: #42515c;" />
                             </children>
-                        </HBox>
+                        </FlowPane>
                         <TableView fx:id="recommendationsTable" prefHeight="260.0" minHeight="200.0">
                             <columns>
                                 <TableColumn fx:id="customerIdColumn" text="ID" prefWidth="90.0" />
@@ -46,28 +47,21 @@
                         <Separator />
                         <VBox fx:id="administrationPane" spacing="10.0" visible="false" managed="false">
                             <children>
-                                <Label text="Preferencias de contacto y seguimiento (administración)" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
-                                <GridPane hgap="8.0" vgap="8.0">
-                                    <children>
-                                        <Label text="Cliente" GridPane.columnIndex="0" GridPane.rowIndex="0" />
-                                        <ComboBox fx:id="customerCombo" onAction="#handleCustomerSelected" prefWidth="320.0" GridPane.columnIndex="1" GridPane.rowIndex="0" />
-                                        <Label text="Correo opcional" GridPane.columnIndex="0" GridPane.rowIndex="1" />
-                                        <TextField fx:id="emailField" promptText="cliente@ejemplo.com" GridPane.columnIndex="1" GridPane.rowIndex="1" />
-                                        <Label text="Canal autorizado" GridPane.columnIndex="0" GridPane.rowIndex="2" />
-                                        <ComboBox fx:id="channelCombo" prefWidth="220.0" GridPane.columnIndex="1" GridPane.rowIndex="2" />
-                                        <Label text="Compromiso de pago" GridPane.columnIndex="0" GridPane.rowIndex="3" />
-                                        <DatePicker fx:id="commitmentDatePicker" GridPane.columnIndex="1" GridPane.rowIndex="3" />
-                                        <Label text="Nota breve" GridPane.columnIndex="0" GridPane.rowIndex="4" />
-                                        <TextField fx:id="noteField" promptText="Seguimiento operativo, sin datos de pago sensibles" GridPane.columnIndex="1" GridPane.rowIndex="4" />
-                                    </children>
-                                </GridPane>
-                                <HBox spacing="12.0">
+                                <Label text="Preferencias de contacto y seguimiento (administración)" styleClass="section-title" wrapText="true" />
+                                <FlowPane hgap="12" vgap="12" minWidth="0">
+ <VBox spacing="5"><Label text="Cliente" labelFor="${customerCombo}"/><ComboBox fx:id="customerCombo" onAction="#handleCustomerSelected" prefWidth="300" accessibleText="Cliente para seguimiento"/></VBox>
+ <VBox spacing="5"><Label text="Correo opcional" labelFor="${emailField}"/><TextField fx:id="emailField" promptText="cliente@example.test" prefWidth="280" accessibleText="Correo autorizado del cliente"/></VBox>
+ <VBox spacing="5"><Label text="Canal autorizado" labelFor="${channelCombo}"/><ComboBox fx:id="channelCombo" prefWidth="260" accessibleText="Canal autorizado"/></VBox>
+ <VBox spacing="5"><Label text="Compromiso de pago" labelFor="${commitmentDatePicker}"/><DatePicker fx:id="commitmentDatePicker" prefWidth="240" accessibleText="Fecha de compromiso de pago"/></VBox>
+ <VBox spacing="5"><Label text="Nota breve" labelFor="${noteField}"/><TextField fx:id="noteField" promptText="Seguimiento operativo" prefWidth="300" accessibleText="Nota de seguimiento sin información sensible"/></VBox>
+</FlowPane>
+                                <FlowPane hgap="12" vgap="10">
                                     <children>
                                         <CheckBox fx:id="consentCheck" text="El cliente autorizó este canal" />
                                         <CheckBox fx:id="remindersCheck" text="Habilitar recordatorios semanales" />
-                                        <Button text="Guardar preferencias" onAction="#handleSaveProfile" />
+                                        <Button wrapText="true" text="Guardar preferencias" onAction="#handleSaveProfile" />
                                     </children>
-                                </HBox>
+                                </FlowPane>
                                 <Label text="Seguimiento del cliente" style="-fx-font-weight: bold;" />
                                 <TableView fx:id="historyTable" prefHeight="120.0" minHeight="90.0">
                                     <columns>
@@ -76,14 +70,14 @@
                                         <TableColumn fx:id="historyNoteColumn" text="Nota" prefWidth="520.0" />
                                     </columns>
                                 </TableView>
-                                <HBox spacing="8.0">
+                                <FlowPane hgap="8" vgap="10">
                                     <children>
-                                        <Button text="Actualizar recordatorios" onAction="#handlePrepareReminders" />
-                                        <Button text="Consultar lote" onAction="#handleRefreshReminders" />
-                                        <Button text="Revisar / enviar seleccionado" onAction="#handlePreviewAndSend" />
-                                        <Button text="Actualizar auditoría" onAction="#handleRefreshAudit" />
+                                        <Button wrapText="true" text="Actualizar recordatorios" onAction="#handlePrepareReminders" />
+                                        <Button wrapText="true" text="Consultar lote" onAction="#handleRefreshReminders" />
+                                        <Button wrapText="true" text="Revisar correo y PDF" onAction="#handlePreviewAndSend" />
+                                        <Button wrapText="true" text="Actualizar auditoría" onAction="#handleRefreshAudit" />
                                     </children>
-                                </HBox>
+                                </FlowPane>
                                 <TableView fx:id="remindersTable" prefHeight="150.0" minHeight="110.0">
                                     <columns>
                                         <TableColumn fx:id="reminderCustomerColumn" text="ID cliente" prefWidth="150.0" />

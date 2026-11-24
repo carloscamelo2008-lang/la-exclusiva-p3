@@ -91,7 +91,9 @@ class UserManagementControllerSecurityTest {
     }
 
     private static Button button(FXMLLoader loader, String text) {
-        return ((Parent) loader.getRoot()).lookupAll(".button").stream()
+        Parent root = loader.getRoot();
+        Parent content = root instanceof javafx.scene.control.ScrollPane pane ? (Parent) pane.getContent() : root;
+        return content.lookupAll(".button").stream()
                 .map(Button.class::cast)
                 .filter(candidate -> text.equals(candidate.getText()))
                 .findFirst().orElseThrow();

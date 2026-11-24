@@ -8,21 +8,24 @@
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.VBox?>
 
-<VBox spacing="10.0" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.laexclusiva.ui.controller.UserManagementController">
+<ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER" minWidth="0" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.laexclusiva.ui.controller.UserManagementController" stylesheets="@../css/theme.css" styleClass="workspace"><content>
+<VBox spacing="10.0" minHeight="-Infinity" styleClass="workspace">
     <padding><Insets top="18.0" right="18.0" bottom="18.0" left="18.0" /></padding>
     <Label text="Administración de usuarios" style="-fx-font-size: 20px; -fx-font-weight: bold;" />
-    <HBox spacing="8.0">
+    <FlowPane hgap="8.0" vgap="8.0">
         <TextField fx:id="usernameField" promptText="Usuario" prefWidth="150.0" />
         <PasswordField fx:id="passwordField" promptText="Contraseña (política segura)" prefWidth="210.0" />
         <ComboBox fx:id="createRoleCombo" prefWidth="150.0" />
         <Button onAction="#handleCreateUser" text="Crear cuenta" />
         <Button onAction="#handleRefresh" text="Actualizar cuentas" />
-    </HBox>
-    <TableView fx:id="usersTable" VBox.vgrow="ALWAYS">
+    </FlowPane>
+    <TableView fx:id="usersTable" minHeight="180" prefHeight="300" VBox.vgrow="ALWAYS">
         <columns>
             <TableColumn fx:id="idColumn" text="ID" prefWidth="55.0" />
             <TableColumn fx:id="usernameColumn" text="Usuario" prefWidth="150.0" />
@@ -32,16 +35,17 @@
             <TableColumn fx:id="versionColumn" text="Versión" prefWidth="75.0" />
         </columns>
     </TableView>
-    <HBox spacing="8.0">
+    <FlowPane hgap="8.0" vgap="8.0">
         <ComboBox fx:id="targetRoleCombo" promptText="Nuevo rol" prefWidth="150.0" />
         <Button onAction="#handleChangeRole" text="Cambiar rol" />
         <Button onAction="#handleToggleActive" text="Activar / desactivar" />
         <PasswordField fx:id="replacementPasswordField" promptText="Nueva contraseña" prefWidth="210.0" />
         <Button onAction="#handleChangePassword" text="Cambiar contraseña" />
-    </HBox>
-    <HBox spacing="8.0">
+    </FlowPane>
+    <FlowPane hgap="8.0" vgap="8.0">
         <ComboBox fx:id="sellerCombo" promptText="Vendedor asignado" prefWidth="230.0" />
         <Button onAction="#handleAssignSeller" text="Asignar vendedor" />
-    </HBox>
+    </FlowPane>
     <Label fx:id="messageLabel" wrapText="true" />
 </VBox>
+</content></ScrollPane>

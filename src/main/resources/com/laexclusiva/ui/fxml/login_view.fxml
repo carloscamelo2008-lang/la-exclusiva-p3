@@ -6,24 +6,27 @@
 <?import javafx.scene.control.PasswordField?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.ScrollPane?>
 
-<VBox alignment="CENTER" spacing="15.0" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.LoginController">
+<ScrollPane fx:id="moduleScroll" fitToWidth="true" fitToHeight="true" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.LoginController" stylesheets="@../css/theme.css" styleClass="login-shell"><content>
+<VBox alignment="CENTER" spacing="12.0" minHeight="-Infinity" styleClass="login-content">
     <padding>
-        <Insets bottom="30.0" left="30.0" right="30.0" top="30.0" />
+        <Insets bottom="18.0" left="28.0" right="28.0" top="18.0" />
     </padding>
 
-    <Label style="-fx-font-size: 24px; -fx-font-weight: bold;" text="LA EXCLUSIVA" />
-    <Label style="-fx-font-size: 14px; -fx-text-fill: gray;" text="Gestión clara para cada operación" />
+    <Label styleClass="login-title" text="LA EXCLUSIVA" />
+    <Label styleClass="login-subtitle" text="Gestión clara para cada operación" />
 
     <VBox spacing="8.0" style="-fx-max-width: 300px;">
         <Label text="Usuario" />
-        <TextField fx:id="usernameField" promptText="Ingrese su usuario" />
+        <TextField fx:id="usernameField" promptText="Ingrese su usuario" accessibleText="Usuario" />
         
         <Label text="Contraseña" />
-        <PasswordField fx:id="passwordField" promptText="********" />
+        <PasswordField fx:id="passwordField" promptText="********" accessibleText="Contraseña" />
     </VBox>
 
-    <Button fx:id="loginButton" defaultButton="true" onAction="#handleLogin" style="-fx-background-color: #0d7342; -fx-text-fill: white; -fx-font-weight: bold;" text="Iniciar sesión" prefWidth="300.0" />
+    <Button fx:id="loginButton" defaultButton="true" onAction="#handleLogin"  text="Iniciar sesión" prefWidth="300.0" />
 
-    <Label fx:id="errorLabel" style="-fx-text-fill: red;" text="" />
+    <Label fx:id="errorLabel" visible="${errorLabel.text != &quot;&quot;}" managed="${errorLabel.visible}" maxWidth="300" styleClass="login-error" wrapText="true" text="" />
 </VBox>
+</content></ScrollPane>
