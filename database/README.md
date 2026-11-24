@@ -52,6 +52,8 @@ mvn clean verify
 
 Las pruebas unitarias no requieren PostgreSQL. La lista de suites optativas y la última evidencia real deben consultarse en Surefire y en la documentación de validación; `BUILD SUCCESS` por sí solo no indica que las integraciones se hayan ejecutado.
 
+El workflow `identity-postgres` restaura la caché Maven Java 17 de GitHub Actions (`~/.m2/repository`), compartida por clave con el build Maven del PR, y copia solo ese directorio a la ruta temporal única del job. El laboratorio rechaza enlaces simbólicos y no copia `settings.xml` ni credenciales. El contenedor de preparación puede completar dependencias faltantes antes de crear PostgreSQL; después, los contenedores de pruebas montan el seed Maven en solo lectura, lo copian a su `/root/.m2` temporal y ejecutan Maven con `-o`. Así los ciclos PostgreSQL no descargan dependencias ni dependen de una conexión a Maven Central. El cache se limita a artefactos de build: no comparte la base, la red, secretos o sistema de archivos de PostgreSQL. No se agregan reintentos ciegos para HTTP 429; se reduce la descarga repetida reutilizando dependencias ya resueltas.
+
 ## Protección de datos
 
 No registrar contraseñas, cadenas de conexión completas, correos de clientes ni contenidos de documentos. La bitácora administrativa guarda actor, acción, objetivo, fecha y resultado cerrado, no hashes, tokens, SQL ni secretos. El correo real permanece deshabilitado por defecto. Las pruebas no envían comunicaciones reales.

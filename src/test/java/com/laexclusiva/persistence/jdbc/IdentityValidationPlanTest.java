@@ -66,6 +66,21 @@ class IdentityValidationPlanTest {
     }
 
     @Test
+    void mavenCacheIsCopiedIntoTheJobSeedAndTestsRemainOffline() throws Exception {
+        String lab = asset("actions-lab.py");
+        assertTrue(lab.contains("source = Path.home() / \".m2\" / \"repository\""));
+        assertTrue(lab.contains("destination = BASE / \"m2\" / \"repository\""));
+        assertTrue(lab.contains("if entry.is_symlink():"));
+        assertTrue(lab.contains("shutil.copytree(resolved_source, destination)"));
+        assertTrue(lab.indexOf("    seed_maven_repository()") < lab.indexOf("    for cycle in (\"first\", \"repeat\")"));
+        assertTrue(asset("compose.yaml").contains("target: /seed-repository\n        read_only: true"));
+        String runner = asset("run-java.sh");
+        assertTrue(runner.contains("cp -a /seed-repository/. /root/.m2/repository/"));
+        assertTrue(runner.contains("mvn -o"));
+        assertTrue(lab.contains("60, \"failures\": 0, \"errors\": 0, \"skipped\": 0"));
+    }
+
+    @Test
     void guardPrecedesEveryMigrationAndHistoricalAccountsPrecedeBackfill() throws Exception {
         String sql = asset("validate.psql");
         assertTrue(sql.indexOf("\\ir guard.psql") < sql.indexOf("\\ir ../../migrations/"));

@@ -35,6 +35,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Set up Java 17 and restore the Maven artifact cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
       - name: Initialize job-local laboratory path
         run: echo "LAB_ROOT=$RUNNER_TEMP/identity-pg-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
       - name: Execute isolated migrations, integrations and recovery

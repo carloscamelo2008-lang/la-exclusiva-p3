@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -172,6 +173,38 @@ def snapshot():
     return psql(query="SELECT id,account_instance_id,security_version FROM public.user_account ORDER BY id").stdout
 
 
+def seed_maven_repository():
+    """Copia solo los artefactos Maven cacheados a la carpeta temporal de este job."""
+    source = Path.home() / ".m2" / "repository"
+    destination = BASE / "m2" / "repository"
+    home = Path.home().resolve()
+    if source.is_symlink():
+        raise SystemExit("La caché Maven del runner no puede ser un enlace simbólico.")
+    if not source.exists():
+        summary = {"restored": False, "files": 0, "bytes": 0}
+        save("maven-cache.json", json.dumps(summary, indent=2))
+        report["maven_cache"] = summary
+        return
+
+    resolved_source = source.resolve()
+    if not resolved_source.is_relative_to(home) or not resolved_source.is_dir():
+        raise SystemExit("La caché Maven debe ser un directorio dentro del perfil del runner.")
+    files = 0
+    size = 0
+    for entry in resolved_source.rglob("*"):
+        if entry.is_symlink():
+            raise SystemExit("La caché Maven contiene un enlace simbólico no permitido.")
+        if entry.is_file():
+            files += 1
+            size += entry.stat().st_size
+    if destination.exists():
+        raise SystemExit("El destino de caché Maven temporal ya existe.")
+    shutil.copytree(resolved_source, destination)
+    summary = {"restored": True, "files": files, "bytes": size}
+    save("maven-cache.json", json.dumps(summary, indent=2))
+    report["maven_cache"] = summary
+
+
 def main():
     global secret
     if "--cleanup" in sys.argv:
@@ -184,6 +217,7 @@ def main():
     with open(os.open(PASSWORD, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444), "w") as file:
         file.write(secret)
     (BASE / "m2").mkdir()
+    seed_maven_repository()
     for key in ("LAEXCLUSIVA_PG18_IMAGE", "LAEXCLUSIVA_JAVA17_IMAGE"):
         image = ENV[key]
         assert re.fullmatch(r"(?:postgres|maven):[^@]+@sha256:[0-9a-f]{64}", image)
@@ -260,4 +294,4 @@ finally:
         if "--cleanup" not in sys.argv:
             save("summary.json", json.dumps(report, indent=2))
             if report["completed"] and report.get("destroyed"):
-                print("Laboratorio completado y destruido: ciclos identidad (26 pruebas x 2), aplicación (58 pruebas PostgreSQL) y esquema incompleto (1 prueba); recuperación aprobada.", flush=True)
+                print("Laboratorio completado y destruido: ciclos identidad (26 pruebas x 2), aplicación (60 pruebas PostgreSQL) y esquema incompleto (1 prueba); recuperación aprobada.", flush=True)
