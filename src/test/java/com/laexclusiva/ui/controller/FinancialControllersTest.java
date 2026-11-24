@@ -139,6 +139,7 @@ class FinancialControllersTest {
             FXMLLoader loader = load("cash_view.fxml");
             ((CashController) loader.getController()).configure(cash, adminSession());
             assertTrue(label(loader, "invoicedSalesLabel").getText().contains("100"));
+            assertEquals("Recaudos por ventas: $ 40,00", label(loader, "saleReceiptsLabel").getText());
             assertFalse(((TableView<?>) loader.getNamespace().get("movementsTable")).getItems().isEmpty());
             cash.failNextSummary = true;
 
@@ -146,7 +147,33 @@ class FinancialControllersTest {
 
             assertTrue(((TableView<?>) loader.getNamespace().get("movementsTable")).getItems().isEmpty());
             assertUnavailableLabels(loader);
+            assertEquals("Recaudos por ventas: no disponible", label(loader, "saleReceiptsLabel").getText());
             assertTrue(label(loader, "messageLabel").getText().contains("No se pudo consultar caja"));
+            return null;
+        });
+    }
+
+    @Test
+    void cashShowsRecordedPaymentMethodsAndIdentifiesHistoricalRows() throws Exception {
+        runOnFx(() -> {
+            ControlledCashWorkflow cash = new ControlledCashWorkflow();
+            cash.records.add(existingCashMovement());
+            for (PaymentMethod method : PaymentMethod.values()) {
+                cash.records.add(new CashMovement(cash.records.size() + 1L, CashDirection.INCOME,
+                        CashCategory.OTHER_INCOME, BigDecimal.ONE, LocalDate.now().atTime(9, 0),
+                        "Ingreso ficticio", "key-" + method, "MANUAL", "source-" + method, null, method));
+            }
+            FXMLLoader loader = load("cash_view.fxml");
+            assertEquals("Recaudos por ventas: $ 0,00", label(loader, "saleReceiptsLabel").getText());
+            ((CashController) loader.getController()).configure(cash, adminSession());
+            var table = table(loader, "movementsTable");
+            var column = table.getColumns().stream()
+                    .filter(candidate -> "Medio de pago".equals(candidate.getText()))
+                    .findFirst().orElseThrow();
+            assertFalse(column.isEditable());
+            assertEquals(List.of("Sin registrar", "EFECTIVO", "TRANSFERENCIA", "TARJETA", "OTRO"),
+                    java.util.stream.IntStream.range(0, table.getItems().size())
+                            .mapToObj(column::getCellData).toList());
             return null;
         });
     }

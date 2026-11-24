@@ -5,6 +5,7 @@ import com.laexclusiva.model.CashDirection;
 import com.laexclusiva.model.CashMovement;
 import com.laexclusiva.model.CashSnapshot;
 import com.laexclusiva.model.CashSummary;
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.service.AuthorizationService;
@@ -39,10 +40,11 @@ public final class CashController {
     @FXML private TableColumn<CashMovement, String> directionColumn;
     @FXML private TableColumn<CashMovement, String> categoryColumn;
     @FXML private TableColumn<CashMovement, BigDecimal> amountColumn;
+    @FXML private TableColumn<CashMovement, String> paymentMethodColumn;
     @FXML private TableColumn<CashMovement, String> descriptionColumn;
     @FXML private DatePicker movementDatePicker;
     @FXML private ComboBox<CashDirection> directionCombo;
-    @FXML private ComboBox<com.laexclusiva.model.PaymentMethod> paymentMethodCombo;
+    @FXML private ComboBox<PaymentMethod> paymentMethodCombo;
     @FXML private ComboBox<CashCategory> entryCategoryCombo;
     @FXML private TextField amountField;
     @FXML private TextField descriptionField;
@@ -78,12 +80,16 @@ public final class CashController {
                 cell.getValue().direction() == CashDirection.INCOME ? "Ingreso" : "Egreso"));
         categoryColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().category().label()));
         amountColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().amount()));
+        paymentMethodColumn.setCellValueFactory(cell -> {
+            PaymentMethod method = cell.getValue().paymentMethod();
+            return new ReadOnlyStringWrapper(method == null ? "Sin registrar" : method.name());
+        });
         descriptionColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().description()));
         directionCombo.getItems().setAll(CashDirection.values());
         directionCombo.setConverter(converter(direction -> direction == CashDirection.INCOME ? "Ingreso" : "Egreso"));
         directionCombo.setValue(CashDirection.INCOME);
-        paymentMethodCombo.getItems().setAll(com.laexclusiva.model.PaymentMethod.values());
-        paymentMethodCombo.setValue(com.laexclusiva.model.PaymentMethod.EFECTIVO);
+        paymentMethodCombo.getItems().setAll(PaymentMethod.values());
+        paymentMethodCombo.setValue(PaymentMethod.EFECTIVO);
         directionCombo.valueProperty().addListener((observable, oldValue, newValue) -> refreshEntryCategories());
         entryCategoryCombo.setConverter(converter(CashCategory::label));
         categoryFilterCombo.getItems().setAll(CashCategory.values());
@@ -129,7 +135,7 @@ public final class CashController {
     private void handleRegisterMovement() {
         String fingerprint;
         CashDirection direction;
-        com.laexclusiva.model.PaymentMethod paymentMethod;
+        PaymentMethod paymentMethod;
         CashCategory category;
         BigDecimal amount;
         LocalDate date;
@@ -207,7 +213,7 @@ public final class CashController {
         // La tabla y los indicadores se publican juntos solo después de una lectura completa.
         movementsTable.getItems().setAll(snapshot.movements());
         invoicedSalesLabel.setText("Ventas facturadas: " + money(summary.invoicedSales()));
-        saleReceiptsLabel.setText("Efectivo recibido por ventas: " + money(summary.saleReceipts()));
+        saleReceiptsLabel.setText("Recaudos por ventas: " + money(summary.saleReceipts()));
         generalDebtReceiptsLabel.setText("Pagos de deuda general: " + money(summary.generalDebtReceipts()));
         otherIncomeLabel.setText("Otros ingresos: " + money(summary.otherIncome()));
         expensesLabel.setText("Egresos: " + money(summary.expenses()));
@@ -219,7 +225,7 @@ public final class CashController {
     private void clearUnavailableView() {
         movementsTable.getItems().clear();
         invoicedSalesLabel.setText("Ventas facturadas: no disponible");
-        saleReceiptsLabel.setText("Efectivo recibido por ventas: no disponible");
+        saleReceiptsLabel.setText("Recaudos por ventas: no disponible");
         generalDebtReceiptsLabel.setText("Pagos de deuda general: no disponible");
         otherIncomeLabel.setText("Otros ingresos: no disponible");
         expensesLabel.setText("Egresos: no disponible");
