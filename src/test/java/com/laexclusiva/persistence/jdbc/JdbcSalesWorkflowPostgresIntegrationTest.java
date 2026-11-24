@@ -100,7 +100,7 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
         sellers.save(new Seller(sellerId, "Vendedor ficticio Codex", "3000000101", "Dirección ficticia"));
         sellerCreated = true;
         customers.save(new Customer(customerId, "Cliente ficticio Codex", "3000000102",
-                "Dirección ficticia", new BigDecimal("50.00")));
+                "Dirección ficticia", new BigDecimal("50.00"), new BigDecimal("10000000")));
         customerCreated = true;
         transactions.inTransaction(() -> {
             stockAdjuster.increaseStock(productId, 3);
@@ -139,6 +139,30 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
             if (sellerCreated) delete(connection, "DELETE FROM seller WHERE id = ?", sellerId);
             return null;
         }));
+    }
+
+    @Test
+    void creditLimitRejectsExcessBeforeWritingAndAcceptsExactAvailableCredit() {
+        var customer = customers.findById(customerId);
+        customers.update(new Customer(customerId, customer.getName(), customer.getPhone(), customer.getAddress(),
+                customer.getBalance(), customer.getBalance()));
+        int beforeStock = inventories.findByProductId(productId).orElseThrow().totalUnits();
+        int beforeMovements = movements.findByProductId(productId).size();
+        var lines = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
+        String key = UUID.randomUUID().toString();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> workflow.registerSale(lines, sellerId, customerId, BigDecimal.ZERO, key));
+        assertEquals(beforeStock, inventories.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(beforeMovements, movements.findByProductId(productId).size());
+        assertEquals(customer.getBalance(), customers.findById(customerId).getBalance());
+
+        BigDecimal financed = products.findById(productId).orElseThrow().priceFor(SalePresentation.UNIT);
+        BigDecimal limit = customer.getBalance().add(financed);
+        customers.update(new Customer(customerId, customer.getName(), customer.getPhone(), customer.getAddress(),
+                customer.getBalance(), limit));
+        workflow.registerSale(lines, sellerId, customerId, BigDecimal.ZERO, key);
+        assertEquals(0, limit.compareTo(customers.findById(customerId).getBalance()));
     }
 
     @Test
@@ -298,7 +322,7 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
         String paymentFirstCustomerId = customerId + "-PAYFIRST";
         assertEquals(0, count("SELECT COUNT(*) FROM customer WHERE id = ?", paymentFirstCustomerId));
         customers.save(new Customer(paymentFirstCustomerId, "Cliente concurrente ficticio", "3000000103",
-                "Dirección ficticia", BigDecimal.ZERO));
+                "Dirección ficticia", BigDecimal.ZERO, new BigDecimal("10000000")));
         extraCustomerIds.add(paymentFirstCustomerId);
         transactions.inTransaction(() -> {
             stockAdjuster.increaseStock(productId, 1);

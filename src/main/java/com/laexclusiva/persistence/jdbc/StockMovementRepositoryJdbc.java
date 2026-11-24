@@ -17,7 +17,7 @@ import java.util.Map;
 /** Persiste el historial de movimientos de inventario en PostgreSQL. */
 public final class StockMovementRepositoryJdbc implements StockMovementRepository {
     private static final String MOVEMENT_SELECT = """
-            SELECT m.id AS movement_id, m.movement_type, m.units, m.reason, m.occurred_at,
+            SELECT m.id AS movement_id, m.movement_type, m.units, m.reason, m.occurred_at, m.actor_user_id,
                    p.id, p.name, p.volume_ml, p.units_per_basket, p.container_type,
                    p.container_group, pp.presentation_code, pp.price
             FROM stock_movement m
@@ -46,8 +46,8 @@ public final class StockMovementRepositoryJdbc implements StockMovementRepositor
             throw new IllegalArgumentException("El movimiento es obligatorio.");
         }
         String sql = """
-                INSERT INTO stock_movement (product_id, movement_type, units, reason, occurred_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO stock_movement (product_id, movement_type, units, reason, occurred_at, actor_user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """;
         return connectionProvider.withConnection(connection -> {
@@ -56,6 +56,7 @@ public final class StockMovementRepositoryJdbc implements StockMovementRepositor
                 statement.setString(2, movement.type().name());
                 statement.setInt(3, movement.units());
                 statement.setString(4, movement.reason());
+                statement.setObject(6, movement.actorUserId(), java.sql.Types.BIGINT);
                 statement.setObject(5, movement.timestamp().truncatedTo(ChronoUnit.MICROS));
                 try (ResultSet rows = statement.executeQuery()) {
                     if (!rows.next()) {
@@ -102,7 +103,7 @@ public final class StockMovementRepositoryJdbc implements StockMovementRepositor
                             movements.put(movementId, new StockMovement(id,
                                     MovementType.valueOf(rows.getString("movement_type")),
                                     rows.getInt("units"), rows.getString("reason"),
-                                    rows.getObject("occurred_at", LocalDateTime.class), movementId, product));
+                                    rows.getObject("occurred_at", LocalDateTime.class), movementId, product, rows.getObject("actor_user_id", Long.class)));
                         }
                     }
                 }

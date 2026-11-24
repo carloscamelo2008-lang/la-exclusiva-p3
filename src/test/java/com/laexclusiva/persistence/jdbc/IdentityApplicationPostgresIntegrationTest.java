@@ -115,13 +115,14 @@ class IdentityApplicationPostgresIntegrationTest {
             var adminSession = app.identity().authentication().createSession(adminName, adminPassword).orElseThrow();
 
             app.customers().registerCustomer(customerId, "Cliente ficticio " + suffix.substring(0, 6),
-                    "5550001", "Dirección de laboratorio");
+                    "5550001", "Dirección de laboratorio", new BigDecimal("10000000"));
             var seller = app.sellers().registerSeller("Vendedor ficticio " + suffix.substring(0, 6),
                     "5550002", "Dirección de laboratorio");
             sellerId = seller.getId();
             String registeredSellerId = sellerId;
             app.products().register(product(productId));
-            app.inventory().addStock(productId, 0, 10, "Entrada ficticia de integración " + suffix);
+            app.authorization().execute(adminSession, Permission.MANAGE_INVENTORY_ENTRIES,
+                    () -> app.inventory().addStock(productId, 0, 10, "Entrada ficticia de integración " + suffix));
             assertEquals(10, app.inventory().availableUnits(productId));
 
             var account = app.identity().users().findByUsername(adminName).orElseThrow();
@@ -134,8 +135,15 @@ class IdentityApplicationPostgresIntegrationTest {
                     .createSession(adminName, adminPassword).orElseThrow();
 
             List<StockRequest> lines = List.of(new StockRequest(productId, SalePresentation.UNIT, 2));
-            Sale sale = app.sales().registerSale(lines, registeredSellerId, customerId,
-                    new BigDecimal("2000.00"), saleKey);
+            assertThrows(SecurityException.class,
+                    () -> app.sales().registerSale(lines, registeredSellerId, customerId, BigDecimal.ZERO, saleKey));
+            app.sellers().setActive(registeredSellerId, false);
+            assertThrows(IllegalArgumentException.class, () -> app.authorization().execute(purchasesSession,
+                    Permission.REGISTER_SALE,
+                    () -> app.sales().registerSale(lines, registeredSellerId, customerId, BigDecimal.ZERO, saleKey)));
+            app.sellers().setActive(registeredSellerId, true);
+            Sale sale = app.authorization().execute(purchasesSession, com.laexclusiva.model.Permission.REGISTER_SALE, () -> app.sales().registerSale(lines, registeredSellerId, customerId,
+                    new BigDecimal("2000.00"), saleKey));
             saleId = sale.getId();
             assertEquals(new BigDecimal("5000.00"), sale.calculateTotal());
             assertEquals(new BigDecimal("3000.00"), sale.calculateBalance());
@@ -143,20 +151,27 @@ class IdentityApplicationPostgresIntegrationTest {
             assertEquals(new BigDecimal("3000.00"), app.customers().getCustomerById(customerId).getBalance());
             assertEquals(new BigDecimal("3000.00"), app.sales().outstandingSalesDebt(customerId));
 
-            Sale replay = app.sales().registerSale(lines, registeredSellerId, customerId,
-                    new BigDecimal("2000.00"), saleKey);
+            Sale replay = app.authorization().execute(purchasesSession, com.laexclusiva.model.Permission.REGISTER_SALE, () -> app.sales().registerSale(lines, registeredSellerId, customerId,
+                    new BigDecimal("2000.00"), saleKey));
             assertEquals(saleId, replay.getId(), "Repetir la misma clave debe recuperar la venta original.");
             assertEquals(8, app.inventory().availableUnits(productId), "El replay no vuelve a descontar existencias.");
 
-            app.sales().registerPayment(saleId, new BigDecimal("1000.00"), installmentKey);
-            app.sales().registerPayment(saleId, new BigDecimal("1000.00"), installmentKey);
+            app.authorization().execute(purchasesSession, Permission.REGISTER_PAYMENT, () -> {
+                app.sales().registerPayment(sale.getId(), new BigDecimal("1000.00"), installmentKey);
+                app.sales().registerPayment(sale.getId(), new BigDecimal("1000.00"), installmentKey);
+            });
+            for (var payment : app.sales().findById(saleId).getPayments()) {
+                assertEquals(adminId, payment.getReceivedByUserId());
+            }
             assertEquals(new BigDecimal("2000.00"), app.sales().findById(saleId).calculateBalance());
             assertEquals(new BigDecimal("2000.00"), app.customers().getCustomerById(customerId).getBalance());
 
             app.generalDebt().registerDebt(customerId, new BigDecimal("500.00"), "LABORATORIO",
                     "Cargo ficticio de integración", generalDebtKey);
-            app.generalDebt().registerPayment(customerId, new BigDecimal("200.00"), "LABORATORIO",
-                    "Pago ficticio de integración", generalPaymentKey);
+            var generalPayment = app.authorization().execute(purchasesSession, Permission.REGISTER_PAYMENT,
+                    () -> app.generalDebt().registerPayment(customerId, new BigDecimal("200.00"), "LABORATORIO",
+                            "Pago ficticio de integración", generalPaymentKey));
+            assertEquals(adminId, generalPayment.receivedByUserId());
             var breakdown = app.generalDebt().findBalance(customerId);
             assertEquals(new BigDecimal("2000.00"), breakdown.outstandingSalesDebt());
             assertEquals(new BigDecimal("300.00"), breakdown.generalDebt());
@@ -169,11 +184,16 @@ class IdentityApplicationPostgresIntegrationTest {
             assertEquals(new BigDecimal("200.00"), summary.generalDebtReceipts());
             int movementCount = app.inventory().movementsOf(productId).size();
             assertEquals(2, movementCount, "Solo la entrada y la salida confirmadas deben aparecer.");
+            for (var movement : app.inventory().movementsOf(productId)) {
+                assertEquals(adminId, movement.actorUserId());
+            }
+            assertTrue(app.cash().listMovements(from, through, null).stream()
+                    .allMatch(movement -> movement.userId() != null));
 
             var before = summary;
             assertThrows(com.laexclusiva.model.InsufficientStockException.class,
-                    () -> app.sales().registerSale(List.of(new StockRequest(productId, SalePresentation.UNIT, 9)),
-                            registeredSellerId, customerId, BigDecimal.ZERO, "identity-app-rejected-" + suffix));
+                    () -> app.authorization().execute(purchasesSession, com.laexclusiva.model.Permission.REGISTER_SALE, () -> app.sales().registerSale(List.of(new StockRequest(productId, SalePresentation.UNIT, 9)),
+                            registeredSellerId, customerId, BigDecimal.ZERO, "identity-app-rejected-" + suffix)));
             assertEquals(8, app.inventory().availableUnits(productId));
             assertEquals(movementCount, app.inventory().movementsOf(productId).size());
             assertEquals(new BigDecimal("2300.00"), app.customers().getCustomerById(customerId).getBalance());
@@ -205,6 +225,17 @@ class IdentityApplicationPostgresIntegrationTest {
                     .findById(restartedSession, order.order().id()).orElseThrow().order().id());
             assertEquals(new BigDecimal("2300.00"), restarted.customers().getCustomerById(customerId).getBalance());
             assertTrue(restartedSession.isActive());
+
+            var manual = restarted.authorization().execute(restartedSession, Permission.REGISTER_CASH_MOVEMENT,
+                    () -> restarted.cash().registerMovement(com.laexclusiva.model.CashDirection.INCOME,
+                            com.laexclusiva.model.CashCategory.OTHER_INCOME, BigDecimal.ONE,
+                            java.time.LocalDateTime.now(), "Caja ficticia", saleKey + "-manual",
+                            com.laexclusiva.model.PaymentMethod.TRANSFERENCIA));
+            assertEquals(adminId, manual.userId());
+            assertEquals(com.laexclusiva.model.PaymentMethod.TRANSFERENCIA, manual.paymentMethod());
+            assertTrue(restarted.cash().listMovements(from, through, null).stream()
+                    .anyMatch(m -> m.id() == manual.id() && m.paymentMethod() == manual.paymentMethod()
+                            && manual.userId().equals(m.userId())));
         } finally {
             cleanupCommercialFixture(config, customerId, productId, sellerId, supplierId, saleKey,
                     generalPaymentKey, adminName);
@@ -338,6 +369,11 @@ class IdentityApplicationPostgresIntegrationTest {
             }
             try (PreparedStatement statement = connection.prepareStatement("DELETE FROM sale WHERE idempotency_key = ?")) {
                 statement.setString(1, saleKey);
+                statement.executeUpdate();
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "DELETE FROM cash_movement WHERE idempotency_key = ?")) {
+                statement.setString(1, saleKey + "-manual");
                 statement.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement("DELETE FROM stock_movement WHERE product_id = ?")) {

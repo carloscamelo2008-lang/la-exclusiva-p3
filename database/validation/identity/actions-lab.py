@@ -235,7 +235,9 @@ def main():
                        "V102__cash_ledger.sql", "V103__enforce_sale_request_identity_coherence.sql",
                        "V104__user_security_version.sql", "V105__unique_active_user_seller.sql",
                        "V106__user_account_instance_identity.sql", "V107__customer_collection_preferences.sql",
-                       "V108__administrative_audit.sql", "V109__reminder_review_and_delivery_reconciliation.sql")
+                       "V108__administrative_audit.sql", "V109__reminder_review_and_delivery_reconciliation.sql",
+                       "V110__customer_phone_uniqueness.sql", "V111__customer_credit_limit.sql",
+                       "V112__audit_actors_and_payment_methods.sql")
     for name in migration_names:
         report["migrations"][name] = hashlib.sha256((ROOT / "database/migrations" / name).read_bytes()).hexdigest()
     for cycle in ("first", "repeat"):

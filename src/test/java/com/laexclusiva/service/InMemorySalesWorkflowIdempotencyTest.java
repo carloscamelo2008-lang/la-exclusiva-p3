@@ -24,17 +24,28 @@ class InMemorySalesWorkflowIdempotencyTest {
         List<StockRequest> request = List.of(new StockRequest(product.getId(), SalePresentation.UNIT, 1));
         String key = "memory-sale-key";
 
-        Sale first = services.sales().registerSale(request, seller.getId(), null,
-                product.priceFor(SalePresentation.UNIT), key);
-        Sale replay = services.sales().registerSale(request, seller.getId(), null,
-                product.priceFor(SalePresentation.UNIT), key);
+        var identityFixture = new com.laexclusiva.testutil.IdentityTestFixture();
+
+        var testAuthorization = identityFixture.authorization();
+
+        var testAdmin = identityFixture.issue(com.laexclusiva.model.UserRole.ADMINISTRATOR).session();
+
+        var worker = identityFixture.issue(com.laexclusiva.model.UserRole.WORKER).session();
+        assertThrows(SecurityException.class, () -> testAuthorization.execute(worker,
+                com.laexclusiva.model.Permission.REGISTER_SALE,
+                () -> services.sales().registerSale(request, seller.getId(), null,
+                        product.priceFor(SalePresentation.UNIT), key)));
+        Sale first = testAuthorization.execute(testAdmin, com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(request, seller.getId(), null,
+                product.priceFor(SalePresentation.UNIT), key));
+        Sale replay = testAuthorization.execute(testAdmin, com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(request, seller.getId(), null,
+                product.priceFor(SalePresentation.UNIT), key));
 
         assertEquals(first.getId(), replay.getId());
         assertEquals(1, services.sales().listAll().size());
         assertEquals(1, services.inventory().getStock(product.getId()).totalUnits());
-        assertThrows(IllegalArgumentException.class, () -> services.sales().registerSale(
+        assertThrows(IllegalArgumentException.class, () -> testAuthorization.execute(testAdmin, com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(
                 List.of(new StockRequest(product.getId(), SalePresentation.UNIT, 2)), seller.getId(), null,
-                product.priceFor(SalePresentation.UNIT), key));
+                product.priceFor(SalePresentation.UNIT), key)));
         assertEquals(1, services.sales().listAll().size());
     }
 }

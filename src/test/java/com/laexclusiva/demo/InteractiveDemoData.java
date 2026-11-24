@@ -53,7 +53,8 @@ public final class InteractiveDemoData {
             for (int i = 1; i <= count(config, "customer.count"); i++) {
                 String[] row = row(config, "customer." + i, 3);
                 String id = "CLI-%03d".formatted(i);
-                s.customers().registerCustomer(id, row[0], phone(row[1]), row[2]); customers.add(id);
+                s.customers().registerCustomer(id, row[0], phone(row[1]), row[2], BigDecimal.valueOf(10_000_000));
+                customers.add(id);
             }
             // Observación real previa a compras, ventas y abonos; no se retocan sus fechas.
             s.collectionAssistant().saveProfile(admin, "CLI-007", "camila.duarte@example.test",
@@ -125,8 +126,11 @@ public final class InteractiveDemoData {
                         default -> total.divide(BigDecimal.valueOf(2));
                     };
                     Map<String, Integer> before = inventory(s);
-                    Sale sale = s.sales().registerSale(lines, sellers.get(seller).getId(), customers.get(index % 10),
-                            initial, "VTA-%03d".formatted(index + 1));
+                    String sellerId = sellers.get(seller).getId();
+                    String customerId = customers.get(index % 10);
+                    String saleKey = "VTA-%03d".formatted(index + 1);
+                    Sale sale = s.authorization().execute(admin, com.laexclusiva.model.Permission.REGISTER_SALE,
+                            () -> s.sales().registerSale(lines, sellerId, customerId, initial, saleKey));
                     for (String productId : before.keySet()) {
                         int sold = lines.stream().filter(line -> line.productId().equals(productId))
                                 .mapToInt(line -> Math.multiplyExact(s.products().unitsFor(productId, line.presentation()), line.quantity())).sum();

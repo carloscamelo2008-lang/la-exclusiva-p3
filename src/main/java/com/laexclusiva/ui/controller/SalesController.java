@@ -135,11 +135,11 @@ public class SalesController {
         boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
         if (canViewSellers) {
             sellerCombo.getItems().setAll(authorizationService.execute(session, Permission.VIEW_SELLERS,
-                    sellers::getAllSellers));
+                    sellers::getActiveSellers));
             sellerCombo.setDisable(false);
         } else if (principal.sellerId() != null) {
             authorizationService.execute(session, Permission.REGISTER_SALE,
-                    () -> sellers.getSellerById(principal.sellerId())).ifPresent(seller -> {
+                    () -> sellers.getSellerById(principal.sellerId())).filter(Seller::isActive).ifPresent(seller -> {
                 sellerCombo.getItems().setAll(seller);
                 sellerCombo.setValue(seller);
             });
@@ -318,8 +318,9 @@ public class SalesController {
     }
 
     private boolean isAuthorizedSeller(Seller seller) {
+        if (sellers.getSellerById(seller.getId()).filter(Seller::isActive).isEmpty()) return false;
         var principal = authorizationService.currentPrincipal(session);
-        if (principal.role() == UserRole.ADMINISTRATOR) return true;
+        if (principal.role().hasPermission(Permission.REGISTER_SALE_FOR_OTHERS)) return true;
         return principal.sellerId() != null && principal.sellerId().equals(seller.getId())
                 && authorizationService.execute(session, Permission.REGISTER_SALE,
                     () -> sellers.getSellerById(principal.sellerId())).isPresent();

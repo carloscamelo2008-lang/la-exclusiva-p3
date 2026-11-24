@@ -22,6 +22,17 @@ import java.util.List;
  * {@link CustomerService} los cambios de existencias y saldo asociados.
  */
 public class SaleService {
+    private boolean requireAuthenticatedSales;
+
+    void authorizeSeller(String sellerId) {
+        AuthorizationService.requireSaleSeller(sellerId, requireAuthenticatedSales);
+    }
+
+    /** Activa la exigencia de actor para la composición de la aplicación. */
+    public SaleService requireAuthenticatedSales() {
+        requireAuthenticatedSales = true;
+        return this;
+    }
 
     private final SaleRepository saleRepository;
     private final ProductService productService;
@@ -77,12 +88,15 @@ public class SaleService {
      */
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                             BigDecimal initialPayment) {
+        authorizeSeller(sellerId);
         List<StockRequest> requests = validateAndCopyRequests(lines);
         requireIdentifier(sellerId, "El identificador del vendedor es obligatorio.");
 
         Seller seller = sellerService.getSellerById(sellerId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No existe el vendedor con ID " + sellerId + "."));
+
+        if (!seller.isActive()) throw new IllegalArgumentException("El vendedor está inactivo.");
 
         Customer customer = null;
         if (customerId != null) {
@@ -98,11 +112,13 @@ public class SaleService {
                     request.presentation(), request.quantity()));
         }
 
-        Sale sale = new Sale(LocalDateTime.now(), seller, customer, saleLines, initialPayment);
+        Sale sale = new Sale(LocalDateTime.now(), seller, customer, saleLines, initialPayment,
+                AuthorizationService.operationUserId());
         if (saleRepository.findById(sale.getId()).isPresent()) {
             throw new IllegalStateException("Ya existe una venta con el ID " + sale.getId() + ".");
         }
         BigDecimal pendingBalance = sale.calculateBalance();
+        if (customer != null) customer.requireAvailableCredit(pendingBalance);
         CustomerService.SaleDebtSnapshot customerSnapshot = pendingBalance.signum() > 0
                 ? customerService.snapshotSaleDebtState(customer.getId()) : null;
         InventoryService.DiscountReceipt discount = null;
@@ -175,7 +191,7 @@ public class SaleService {
         CustomerService.SaleDebtSnapshot customerSnapshot =
                 customerService.snapshotSaleDebtState(customerId);
         Sale updated = before.copy();
-        updated.registerPayment(new SalePayment(amount, LocalDateTime.now()));
+        updated.registerPayment(new SalePayment(amount, LocalDateTime.now(), AuthorizationService.operationUserId()));
         boolean saleUpdateAttempted = false;
         boolean customerPaymentAttempted = false;
         try {

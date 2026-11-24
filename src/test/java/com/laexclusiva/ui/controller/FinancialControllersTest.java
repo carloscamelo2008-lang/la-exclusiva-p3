@@ -245,7 +245,7 @@ class FinancialControllersTest {
         runOnFx(() -> {
             ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
             String customerId = "CUS-FINANCE-UI";
-            services.customers().registerCustomer(customerId, "Cliente ficticio", "3000000101", "Dirección de prueba");
+            services.customers().registerCustomer(customerId, "Cliente ficticio", "3000000101", "Dirección de prueba", new BigDecimal("10000000"));
             services.customers().addDebtToCustomer(customerId, new BigDecimal("30.00"));
             var seller = services.sellers().registerSeller("Vendedor ficticio", "3000000102", "Dirección de prueba");
             BeerProduct product = new BeerProduct("P-FINANCE-UI", "Producto ficticio", 330, 24,
@@ -255,9 +255,12 @@ class FinancialControllersTest {
             product.definePrice(SalePresentation.FULL_BASKET, new BigDecimal("900.00"));
             services.products().register(product);
             services.inventory().addStock(product.getId(), 0, 2, "Fixture visual ficticio");
-            var sale = services.sales().registerSale(List.of(
+            var identityFixture = new com.laexclusiva.testutil.IdentityTestFixture();
+            var testAuthorization = identityFixture.authorization();
+            var testAdmin = identityFixture.issue(com.laexclusiva.model.UserRole.ADMINISTRATOR).session();
+            var sale = testAuthorization.execute(testAdmin, com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(List.of(
                     new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(),
-                    customerId, BigDecimal.ZERO);
+                    customerId, BigDecimal.ZERO));
 
             FXMLLoader loader = load("portfolio_view.fxml");
             PortfolioController controller = loader.getController();

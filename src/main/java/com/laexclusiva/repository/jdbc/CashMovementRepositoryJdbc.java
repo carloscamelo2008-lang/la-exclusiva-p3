@@ -51,8 +51,8 @@ public final class CashMovementRepositoryJdbc implements CashMovementRepository 
             String sql = """
                     INSERT INTO cash_movement
                         (direction, category, amount, occurred_at, description, idempotency_key,
-                         request_fingerprint, source_type, source_reference)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         request_fingerprint, source_type, source_reference, user_id, payment_method)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (idempotency_key) DO NOTHING
                     RETURNING id
                     """;
@@ -66,6 +66,8 @@ public final class CashMovementRepositoryJdbc implements CashMovementRepository 
                 statement.setString(7, fingerprint);
                 statement.setString(8, movement.sourceType());
                 statement.setString(9, movement.sourceReference());
+                statement.setObject(10, movement.userId(), java.sql.Types.BIGINT);
+                statement.setString(11, movement.paymentMethod() == null ? null : movement.paymentMethod().name());
                 try (ResultSet rows = statement.executeQuery()) {
                     if (rows.next()) return new SaveResult(withId(movement, rows.getLong("id")), true);
                 }
@@ -123,7 +125,7 @@ public final class CashMovementRepositoryJdbc implements CashMovementRepository 
 
     private static String selectSql() {
         return "SELECT id, direction, category, amount, occurred_at, description, idempotency_key, "
-                + "request_fingerprint, source_type, source_reference FROM cash_movement";
+                + "request_fingerprint, source_type, source_reference, user_id, payment_method FROM cash_movement";
     }
 
     private static CashMovement map(ResultSet rows) throws java.sql.SQLException {
@@ -131,12 +133,14 @@ public final class CashMovementRepositoryJdbc implements CashMovementRepository 
                 CashCategory.valueOf(rows.getString("category")), rows.getBigDecimal("amount"),
                 rows.getObject("occurred_at", LocalDateTime.class), rows.getString("description"),
                 rows.getString("idempotency_key"), rows.getString("source_type"),
-                rows.getString("source_reference"));
+                rows.getString("source_reference"), rows.getObject("user_id", Long.class),
+                rows.getString("payment_method") == null ? null
+                        : com.laexclusiva.model.PaymentMethod.valueOf(rows.getString("payment_method")));
     }
 
     private static CashMovement withId(CashMovement value, long id) {
         return new CashMovement(id, value.direction(), value.category(), value.amount(), value.occurredAt(),
-                value.description(), value.idempotencyKey(), value.sourceType(), value.sourceReference());
+                value.description(), value.idempotencyKey(), value.sourceType(), value.sourceReference(), value.userId(), value.paymentMethod());
     }
 
     private static void bind(PreparedStatement statement, List<Object> values) throws java.sql.SQLException {

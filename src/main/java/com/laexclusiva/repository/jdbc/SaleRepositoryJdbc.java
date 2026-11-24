@@ -41,9 +41,10 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
 
     private static final String SALE_SELECT = """
             SELECT s.id AS sale_id, s.created_at, se.id AS seller_id, se.name AS seller_name,
-                   se.phone AS seller_phone, se.address AS seller_address,
+                   se.phone AS seller_phone, se.address AS seller_address, se.active AS seller_active,
                    c.id AS customer_id, c.name AS customer_name, c.phone AS customer_phone,
-                   c.address AS customer_address, c.balance AS customer_balance
+                   c.address AS customer_address, c.balance AS customer_balance,
+                   c.credit_limit AS customer_credit_limit
             FROM sale s
             JOIN seller se ON se.id = s.seller_id
             LEFT JOIN customer c ON c.id = s.customer_id
@@ -190,6 +191,11 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
     /** {@inheritDoc} */
     @Override
     public AppendResult appendPaymentOnce(String saleId, BigDecimal amount, String idempotencyKey) {
+        return appendPaymentOnce(saleId, amount, idempotencyKey, null);
+    }
+
+    @Override
+    public AppendResult appendPaymentOnce(String saleId, BigDecimal amount, String idempotencyKey, Long receiverId) {
         requireId(saleId, "El identificador de venta es obligatorio.");
         if (saleId.length() > 48) throw new IllegalArgumentException("El identificador supera el límite SQL.");
         BigDecimal normalizedAmount = requireMoney(amount, "importe del abono");
@@ -215,7 +221,7 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
             if (normalizedAmount.compareTo(balance) > 0) {
                 throw new IllegalArgumentException("El abono supera el saldo pendiente de la venta.");
             }
-            SalePayment payment = new SalePayment(normalizedAmount, normalize(LocalDateTime.now(clock)));
+            SalePayment payment = new SalePayment(normalizedAmount, normalize(LocalDateTime.now(clock)), receiverId);
             insertPayment(connection, saleId, payment, idempotencyKey);
             return new AppendResult(payment, true);
         }));
@@ -372,26 +378,28 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
     private static void insertPayment(Connection connection, String saleId, SalePayment payment,
                                       String idempotencyKey)
             throws SQLException {
-        String sql = "INSERT INTO sale_payment (sale_id, amount, occurred_at, idempotency_key) VALUES (?, ?, ?, ?)";
+        String sql = "INSERT INTO sale_payment (sale_id, amount, occurred_at, idempotency_key, received_by_user_id) VALUES (?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, saleId);
             statement.setBigDecimal(2, requireMoney(payment.getAmount(), "importe del pago"));
             statement.setObject(3, normalize(payment.getTimestamp()));
             statement.setString(4, idempotencyKey);
+            statement.setObject(5, payment.getReceivedByUserId(), java.sql.Types.BIGINT);
             requireOneRow(statement.executeUpdate(), "No se insertó un pago de la venta.");
         }
     }
 
     private static SalePayment findPaymentByKey(Connection connection, String saleId, String key)
             throws SQLException {
-        String sql = "SELECT amount, occurred_at FROM sale_payment WHERE sale_id = ? AND idempotency_key = ?";
+        String sql = "SELECT amount, occurred_at, received_by_user_id FROM sale_payment WHERE sale_id = ? AND idempotency_key = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, saleId);
             statement.setString(2, key);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) return null;
                 return new SalePayment(resultSet.getBigDecimal("amount"),
-                        resultSet.getObject("occurred_at", LocalDateTime.class));
+                        resultSet.getObject("occurred_at", LocalDateTime.class),
+                                resultSet.getObject("received_by_user_id", Long.class));
             }
         }
     }
@@ -466,11 +474,13 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
         try {
             String sellerId = resultSet.getString("seller_id");
             Seller seller = new Seller(sellerId, resultSet.getString("seller_name"),
-                    resultSet.getString("seller_phone"), resultSet.getString("seller_address"));
+                    resultSet.getString("seller_phone"), resultSet.getString("seller_address"),
+                    resultSet.getBoolean("seller_active"));
             String customerId = resultSet.getString("customer_id");
-            Customer customer = customerId == null ? null : new Customer(customerId,
+            Customer customer = customerId == null ? null : Customer.reconstitute(customerId,
                     resultSet.getString("customer_name"), resultSet.getString("customer_phone"),
-                    resultSet.getString("customer_address"), resultSet.getBigDecimal("customer_balance"));
+                    resultSet.getString("customer_address"), resultSet.getBigDecimal("customer_balance"),
+                    resultSet.getBigDecimal("customer_credit_limit"));
             return new Header(resultSet.getString("sale_id"),
                     resultSet.getObject("created_at", LocalDateTime.class), seller, customer);
         } catch (IllegalArgumentException failure) {
@@ -546,7 +556,7 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
             return grouped;
         }
         String sql = """
-                SELECT sale_id, amount, occurred_at
+                SELECT sale_id, amount, occurred_at, received_by_user_id
                 FROM sale_payment
                 WHERE sale_id IN (%s)
                 ORDER BY sale_id ASC, occurred_at ASC, id ASC
@@ -558,7 +568,8 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
                     try {
                         String saleId = resultSet.getString("sale_id");
                         SalePayment payment = new SalePayment(resultSet.getBigDecimal("amount"),
-                                resultSet.getObject("occurred_at", LocalDateTime.class));
+                                resultSet.getObject("occurred_at", LocalDateTime.class),
+                                resultSet.getObject("received_by_user_id", Long.class));
                         grouped.computeIfAbsent(saleId, ignored -> new ArrayList<>()).add(payment);
                     } catch (IllegalArgumentException | NullPointerException failure) {
                         throw new JdbcPersistenceException("Un pago persistido contiene datos inválidos.", failure);

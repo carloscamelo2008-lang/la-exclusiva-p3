@@ -66,8 +66,8 @@ class InteractiveDemoDataTest {
         var worker = s.identity().authentication().createSession("elena.torres", WORKER).orElseThrow();
         var principal = s.identity().sessions().validate(worker);
         assertNotNull(principal.sellerId());
-        var sale = s.sales().registerSale(List.of(new StockRequest(line.productId(), SalePresentation.UNIT, 1)),
-                principal.sellerId(), "CLI-015", BigDecimal.ZERO, "manual-demo-test-sale");
+        var sale = s.authorization().execute(worker, com.laexclusiva.model.Permission.REGISTER_SALE, () -> s.sales().registerSale(List.of(new StockRequest(line.productId(), SalePresentation.UNIT, 1)),
+                principal.sellerId(), "CLI-015", BigDecimal.ZERO, "manual-demo-test-sale"));
         s.sales().registerPayment(sale.getId(), sale.calculateBalance(), "manual-demo-test-payment");
         assertEquals(0, s.sales().findById(sale.getId()).calculateBalance().signum());
         s.identity().userManagement().createUser(admin, new CreateUserRequest("worker.nuevo", WORKER, UserRole.WORKER, true));

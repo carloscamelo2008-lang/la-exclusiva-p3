@@ -74,7 +74,8 @@ public final class InMemoryCustomerGeneralDebtWorkflow implements CustomerGenera
         if (type == GeneralDebtMovementType.DEBT_INCREASE) customers.addDebtToCustomer(id, amount);
         else customers.applyPaymentToCustomer(id, amount);
         GeneralDebtMovement movement = new GeneralDebtMovement(nextId++, id, type, amount,
-                LocalDateTime.now(), category.trim(), description.trim(), key);
+                LocalDateTime.now(), category.trim(), description.trim(), key,
+                type == GeneralDebtMovementType.PAYMENT ? AuthorizationService.operationUserId() : null);
         movements.add(movement);
         requests.put(key, new StoredRequest(fingerprint, movement));
         return movement;

@@ -103,7 +103,7 @@ public final class Main {
         }
         if (!authorizationService.hasPermission(session, Permission.VIEW_CATALOG)) return;
         ConsoleMenu menu = new ConsoleMenu(productService, inventoryService, customerService, sellerService,
-                saleService, scanner, System.out, session, authorizationService);
+                saleService.requireAuthenticatedSales(), scanner, System.out, session, authorizationService);
         menu.start();
     }
 }

@@ -36,6 +36,13 @@ public final class CashWorkflowJdbc implements CashWorkflow {
     @Override
     public CashMovement registerMovement(CashDirection direction, CashCategory category, BigDecimal amount,
                                          LocalDateTime occurredAt, String description, String idempotencyKey) {
+        return registerMovement(direction, category, amount, occurredAt, description, idempotencyKey, null);
+    }
+
+    @Override
+    public CashMovement registerMovement(CashDirection direction, CashCategory category, BigDecimal amount,
+            LocalDateTime occurredAt, String description, String idempotencyKey,
+            com.laexclusiva.model.PaymentMethod paymentMethod) {
         if (direction == null || category == null || category.direction() != direction || !category.isManualEntry()) {
             throw new IllegalArgumentException("Seleccione una categoría manual del tipo de movimiento indicado.");
         }
@@ -48,7 +55,7 @@ public final class CashWorkflowJdbc implements CashWorkflow {
             throw new IllegalArgumentException("La clave de caja debe tener entre 1 y 64 caracteres.");
         }
         CashMovement movement = new CashMovement(0, direction, category, normalized, occurredAt,
-                detail, idempotencyKey, "MANUAL", idempotencyKey);
+                detail, idempotencyKey, "MANUAL", idempotencyKey, AuthorizationService.operationUserId(), paymentMethod);
         String fingerprint = cashFingerprint(movement);
         CashMovementRepository.SaveResult saved = movements.saveOnce(movement, fingerprint);
         return saved.movement();
@@ -81,9 +88,11 @@ public final class CashWorkflowJdbc implements CashWorkflow {
     @Override public boolean supportsDurableIdempotency() { return true; }
 
     static String cashFingerprint(CashMovement movement) {
-        return FinancialRequestFingerprint.calculate(movement.direction().name(), movement.category().name(),
+        String fingerprint = FinancialRequestFingerprint.calculate(movement.direction().name(), movement.category().name(),
                 movement.amount().toPlainString(), movement.occurredAt().toString(), movement.description(),
                 movement.sourceType(), movement.sourceReference());
+        return movement.paymentMethod() == null ? fingerprint
+                : FinancialRequestFingerprint.calculate(fingerprint, movement.paymentMethod().name());
     }
 
     private static BigDecimal sum(List<CashMovement> movements, CashCategory category) {

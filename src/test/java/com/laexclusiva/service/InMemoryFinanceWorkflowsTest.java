@@ -22,7 +22,7 @@ class InMemoryFinanceWorkflowsTest {
     @Test
     void generalDebtAndCashRemainSeparateAndAvailableInMemoryMode() {
         ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
-        services.customers().registerCustomer("C-MEM-1", "Cliente memoria", "3000000100", "Dirección ficticia");
+        services.customers().registerCustomer("C-MEM-1", "Cliente memoria", "3000000100", "Dirección ficticia", new BigDecimal("10000000"));
         Seller seller = services.sellers().registerSeller("Vendedor memoria", "3000000101", "Dirección ficticia");
         var product = services.products().listAll().get(0);
         BigDecimal saleTotal = product.priceFor(SalePresentation.UNIT);
@@ -31,9 +31,12 @@ class InMemoryFinanceWorkflowsTest {
 
         services.generalDebt().registerDebt("C-MEM-1", new BigDecimal("30.00"), "Ajuste",
                 "Deuda general inicial", "general-debt-1");
-        Sale sale = services.sales().registerSale(
+        var identityFixture = new com.laexclusiva.testutil.IdentityTestFixture();
+        var testAuthorization = identityFixture.authorization();
+        var testAdmin = identityFixture.issue(com.laexclusiva.model.UserRole.ADMINISTRATOR).session();
+        Sale sale = testAuthorization.execute(testAdmin, com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(
                 List.of(new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(),
-                "C-MEM-1", initialPayment, "sale-memory-1");
+                "C-MEM-1", initialPayment, "sale-memory-1"));
         CustomerDebtBreakdown beforePayment = services.generalDebt().findBalance("C-MEM-1");
         assertEquals(sale.calculateBalance(), beforePayment.outstandingSalesDebt());
         assertEquals(new BigDecimal("30.00"), beforePayment.generalDebt());

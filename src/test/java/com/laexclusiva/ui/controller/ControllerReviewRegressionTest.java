@@ -67,6 +67,28 @@ class ControllerReviewRegressionTest {
     }
 
     @Test
+    void administratorCanEditCustomerContactFromSelectedRow() throws Exception {
+        runOnFx(() -> {
+            var service = new CustomerService(new CustomerRepository());
+            service.registerCustomer("CLIENTE-QA", "Cliente", "300 123", "Calle 1");
+            FXMLLoader loader = load("customers_view.fxml");
+            CustomerController controller = loader.getController();
+            controller.configure(service, adminSession());
+            controller.showCustomers(service.getAllCustomers());
+            table(loader, "customersTable").getSelectionModel().selectFirst();
+            ((Button) loader.getNamespace().get("editCustomerButton")).fire();
+            assertTrue(text(loader, "idField").isDisabled());
+            text(loader, "nameField").setText("Cliente actualizado");
+            text(loader, "phoneField").setText("+300 124");
+            ((Button) loader.getNamespace().get("registerCustomerButton")).fire();
+            assertEquals("Cliente actualizado", service.getCustomerById("CLIENTE-QA").getName());
+            assertEquals("300124", service.getCustomerById("CLIENTE-QA").getPhone());
+            assertEquals("Cliente actualizado.", label(loader, "messageLabel").getText());
+            return null;
+        });
+    }
+
+    @Test
     void confirmedPaymentWithRefreshFailureIsNotReportedAsFailedAndRefreshDoesNotPayAgain() throws Exception {
         runOnFx(() -> {
             Customer customer = customer("CUS-PAYMENT-REFRESH", "100.00");
@@ -164,17 +186,17 @@ class ControllerReviewRegressionTest {
             Seller seller = services.sellers().registerSeller("Vendedor cartera visible", "3000000241", "Dirección QA");
             String targetId = "CUS-PORTFOLIO-VISIBLE";
             String otherId = "CUS-PORTFOLIO-OTHER";
-            services.customers().registerCustomer(targetId, "Cliente cartera objetivo", "3000000242", "Dirección QA");
-            services.customers().registerCustomer(otherId, "Cliente cartera alterno", "3000000243", "Dirección QA");
+            services.customers().registerCustomer(targetId, "Cliente cartera objetivo", "3000000242", "Dirección QA", new BigDecimal("10000000"));
+            services.customers().registerCustomer(otherId, "Cliente cartera alterno", "3000000243", "Dirección QA", new BigDecimal("10000000"));
             BeerProduct product = services.products().findById("COSTENITA_175");
             services.inventory().addStock(product.getId(), 0, 4, "Fixture JavaFX de cartera");
             BigDecimal initialPayment = new BigDecimal("1000.00");
-            Sale targetSale = services.sales().registerSale(List.of(
+            Sale targetSale = IDENTITY.authorization().execute(adminSession(), com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(List.of(
                     new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(), targetId,
-                    initialPayment, "ui-portfolio-target-sale");
-            Sale otherSale = services.sales().registerSale(List.of(
+                    initialPayment, "ui-portfolio-target-sale"));
+            Sale otherSale = IDENTITY.authorization().execute(adminSession(), com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(List.of(
                     new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(), otherId,
-                    initialPayment, "ui-portfolio-other-sale");
+                    initialPayment, "ui-portfolio-other-sale"));
             assertEquals(0, targetSale.calculateTotal().compareTo(new BigDecimal("2500.00")));
             assertEquals(0, targetSale.calculateBalance().compareTo(new BigDecimal("1500.00")));
 
@@ -296,7 +318,7 @@ class ControllerReviewRegressionTest {
             Seller seller = services.sellers().registerSeller("Vendedor de stock", "3000000211", "Calle 11");
             String customerId = "CUS-STOCK-RETRY";
             services.customers().registerCustomer(customerId,
-                    "Cliente de stock", "3000000212", "Dirección 11");
+                    "Cliente de stock", "3000000212", "Dirección 11", new BigDecimal("10000000"));
             Customer customer = services.customers().getCustomerById(customerId);
             BeerProduct product = services.products().listAll().get(0);
             services.inventory().addStock(product.getId(), 0, 1, "Fixture de stock insuficiente");

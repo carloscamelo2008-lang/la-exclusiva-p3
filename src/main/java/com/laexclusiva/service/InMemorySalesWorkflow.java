@@ -42,6 +42,7 @@ public final class InMemorySalesWorkflow implements SalesWorkflow {
     @Override
     public synchronized Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                                           BigDecimal initialPayment, String idempotencyKey) {
+        saleService.authorizeSeller(sellerId);
         if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 64) {
             throw new IllegalArgumentException("La clave de la venta debe tener entre 1 y 64 caracteres.");
         }

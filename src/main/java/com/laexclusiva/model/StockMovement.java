@@ -9,7 +9,11 @@ import java.util.Objects;
  * El id técnico y el producto asociado están disponibles al reconstituir desde JDBC.
  */
 public record StockMovement(String productId, MovementType type, int units,
-                            String reason, LocalDateTime timestamp, Long id, BeerProduct product) {
+                            String reason, LocalDateTime timestamp, Long id, BeerProduct product, Long actorUserId) {
+    public StockMovement(String productId, MovementType type, int units, String reason,
+                         LocalDateTime timestamp, Long id, BeerProduct product) {
+        this(productId, type, units, reason, timestamp, id, product, null);
+    }
 
     public StockMovement(String productId, MovementType type, int units, String reason, LocalDateTime timestamp) {
         this(productId, type, units, reason, timestamp, null, null);
@@ -43,12 +47,13 @@ public record StockMovement(String productId, MovementType type, int units,
                 && productId.equals(movement.productId)
                 && reason.equals(movement.reason)
                 && timestamp.equals(movement.timestamp)
-                && Objects.equals(id, movement.id);
+                && Objects.equals(id, movement.id)
+                && Objects.equals(actorUserId, movement.actorUserId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(productId, type, units, reason, timestamp, id);
+        return Objects.hash(productId, type, units, reason, timestamp, id, actorUserId);
     }
 
     /**

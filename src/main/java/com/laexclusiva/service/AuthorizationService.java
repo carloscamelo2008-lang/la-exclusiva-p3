@@ -92,6 +92,31 @@ public class AuthorizationService {
         }
     }
 
+    private static final ThreadLocal<AuthenticatedPrincipal> operationActor = new ThreadLocal<>();
+
+    /** Actor validado para la operación síncrona en curso, si existe. */
+    public static AuthenticatedPrincipal operationActor() {
+        return operationActor.get();
+    }
+
+    static Long operationUserId() {
+        AuthenticatedPrincipal principal = operationActor();
+        return principal == null ? null : principal.userId();
+    }
+
+    static void requireSaleSeller(String sellerId, boolean requireActor) {
+        AuthenticatedPrincipal principal = operationActor();
+        if (principal == null) {
+            if (requireActor) throw new SecurityException("Se requiere una sesión autorizada para registrar ventas.");
+            return;
+        }
+        if (!principal.role().hasPermission(Permission.REGISTER_SALE)
+                || (!principal.role().hasPermission(Permission.REGISTER_SALE_FOR_OTHERS)
+                    && !java.util.Objects.equals(principal.sellerId(), sellerId))) {
+            throw new SecurityException("La venta debe registrarse con el vendedor asignado a la sesión.");
+        }
+    }
+
     /**
      * Ejecuta una operación comercial solo después de validar la sesión y el permiso vigente.
      * La validación y la invocación quedan en un mismo punto de aplicación; conserva intactos
@@ -111,10 +136,18 @@ public class AuthorizationService {
             throw new IllegalArgumentException("El permiso y la operación son obligatorios.");
         }
         requireSessionAuthority();
-        if (!hasPermission(session, permission)) {
+        AuthenticatedPrincipal principal = currentPrincipal(session);
+        if (!principal.role().hasPermission(permission)) {
             throw new SecurityException("La sesión no permite ejecutar esta operación.");
         }
-        return operation.get();
+        AuthenticatedPrincipal previous = operationActor.get();
+        operationActor.set(principal);
+        try {
+            return operation.get();
+        } finally {
+            if (previous == null) operationActor.remove();
+            else operationActor.set(previous);
+        }
     }
 
     /** Variante para operaciones que no devuelven resultado. */

@@ -605,7 +605,8 @@ class CollectionAssistantServiceTest {
         }
 
         private void customer(String id, String balance, List<Sale> customerSales) {
-            customerRepository.save(new Customer(id, "Cliente " + id, "3000000000", "Dirección ficticia",
+            customerRepository.save(new Customer(id, "Cliente " + id,
+                    Integer.toString(300_000_001 + customerRepository.findAll().size()), "Dirección ficticia",
                     new BigDecimal(balance)));
             sales.addAll(customerSales);
         }

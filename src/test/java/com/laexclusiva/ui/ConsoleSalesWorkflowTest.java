@@ -36,6 +36,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class ConsoleSalesWorkflowTest {
+    private final com.laexclusiva.testutil.IdentityTestFixture identity = new com.laexclusiva.testutil.IdentityTestFixture();
+    private int nextSession = 1;
 
     private static final Pattern CUSTOMER_ID = Pattern.compile("Cliente registrado con ID (CLI-[A-F0-9]{8})\\.");
     private static final Pattern SELLER_ID = Pattern.compile("Vendedor registrado con ID (SEL-[A-F0-9]{8})\\.");
@@ -92,6 +94,9 @@ class ConsoleSalesWorkflowTest {
         assertTrue(setupOutput.contains("(POKER_750): 1 canastas, 2 unidades sueltas, "
                 + initialPoker750Units + " unidades en total."));
         String customerId = captureId(CUSTOMER_ID, setupOutput, "ID del cliente generado desde el menú");
+        var customer = customers.getCustomerById(customerId);
+        customers.updateCustomer(customerId, customer.getName(), customer.getPhone(), customer.getAddress(),
+                expectedTotal);
         String sellerId = captureId(SELLER_ID, setupOutput, "ID del vendedor generado desde el menú");
 
         String saleOutput = runConsole(
@@ -219,14 +224,14 @@ class ConsoleSalesWorkflowTest {
         try (Scanner scanner = new Scanner(new ByteArrayInputStream(input), StandardCharsets.UTF_8);
              PrintStream printStream = new PrintStream(output, true, StandardCharsets.UTF_8)) {
             ConsoleMenu menu = new ConsoleMenu(products, inventory, customers,
-                    sellers, sales, scanner, printStream, userSession, new AuthorizationService());
+                    sellers, sales, scanner, printStream, userSession, identity.authorization());
             menu.start();
         }
         return output.toString(StandardCharsets.UTF_8);
     }
 
     private UserSession session(UserRole role, String sellerId) {
-        return new UserSession(new UserAccount(1L, role.name().toLowerCase(), "hash", role, sellerId));
+        return identity.issue("console-fixture-" + nextSession++, role, sellerId).session();
     }
 
     private String inventoryLine(BeerProduct product, int units) {

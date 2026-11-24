@@ -123,7 +123,7 @@ class IdentityJavaFxPostgresIntegrationTest {
             fixtureServices.products().register(product);
             fixtureServices.inventory().addStock(productId, 0, 5, "Entrada ficticia " + suffix);
             fixtureServices.customers().registerCustomer(customerId, "Cliente QA " + suffix,
-                    "31" + suffix.substring(0, 8), "Dirección ficticia de laboratorio");
+                    "31" + suffix.substring(0, 8), "Dirección ficticia de laboratorio", new BigDecimal("10000000"));
             var supplier = fixtureServices.purchases().suppliers().create(adminSession, supplierName,
                     "NIT-QA-" + suffix, "contacto ficticio");
             supplierId = supplier.id();

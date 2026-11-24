@@ -8,8 +8,16 @@ public final class SalePayment {
 
     private final BigDecimal amount;
     private final LocalDateTime timestamp;
+    private final Long receivedByUserId;
+
+    public Long getReceivedByUserId() { return receivedByUserId; }
 
     public SalePayment(BigDecimal amount, LocalDateTime timestamp) {
+        this(amount, timestamp, null);
+    }
+
+    public SalePayment(BigDecimal amount, LocalDateTime timestamp, Long receivedByUserId) {
+        this.receivedByUserId = receivedByUserId;
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El importe del pago debe ser mayor que cero.");
         }

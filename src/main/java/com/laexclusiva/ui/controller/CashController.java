@@ -42,6 +42,7 @@ public final class CashController {
     @FXML private TableColumn<CashMovement, String> descriptionColumn;
     @FXML private DatePicker movementDatePicker;
     @FXML private ComboBox<CashDirection> directionCombo;
+    @FXML private ComboBox<com.laexclusiva.model.PaymentMethod> paymentMethodCombo;
     @FXML private ComboBox<CashCategory> entryCategoryCombo;
     @FXML private TextField amountField;
     @FXML private TextField descriptionField;
@@ -81,6 +82,8 @@ public final class CashController {
         directionCombo.getItems().setAll(CashDirection.values());
         directionCombo.setConverter(converter(direction -> direction == CashDirection.INCOME ? "Ingreso" : "Egreso"));
         directionCombo.setValue(CashDirection.INCOME);
+        paymentMethodCombo.getItems().setAll(com.laexclusiva.model.PaymentMethod.values());
+        paymentMethodCombo.setValue(com.laexclusiva.model.PaymentMethod.EFECTIVO);
         directionCombo.valueProperty().addListener((observable, oldValue, newValue) -> refreshEntryCategories());
         entryCategoryCombo.setConverter(converter(CashCategory::label));
         categoryFilterCombo.getItems().setAll(CashCategory.values());
@@ -107,6 +110,7 @@ public final class CashController {
         descriptionField.setDisable(!canRegister);
         movementDatePicker.setDisable(!canRegister);
         directionCombo.setDisable(!canRegister);
+        paymentMethodCombo.setDisable(!canRegister);
         entryCategoryCombo.setDisable(!canRegister);
         if (canView) {
             try {
@@ -125,6 +129,7 @@ public final class CashController {
     private void handleRegisterMovement() {
         String fingerprint;
         CashDirection direction;
+        com.laexclusiva.model.PaymentMethod paymentMethod;
         CashCategory category;
         BigDecimal amount;
         LocalDate date;
@@ -134,13 +139,14 @@ public final class CashController {
             requirePermission(Permission.REGISTER_CASH_MOVEMENT,
                     "Solo un usuario con permiso de caja puede registrar movimientos.");
             direction = require(directionCombo.getValue(), "Seleccione ingreso o egreso.");
+            paymentMethod = require(paymentMethodCombo.getValue(), "Seleccione el medio de pago.");
             category = require(entryCategoryCombo.getValue(), "Seleccione una categoría.");
             amount = new BigDecimal(amountField.getText().trim());
             date = require(movementDatePicker.getValue(), "Seleccione la fecha.");
             description = requireText(descriptionField.getText());
             occurredAt = uncertainFingerprint == null ? date.atTime(LocalTime.now()) : pendingOccurredAt;
             fingerprint = String.join("|", direction.name(), category.name(), date.toString(),
-                    amount.stripTrailingZeros().toPlainString(), occurredAt.toString(), description);
+                    amount.stripTrailingZeros().toPlainString(), occurredAt.toString(), description, paymentMethod.name());
             if (uncertainFingerprint != null && !uncertainFingerprint.equals(fingerprint)) {
                 throw new IllegalArgumentException("Hay un movimiento de resultado incierto. Restaure los mismos "
                         + "datos y reintente con la referencia visible antes de iniciar otro movimiento.");
@@ -153,7 +159,7 @@ public final class CashController {
 
         try {
             authorization.execute(session, Permission.REGISTER_CASH_MOVEMENT, () ->
-                    cash.registerMovement(direction, category, amount, occurredAt, description, operationKey));
+                    cash.registerMovement(direction, category, amount, occurredAt, description, operationKey, paymentMethod));
         } catch (IllegalArgumentException | SecurityException rejected) {
             if (uncertainFingerprint == null) pendingOccurredAt = null;
             messageLabel.setText("Movimiento rechazado: " + safeMessage(rejected));

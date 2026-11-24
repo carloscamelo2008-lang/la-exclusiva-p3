@@ -36,6 +36,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class ConsoleMenuTest {
+    private final com.laexclusiva.testutil.IdentityTestFixture identity = new com.laexclusiva.testutil.IdentityTestFixture();
+    private int nextSession = 1;
 
     private ProductService products;
     private InventoryService inventory;
@@ -54,7 +56,7 @@ class ConsoleMenuTest {
         sellers = new SellerService(new SellerRepository());
         sales = new SaleService(new InMemorySaleRepository(), products, inventory, customers, sellers);
         seller = sellers.registerSeller("Vendedor de prueba", "3001234567", "Dirección de prueba");
-        customers.registerCustomer("C001", "Cliente de prueba", "3007654321", "Dirección de prueba");
+        customers.registerCustomer("C001", "Cliente de prueba", "3007654321", "Dirección de prueba", new BigDecimal("10000000"));
     }
 
     @Test
@@ -246,17 +248,17 @@ class ConsoleMenuTest {
         Scanner scanner = new Scanner(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)),
                 StandardCharsets.UTF_8);
         ConsoleMenu menu = new ConsoleMenu(products, inventory, customers, sellers, sales,
-                scanner, new PrintStream(output, true, StandardCharsets.UTF_8), userSession, new AuthorizationService());
+                scanner, new PrintStream(output, true, StandardCharsets.UTF_8), userSession, identity.authorization());
         menu.start();
         return output.toString(StandardCharsets.UTF_8);
     }
 
     private ConsoleMenu createMenu(UserSession userSession) {
         return new ConsoleMenu(products, inventory, customers, sellers, sales, new Scanner(""),
-                new PrintStream(new ByteArrayOutputStream()), userSession, new AuthorizationService());
+                new PrintStream(new ByteArrayOutputStream()), userSession, identity.authorization());
     }
 
     private UserSession session(UserRole role, String sellerId) {
-        return new UserSession(new UserAccount(1L, role.name().toLowerCase(), "hash", role, sellerId));
+        return identity.issue("console-fixture-" + nextSession++, role, sellerId).session();
     }
 }

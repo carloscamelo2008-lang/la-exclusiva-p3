@@ -104,7 +104,8 @@ public final class CustomerGeneralDebtWorkflowJdbc implements CustomerGeneralDeb
             }
 
             GeneralDebtMovement proposed = new GeneralDebtMovement(0, id, type, normalizedAmount,
-                    LocalDateTime.now(clock), normalizedCategory, normalizedDescription, key);
+                    LocalDateTime.now(clock), normalizedCategory, normalizedDescription, key,
+                    type == GeneralDebtMovementType.PAYMENT ? AuthorizationService.operationUserId() : null);
             CustomerGeneralDebtMovementRepository.SaveResult saved = movements.saveOnce(proposed, fingerprint);
             if (!saved.inserted()) return saved.movement();
 
@@ -122,7 +123,7 @@ public final class CustomerGeneralDebtWorkflowJdbc implements CustomerGeneralDeb
         String key = "GENERAL-DEBT-PAYMENT:" + movement.idempotencyKey();
         CashMovement entry = new CashMovement(0, CashDirection.INCOME, CashCategory.GENERAL_DEBT_PAYMENT,
                 movement.amount(), movement.occurredAt(), movement.description(), key,
-                "GENERAL_DEBT_PAYMENT", movement.idempotencyKey());
+                "GENERAL_DEBT_PAYMENT", movement.idempotencyKey(), movement.receivedByUserId(), null);
         String fingerprint = FinancialRequestFingerprint.calculate(entry.direction().name(),
                 entry.category().name(), entry.amount().toPlainString(), entry.occurredAt().toString(),
                 entry.description(), entry.sourceType(), entry.sourceReference());

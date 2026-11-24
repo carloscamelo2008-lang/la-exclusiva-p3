@@ -23,11 +23,31 @@ public interface CustomerRepositoryInterface {
     List<Customer> findAll();
     boolean existsById(String id);
 
+    /** Consulta coincidencias de nombre sin tildes, mayúsculas ni espacios redundantes. */
+    default List<Customer> findSimilarNames(String name) {
+        String key = Customer.comparableName(name);
+        if (key.isEmpty()) return List.of();
+        return findAll().stream()
+                .filter(customer -> Customer.comparableName(customer.getName()).equals(key))
+                .toList();
+    }
+
+    /** Indica si otro cliente utiliza el teléfono normalizado. */
+    default boolean existsByPhone(String phone, String excludedId) {
+        return findAll().stream().anyMatch(customer -> !customer.getId().equals(excludedId)
+                && customer.getPhone().equals(phone));
+    }
+
+    /** Elimina un cliente sin saldo ni referencias. */
+    default void deleteById(String id) {
+        throw new UnsupportedOperationException("El repositorio no admite eliminar clientes.");
+    }
+
     /**
      * Actualiza un cliente existente.
      *
      * <p>Las implementaciones en memoria reemplazan el snapshot completo. La implementación JDBC
-     * actualiza solo los datos personales y exige que el saldo persistido todavía coincida con el
+     * actualiza los datos personales y el cupo, y exige que el saldo persistido todavía coincida con el
      * saldo del snapshot; no modifica el saldo. Los ajustes financieros concurrentes deben usar
      * {@link CustomerBalanceAdjuster}.</p>
      *

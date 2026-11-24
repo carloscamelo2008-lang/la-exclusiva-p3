@@ -44,6 +44,7 @@
         <DatePicker fx:id="movementDatePicker" promptText="Fecha" />
         <ComboBox fx:id="directionCombo" prefWidth="115.0" />
         <ComboBox fx:id="entryCategoryCombo" prefWidth="190.0" />
+        <ComboBox fx:id="paymentMethodCombo" promptText="Medio de pago" prefWidth="130" />
         <TextField fx:id="amountField" promptText="Importe (COP)" prefWidth="135.0" />
         <TextField fx:id="descriptionField" promptText="Descripción auditable" HBox.hgrow="ALWAYS" />
         <Button fx:id="registerMovementButton" text="Registrar" onAction="#handleRegisterMovement" />

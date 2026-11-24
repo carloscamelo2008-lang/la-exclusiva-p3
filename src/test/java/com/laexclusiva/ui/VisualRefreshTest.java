@@ -347,12 +347,15 @@ class VisualRefreshTest {
             ApplicationServices services = ApplicationServices.create("memory", Map.of());
             UserSession session = issue(services, UserRole.ADMINISTRATOR);
             var seller = services.sellers().registerSeller("Vendedor QA visual", "3000000000", "Dirección QA");
-            services.customers().registerCustomer("QA-PORTFOLIO", "Cliente QA visual", "3000000001", "Dirección QA");
+            services.customers().registerCustomer("QA-PORTFOLIO", "Cliente QA visual", "3000000001", "Dirección QA", java.math.BigDecimal.valueOf(10_000_000));
             var product = services.products().findById("COSTENITA_175");
             services.inventory().addStock(product.getId(), 0, 2, "Fixture temporal de cartera");
-            var sale = services.sales().registerSale(java.util.List.of(new com.laexclusiva.model.StockRequest(
+            var identityFixture = new com.laexclusiva.testutil.IdentityTestFixture();
+            var testAuthorization = identityFixture.authorization();
+            var testAdmin = identityFixture.issue(com.laexclusiva.model.UserRole.ADMINISTRATOR).session();
+            var sale = testAuthorization.execute(testAdmin, com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(java.util.List.of(new com.laexclusiva.model.StockRequest(
                     product.getId(), com.laexclusiva.model.SalePresentation.UNIT, 1)), seller.getId(), "QA-PORTFOLIO",
-                    new java.math.BigDecimal("1000.00"), "qa-modern-portfolio");
+                    new java.math.BigDecimal("1000.00"), "qa-modern-portfolio"));
             java.math.BigDecimal balance = sale.calculateBalance();
             for (int[] size : new int[][]{{1280, 800}, {1024, 768}, {800, 600}}) {
                 FXMLLoader loader = loader("main_menu_view.fxml");

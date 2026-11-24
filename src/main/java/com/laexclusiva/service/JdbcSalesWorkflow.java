@@ -35,6 +35,13 @@ import java.util.UUID;
 
 /** Coordina ventas y abonos JDBC dentro de una sola transacción compartida. */
 public final class JdbcSalesWorkflow implements SalesWorkflow {
+    private boolean requireAuthenticatedSales;
+
+    /** Activa la exigencia de actor para la composición de la aplicación. */
+    public JdbcSalesWorkflow requireAuthenticatedSales() {
+        requireAuthenticatedSales = true;
+        return this;
+    }
     private final ProductRepository products;
     private final CustomerRepositoryInterface customers;
     private final SellerRepositoryInterface sellers;
@@ -102,6 +109,7 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
     @Override
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                              BigDecimal initialPayment, String idempotencyKey) {
+        AuthorizationService.requireSaleSeller(sellerId, requireAuthenticatedSales);
         List<StockRequest> requests = validateRequests(lines);
         requireId(sellerId, "El vendedor es obligatorio.");
         requireId(idempotencyKey, "La clave idempotente de la venta es obligatoria.");
@@ -133,6 +141,8 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         Seller seller = sellers.findById(sellerId)
                 .orElseThrow(() -> new IllegalArgumentException("No existe el vendedor " + sellerId + "."));
 
+        if (!seller.isActive()) throw new IllegalArgumentException("El vendedor está inactivo.");
+
         Map<String, com.laexclusiva.model.BeerProduct> productById = new LinkedHashMap<>();
         List<SaleLine> saleLines = new ArrayList<>(requests.size());
         for (StockRequest request : requests) {
@@ -143,10 +153,12 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
             saleLines.add(new SaleLine(product, request.presentation(), request.quantity()));
         }
 
-        Sale sale = new Sale(LocalDateTime.now(), seller, customer, saleLines, initialPayment);
+        Sale sale = new Sale(LocalDateTime.now(), seller, customer, saleLines, initialPayment,
+                AuthorizationService.operationUserId());
         BigDecimal outstanding = sale.calculateBalance();
         if (customer != null) {
             requireConsistentCustomerBalance(customer);
+            customer.requireAvailableCredit(outstanding);
         }
         if (outstanding.signum() > 0 && customer == null) {
             throw new IllegalArgumentException("Se requiere cliente para una venta con saldo pendiente.");
@@ -168,7 +180,7 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         for (Map.Entry<String, Integer> entry : unitsByProduct.entrySet()) {
             inventory.decreaseStock(entry.getKey(), entry.getValue());
             movements.save(new StockMovement(entry.getKey(), MovementType.EXIT, entry.getValue(),
-                    "Venta " + sale.getId(), LocalDateTime.now()));
+                    "Venta " + sale.getId(), LocalDateTime.now(), null, null, AuthorizationService.operationUserId()));
         }
         if (outstanding.signum() > 0) {
             customerBalances.increaseBalance(customerId, outstanding);
@@ -212,7 +224,7 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
                 throw new IllegalStateException("No existe el cliente asociado a la venta.");
             }
             IdempotentSalePaymentAppender.AppendResult result =
-                    payments.appendPaymentOnce(saleId, amount, idempotencyKey);
+                    payments.appendPaymentOnce(saleId, amount, idempotencyKey, AuthorizationService.operationUserId());
             if (result.inserted()) {
                 BigDecimal salesDebtAfterPayment = debtQuery.findOutstandingSalesDebt(customerId);
                 if (salesDebtAfterPayment.add(result.payment().getAmount())
@@ -233,7 +245,7 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         String source = sale.getId();
         CashMovement entry = new CashMovement(0, CashDirection.INCOME, CashCategory.SALE_INITIAL_PAYMENT,
                 payment.getAmount(), payment.getTimestamp(), "Pago inicial de venta " + sale.getId(),
-                "SALE-INITIAL:" + source, "SALE_INITIAL", source);
+                "SALE-INITIAL:" + source, "SALE_INITIAL", source, payment.getReceivedByUserId(), null);
         cashMovements.saveOnce(entry, CashWorkflowJdbc.cashFingerprint(entry));
     }
 
@@ -242,7 +254,7 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         String source = saleId + ":" + paymentKey;
         CashMovement entry = new CashMovement(0, CashDirection.INCOME, CashCategory.SALE_INSTALLMENT,
                 payment.getAmount(), payment.getTimestamp(), "Abono a venta " + saleId,
-                "SALE-INSTALLMENT:" + source, "SALE_INSTALLMENT", source);
+                "SALE-INSTALLMENT:" + source, "SALE_INSTALLMENT", source, payment.getReceivedByUserId(), null);
         cashMovements.saveOnce(entry, CashWorkflowJdbc.cashFingerprint(entry));
     }
 

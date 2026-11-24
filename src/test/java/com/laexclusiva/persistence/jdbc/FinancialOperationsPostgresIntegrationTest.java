@@ -138,7 +138,7 @@ class FinancialOperationsPostgresIntegrationTest {
         assertEquals(0, count("SELECT COUNT(*) FROM beer_product WHERE id = ?", productId));
 
         customers.save(new Customer(customerId, "Cliente ficticio finanzas", "3000000301",
-                "Dirección ficticia aislada", new BigDecimal("30.00")));
+                "Dirección ficticia aislada", new BigDecimal("30.00"), new BigDecimal("10000000")));
         customerCreated = true;
         sellers.save(new Seller(sellerId, "Vendedor ficticio finanzas", "3000000302", "Dirección ficticia"));
         sellerCreated = true;

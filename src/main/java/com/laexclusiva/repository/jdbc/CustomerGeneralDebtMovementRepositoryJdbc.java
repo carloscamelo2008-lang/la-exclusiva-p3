@@ -35,7 +35,7 @@ public final class CustomerGeneralDebtMovementRepositoryJdbc
         return connections.withConnection(connection -> {
             String sql = """
                     SELECT id, customer_id, movement_type, amount, occurred_at, category, description,
-                           idempotency_key, request_fingerprint
+                           idempotency_key, request_fingerprint, received_by_user_id
                     FROM customer_general_debt_movement WHERE idempotency_key = ?
                     """;
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -55,8 +55,8 @@ public final class CustomerGeneralDebtMovementRepositoryJdbc
             String sql = """
                     INSERT INTO customer_general_debt_movement
                         (customer_id, movement_type, amount, occurred_at, category, description,
-                         idempotency_key, request_fingerprint)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                         idempotency_key, request_fingerprint, received_by_user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (idempotency_key) DO NOTHING
                     RETURNING id
                     """;
@@ -69,11 +69,12 @@ public final class CustomerGeneralDebtMovementRepositoryJdbc
                 statement.setString(6, movement.description());
                 statement.setString(7, movement.idempotencyKey());
                 statement.setString(8, fingerprint);
+                statement.setObject(9, movement.receivedByUserId(), java.sql.Types.BIGINT);
                 try (ResultSet rows = statement.executeQuery()) {
                     if (rows.next()) {
                         return new SaveResult(new GeneralDebtMovement(rows.getLong("id"), movement.customerId(),
                                 movement.type(), movement.amount(), movement.occurredAt(), movement.category(),
-                                movement.description(), movement.idempotencyKey()), true);
+                                movement.description(), movement.idempotencyKey(), movement.receivedByUserId()), true);
                     }
                 }
             }
@@ -93,7 +94,7 @@ public final class CustomerGeneralDebtMovementRepositoryJdbc
         }
         StringBuilder sql = new StringBuilder("""
                 SELECT id, customer_id, movement_type, amount, occurred_at, category, description,
-                       idempotency_key, request_fingerprint
+                       idempotency_key, request_fingerprint, received_by_user_id
                 FROM customer_general_debt_movement WHERE TRUE
                 """);
         List<Object> parameters = new ArrayList<>();
@@ -120,7 +121,7 @@ public final class CustomerGeneralDebtMovementRepositoryJdbc
         return new GeneralDebtMovement(rows.getLong("id"), rows.getString("customer_id"),
                 GeneralDebtMovementType.valueOf(rows.getString("movement_type")),
                 rows.getBigDecimal("amount"), rows.getObject("occurred_at", LocalDateTime.class),
-                rows.getString("category"), rows.getString("description"), rows.getString("idempotency_key"));
+                rows.getString("category"), rows.getString("description"), rows.getString("idempotency_key"), rows.getObject("received_by_user_id", Long.class));
     }
 
     private static void validate(GeneralDebtMovement movement, String fingerprint) {
