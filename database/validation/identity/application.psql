@@ -44,8 +44,17 @@ BEGIN
 END;
 $v109_backfill$;
 DELETE FROM customer_collection_reminder WHERE customer_id='IV_V109_LEGACY';
-DELETE FROM customer WHERE id='IV_V109_LEGACY';
+UPDATE customer SET phone = '+57 300 000 0129' WHERE id='IV_V109_LEGACY';
 \ir ../../migrations/V110__customer_phone_uniqueness.sql
 \ir ../../migrations/V111__customer_credit_limit.sql
 \ir ../../migrations/V112__audit_actors_and_payment_methods.sql
+DO $customer_migrations$
+BEGIN
+    IF NOT EXISTS (SELECT FROM customer WHERE id = 'IV_V109_LEGACY'
+                   AND phone = '573000000129' AND credit_limit = 0) THEN
+        RAISE EXCEPTION 'V110 o V111 no aplicaron los valores esperados al cliente existente';
+    END IF;
+END;
+$customer_migrations$;
+DELETE FROM customer WHERE id='IV_V109_LEGACY';
 \echo 'Esquema completo aplicado al cluster temporal aislado.'

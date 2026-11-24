@@ -10,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.laexclusiva.service.GoodsReceiptService;
 import com.laexclusiva.service.PurchaseOrderService;
 import java.util.Map;
+import java.math.BigDecimal;
+import com.laexclusiva.model.CustomerDeletionBlockedException;
 import org.junit.jupiter.api.Test;
 
 class ApplicationServicesTest {
@@ -25,6 +27,21 @@ class ApplicationServicesTest {
         assertNotNull(services.purchases());
         assertNotNull(services.collectionAssistant());
         assertNotNull(services.administrativeAudit());
+    }
+
+    @Test
+    void blocksDeletionWhenGeneralDebtWasFullyPaidButHistoryRemains() {
+        var services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+        String id = "paid-general-debt";
+        var amount = new BigDecimal("100.00");
+        services.customers().registerCustomer(id, "Cliente ficticio", "3100000123", "Calle");
+        services.generalDebt().registerDebt(id, amount, "General", "Cargo", "debt");
+        services.generalDebt().registerPayment(id, amount, "General", "Abono completo", "payment");
+
+        assertEquals(0, services.customers().getCustomerById(id).getBalance().signum());
+        assertEquals(2, services.generalDebt().listMovements(id, null, null, null).size());
+        assertThrows(CustomerDeletionBlockedException.class, () -> services.customers().deleteCustomer(id));
+        assertEquals(id, services.customers().getCustomerById(id).getId());
     }
 
     @Test

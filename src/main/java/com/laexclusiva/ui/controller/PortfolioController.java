@@ -18,6 +18,7 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.ComboBox;
+import com.laexclusiva.model.PaymentMethod;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Label;
 import javafx.scene.control.Button;
@@ -44,6 +45,8 @@ public class PortfolioController {
     @FXML private TableColumn<Sale, BigDecimal> salePaidColumn;
     @FXML private TableColumn<Sale, BigDecimal> saleBalanceColumn;
     @FXML private TextField paymentAmountField;
+    @FXML private ComboBox<PaymentMethod> paymentMethodCombo;
+    private PaymentMethod pendingPaymentMethod;
     @FXML private Label salesDebtLabel;
     @FXML private Label generalDebtLabel;
     @FXML private Label messageLabel;
@@ -89,6 +92,8 @@ public class PortfolioController {
 
     @FXML
     private void initialize() {
+        paymentMethodCombo.getItems().setAll(PaymentMethod.values());
+        paymentMethodCombo.setValue(PaymentMethod.EFECTIVO);
         idColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getId()));
         nameColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getName()));
         balanceColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().getBalance()));
@@ -209,23 +214,26 @@ public class PortfolioController {
     private void handleRegisterPayment() {
         Sale selected;
         BigDecimal amount;
+        PaymentMethod method;
         String key;
         try {
             requirePermission(Permission.REGISTER_PAYMENT, "No tiene permiso para registrar abonos.");
             selected = salesTable.getSelectionModel().getSelectedItem();
             if (selected == null) throw new IllegalArgumentException("Seleccione una venta pendiente.");
             amount = new BigDecimal(paymentAmountField.getText().trim());
+            method = paymentMethodCombo.getValue();
             if (amount.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new IllegalArgumentException("El abono debe ser mayor que cero.");
             }
             if (pendingKey != null && (!selected.getId().equals(pendingSaleId) || pendingAmount == null
-                    || pendingAmount.compareTo(amount) != 0)) {
+                    || pendingAmount.compareTo(amount) != 0 || pendingPaymentMethod != method)) {
                 throw new IllegalStateException("Hay un abono de resultado incierto. Reintente exactamente la misma "
-                        + "venta y el mismo importe antes de iniciar otro abono.");
+                        + "venta, importe y medio antes de iniciar otro abono.");
             }
             if (pendingKey == null) {
                 pendingSaleId = selected.getId();
                 pendingAmount = amount;
+                pendingPaymentMethod = method;
                 pendingKey = UUID.randomUUID().toString();
             }
         } catch (RuntimeException failure) {
@@ -236,23 +244,25 @@ public class PortfolioController {
         key = pendingKey;
         try {
             authorizationService.execute(session, Permission.REGISTER_PAYMENT,
-                    () -> salesWorkflow.registerPayment(selected.getId(), amount, key));
+                    () -> salesWorkflow.registerPayment(selected.getId(), amount, key, method));
         } catch (IllegalArgumentException rejected) {
             // Errores de dominio son rechazos definitivos antes de persistir el abono.
             pendingSaleId = null;
             pendingAmount = null;
+            pendingPaymentMethod = null;
             pendingKey = null;
             messageLabel.setText("Abono rechazado: " + safeMessage(rejected));
             return;
         } catch (RuntimeException uncertain) {
             // Conservar la misma clave: la escritura podría haberse confirmado antes del fallo.
             messageLabel.setText("No se pudo confirmar el resultado del abono: " + safeMessage(uncertain)
-                    + " Reintente la misma venta y el mismo importe para resolverlo; no cambie la operación.");
+                    + " Reintente la misma venta con el mismo importe y medio de pago.");
             return;
         }
 
         pendingSaleId = null;
         pendingAmount = null;
+        pendingPaymentMethod = null;
         pendingKey = null;
         String confirmedMessage = "Abono registrado correctamente.";
         messageLabel.setText(confirmedMessage);

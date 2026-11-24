@@ -7,17 +7,17 @@ import com.laexclusiva.model.GeneralDebtMovementType;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Implementación demostrativa de deuda general cuya bitácora dura mientras se ejecuta la aplicación. */
 public final class InMemoryCustomerGeneralDebtWorkflow implements CustomerGeneralDebtWorkflow {
     private final CustomerService customers;
     private final SalesWorkflow sales;
     private final Map<String, StoredRequest> requests = new HashMap<>();
-    private final List<GeneralDebtMovement> movements = new ArrayList<>();
+    private final List<GeneralDebtMovement> movements = new CopyOnWriteArrayList<>();
     private long nextId = 1;
 
     /** Compone la lógica de deuda general existente con la consulta de cartera en memoria. */
@@ -82,7 +82,8 @@ public final class InMemoryCustomerGeneralDebtWorkflow implements CustomerGenera
     }
 
     @Override
-    public synchronized List<GeneralDebtMovement> listMovements(String customerId, LocalDate from,
+    // El guard de clientes consulta la bitacora con el repositorio bloqueado.
+    public List<GeneralDebtMovement> listMovements(String customerId, LocalDate from,
                                                                 LocalDate through, String category) {
         if (from != null && through != null && from.isAfter(through)) {
             throw new IllegalArgumentException("La fecha inicial no puede ser posterior a la final.");

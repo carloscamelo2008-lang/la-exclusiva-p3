@@ -4,6 +4,7 @@ import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
 import com.laexclusiva.model.CashMovement;
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.MovementType;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SaleLine;
@@ -109,6 +110,14 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
     @Override
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                              BigDecimal initialPayment, String idempotencyKey) {
+        return registerSale(lines, sellerId, customerId, initialPayment, idempotencyKey, PaymentMethod.OTRO);
+    }
+
+    /** Registra el pago inicial con el medio informado en el libro de caja. */
+    @Override
+    public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                             BigDecimal initialPayment, String idempotencyKey, PaymentMethod paymentMethod) {
+        requirePaymentMethod(paymentMethod);
         AuthorizationService.requireSaleSeller(sellerId, requireAuthenticatedSales);
         List<StockRequest> requests = validateRequests(lines);
         requireId(sellerId, "El vendedor es obligatorio.");
@@ -121,14 +130,17 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         }
         String fingerprint = SaleRequestFingerprint.calculate(requests, sellerId, customerId, initialPayment);
         return transactions.inTransaction(() -> registerSaleInTransaction(
-                requests, sellerId, customerId, initialPayment, idempotencyKey, fingerprint));
+                requests, sellerId, customerId, initialPayment, idempotencyKey, fingerprint, paymentMethod));
     }
 
     private Sale registerSaleInTransaction(List<StockRequest> requests, String sellerId,
                                            String customerId, BigDecimal initialPayment,
-                                           String idempotencyKey, String fingerprint) {
+                                           String idempotencyKey, String fingerprint, PaymentMethod paymentMethod) {
         Sale existing = findMatchingRequest(idempotencyKey, fingerprint);
-        if (existing != null) return existing;
+        if (existing != null) {
+            if (initialPayment.signum() > 0) verifyCashPaymentMethod("SALE-INITIAL:" + existing.getId(), paymentMethod);
+            return existing;
+        }
 
         Customer customer = customerId == null ? null : customers.findByIdForUpdate(customerId);
         if (customerId != null && customer == null) {
@@ -136,7 +148,10 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         }
         // Otra transacción pudo terminar mientras esta esperaba el bloqueo del cliente.
         existing = findMatchingRequest(idempotencyKey, fingerprint);
-        if (existing != null) return existing;
+        if (existing != null) {
+            if (initialPayment.signum() > 0) verifyCashPaymentMethod("SALE-INITIAL:" + existing.getId(), paymentMethod);
+            return existing;
+        }
 
         Seller seller = sellers.findById(sellerId)
                 .orElseThrow(() -> new IllegalArgumentException("No existe el vendedor " + sellerId + "."));
@@ -171,10 +186,13 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         } else {
             IdempotentSaleRepository.SaveResult saved =
                     idempotentSales.saveOnce(sale, idempotencyKey, fingerprint);
-            if (!saved.inserted()) return saved.sale();
+            if (!saved.inserted()) {
+                verifyCashPaymentMethod("SALE-INITIAL:" + saved.sale().getId(), paymentMethod);
+                return saved.sale();
+            }
             inserted = true;
         }
-        if (inserted) recordInitialCashReceipt(sale);
+        if (inserted) recordInitialCashReceipt(sale, paymentMethod);
 
         Map<String, Integer> unitsByProduct = requiredUnits(requests, productById);
         for (Map.Entry<String, Integer> entry : unitsByProduct.entrySet()) {
@@ -207,6 +225,14 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
      */
     @Override
     public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+        return registerPayment(saleId, amount, idempotencyKey, PaymentMethod.OTRO);
+    }
+
+    /** Registra el abono con el medio informado en el libro de caja. */
+    @Override
+    public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey,
+                                PaymentMethod paymentMethod) {
+        requirePaymentMethod(paymentMethod);
         requireId(saleId, "La venta es obligatoria.");
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El importe del abono debe ser mayor que cero.");
@@ -233,28 +259,45 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
                             "La cartera de ventas supera el saldo agregado del cliente; revise la inconsistencia.");
                 }
                 customerBalances.decreaseBalance(customerId, result.payment().getAmount());
-                recordSaleInstallmentCash(saleId, result.payment(), idempotencyKey);
+                recordSaleInstallmentCash(saleId, result.payment(), idempotencyKey, paymentMethod);
+            } else {
+                verifyCashPaymentMethod("SALE-INSTALLMENT:" + saleId + ":" + idempotencyKey, paymentMethod);
             }
             return findById(saleId);
         });
     }
 
-    private void recordInitialCashReceipt(Sale sale) {
+    private static void requirePaymentMethod(PaymentMethod method) {
+        if (method == null) throw new IllegalArgumentException("El medio de pago es obligatorio.");
+    }
+
+    private void verifyCashPaymentMethod(String key, PaymentMethod requested) {
+        if (cashMovements == null) return;
+        cashMovements.findByIdempotencyKey(key).ifPresent(record -> {
+            PaymentMethod recorded = record.movement().paymentMethod();
+            if (requested != (recorded == null ? PaymentMethod.OTRO : recorded)) {
+                throw new IllegalArgumentException("La clave de pago ya se usó con otro medio.");
+            }
+        });
+    }
+
+    private void recordInitialCashReceipt(Sale sale, PaymentMethod paymentMethod) {
         if (cashMovements == null || sale.getPayments().isEmpty()) return;
         com.laexclusiva.model.SalePayment payment = sale.getPayments().get(0);
         String source = sale.getId();
         CashMovement entry = new CashMovement(0, CashDirection.INCOME, CashCategory.SALE_INITIAL_PAYMENT,
                 payment.getAmount(), payment.getTimestamp(), "Pago inicial de venta " + sale.getId(),
-                "SALE-INITIAL:" + source, "SALE_INITIAL", source, payment.getReceivedByUserId(), null);
+                "SALE-INITIAL:" + source, "SALE_INITIAL", source, payment.getReceivedByUserId(), paymentMethod);
         cashMovements.saveOnce(entry, CashWorkflowJdbc.cashFingerprint(entry));
     }
 
-    private void recordSaleInstallmentCash(String saleId, SalePayment payment, String paymentKey) {
+    private void recordSaleInstallmentCash(String saleId, SalePayment payment, String paymentKey,
+                                           PaymentMethod paymentMethod) {
         if (cashMovements == null) return;
         String source = saleId + ":" + paymentKey;
         CashMovement entry = new CashMovement(0, CashDirection.INCOME, CashCategory.SALE_INSTALLMENT,
                 payment.getAmount(), payment.getTimestamp(), "Abono a venta " + saleId,
-                "SALE-INSTALLMENT:" + source, "SALE_INSTALLMENT", source, payment.getReceivedByUserId(), null);
+                "SALE-INSTALLMENT:" + source, "SALE_INSTALLMENT", source, payment.getReceivedByUserId(), paymentMethod);
         cashMovements.saveOnce(entry, CashWorkflowJdbc.cashFingerprint(entry));
     }
 

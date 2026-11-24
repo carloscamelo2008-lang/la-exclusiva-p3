@@ -59,6 +59,7 @@ import com.laexclusiva.service.SaleService;
 import com.laexclusiva.service.SalesWorkflow;
 import com.laexclusiva.service.SellerService;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -151,9 +152,11 @@ public final class ApplicationServices {
         InMemoryStockMovementRepository movements = new InMemoryStockMovementRepository();
         SaleRepository saleRepository = new InMemorySaleRepository();
         CustomerCollectionRepository collectionRepository = new InMemoryCustomerCollectionRepository();
+        var generalDebtReference = new AtomicReference<InMemoryCustomerGeneralDebtWorkflow>();
         CustomerRepository customerRepository = new CustomerRepository(id ->
                 saleRepository.findAll().stream().anyMatch(sale ->
                         sale.getCustomer() != null && id.equals(sale.getCustomer().getId()))
+                || !generalDebtReference.get().listMovements(id, null, null, null).isEmpty()
                 || collectionRepository.findProfile(id).isPresent()
                 || !collectionRepository.findFollowUps(id).isEmpty()
                 || java.util.Arrays.stream(CustomerCollectionReminder.Status.values())
@@ -165,7 +168,8 @@ public final class ApplicationServices {
         InventoryService inventory = new InventoryService(products, inventoryRepository, movements);
         SaleService saleService = new SaleService(saleRepository, products, inventory, customers, sellers).requireAuthenticatedSales();
         SalesWorkflow sales = new InMemorySalesWorkflow(saleService, customers);
-        CustomerGeneralDebtWorkflow generalDebt = new InMemoryCustomerGeneralDebtWorkflow(customers, sales);
+        var generalDebt = new InMemoryCustomerGeneralDebtWorkflow(customers, sales);
+        generalDebtReference.set(generalDebt);
         CashWorkflow cash = new InMemoryCashWorkflow(sales, generalDebt);
         Services purchases = PurchasesModuleFactory.inMemory(products, inventoryRepository, movements,
                 identity.authorization(), identity.users());

@@ -37,6 +37,7 @@
         <ComboBox fx:id="sellerCombo" promptText="Vendedor" prefWidth="180.0" />
         <ComboBox fx:id="customerCombo" promptText="Cliente (requerido para crédito)" prefWidth="230.0" />
         <VBox spacing="3"><Label text="Pago inicial (COP)" labelFor="${initialPaymentField}"/><TextField fx:id="initialPaymentField" promptText="Pago inicial (COP)" accessibleText="Pago inicial en pesos colombianos; cero para crédito total" prefWidth="180.0" /></VBox>
+        <VBox spacing="3"><Label text="Medio de pago" labelFor="${initialPaymentMethodCombo}"/><ComboBox fx:id="initialPaymentMethodCombo" /></VBox>
         <Label fx:id="totalLabel" text="Total: $ 0,00" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
         <Button fx:id="registerSaleButton" text="Registrar venta" onAction="#handleRegisterSale" />
     </FlowPane>

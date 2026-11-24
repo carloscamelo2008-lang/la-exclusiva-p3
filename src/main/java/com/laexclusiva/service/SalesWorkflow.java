@@ -1,6 +1,7 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Sale;
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.StockRequest;
 import java.math.BigDecimal;
 import java.util.List;
@@ -38,6 +39,11 @@ public interface SalesWorkflow {
         return registerSale(lines, sellerId, customerId, initialPayment);
     }
 
+    default Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                              BigDecimal initialPayment, String idempotencyKey, PaymentMethod paymentMethod) {
+        return registerSale(lines, sellerId, customerId, initialPayment, idempotencyKey);
+    }
+
     /**
      * Registra un abono identificado para que los reintentos no lo apliquen dos veces.
      * En el adaptador JDBC, el pago y el ajuste del saldo del cliente son una sola transacción.
@@ -50,6 +56,11 @@ public interface SalesWorkflow {
      *                                  o el abono supera el saldo
      */
     Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey);
+
+    default Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey,
+                                 PaymentMethod paymentMethod) {
+        return registerPayment(saleId, amount, idempotencyKey);
+    }
 
     /**
      * Busca una venta por su identificador.

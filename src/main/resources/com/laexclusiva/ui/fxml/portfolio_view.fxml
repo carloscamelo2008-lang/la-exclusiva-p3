@@ -51,6 +51,7 @@
     </TableView>
     <HBox fx:id="paymentPane" spacing="8.0"><FlowPane hgap="8" vgap="8" minWidth="0" prefWidth="0" HBox.hgrow="ALWAYS">
         <TextField fx:id="paymentAmountField" promptText="Abono (COP)" prefWidth="150.0" />
+        <ComboBox fx:id="paymentMethodCombo" accessibleText="Medio de pago del abono" />
         <Button fx:id="registerPaymentButton" text="Registrar abono" onAction="#handleRegisterPayment" />
     </FlowPane></HBox>
     <Label text="Deuda general (no asociada a ventas)" style="-fx-font-size: 16px; -fx-font-weight: bold;" />

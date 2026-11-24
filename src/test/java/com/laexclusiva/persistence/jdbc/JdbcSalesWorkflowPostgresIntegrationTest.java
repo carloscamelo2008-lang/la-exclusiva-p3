@@ -9,6 +9,7 @@ import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.InsufficientStockException;
 import com.laexclusiva.model.MovementType;
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
@@ -332,6 +333,77 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
 
         verifyCreditSaleAndPaymentOrder(customerId, true, "race-sale-first-");
         verifyCreditSaleAndPaymentOrder(paymentFirstCustomerId, false, "race-payment-first-");
+    }
+
+    @Test
+    void concurrentCreditSalesCannotExceedCustomerLimit() throws Exception {
+        var customer = customers.findById(customerId);
+        customers.update(new Customer(customerId, customer.getName(), customer.getPhone(), customer.getAddress(),
+                customer.getBalance(), new BigDecimal("150.00")));
+        var request = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
+        var staged = new CountDownLatch(1);
+        var lockAttempted = new CountDownLatch(1);
+        var backendPid = new AtomicInteger(-1);
+        var waitingWorkflow = workflow(saleRepository, observingCustomerLock(customerId, lockAttempted, backendPid));
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Sale> first = pool.submit(() -> transactions.inTransaction(() -> {
+                Sale sale = workflow.registerSale(request, sellerId, customerId, BigDecimal.ZERO);
+                staged.countDown();
+                await(lockAttempted, "La segunda venta no intentó bloquear al cliente.");
+                assertTrue(awaitPostgresBlock(backendPid.get(), 10, TimeUnit.SECONDS));
+                return sale;
+            }));
+            await(staged, "La primera venta no avanzó hasta el commit.");
+            Future<IllegalArgumentException> second = pool.submit(() -> assertThrows(IllegalArgumentException.class,
+                    () -> waitingWorkflow.registerSale(request, sellerId, customerId, BigDecimal.ZERO)));
+
+            first.get(15, TimeUnit.SECONDS);
+            assertTrue(second.get(15, TimeUnit.SECONDS).getMessage().contains("cupo"));
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS));
+        }
+        assertEquals(1, count("SELECT count(*) FROM sale WHERE customer_id = ?", customerId));
+        assertEquals(new BigDecimal("150.00"), customers.findById(customerId).getBalance());
+        assertEquals(new BigDecimal("100.00"), debtQuery.findOutstandingSalesDebt(customerId));
+        assertEquals(2, inventories.findByProductId(productId).orElseThrow().totalUnits());
+    }
+
+    @Test
+    void persistsInitialAndInstallmentPaymentMethodsAndRejectsConflictingRetries() {
+        var cash = new com.laexclusiva.repository.jdbc.CashMovementRepositoryJdbc(provider, transactions);
+        var salesWithCash = new JdbcSalesWorkflow(products, customers, sellers, saleRepository, saleRepository,
+                debtQuery, balanceAdjuster, stockAdjuster, movements, transactions, cash);
+        var request = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
+        var initial = new BigDecimal("25.00");
+        var installment = new BigDecimal("10.00");
+        String saleKey = UUID.randomUUID().toString();
+        String paymentKey = UUID.randomUUID().toString();
+        var sale = salesWithCash.registerSale(request, sellerId, customerId, initial, saleKey, PaymentMethod.TARJETA);
+        String initialCashKey = "SALE-INITIAL:" + sale.getId();
+        String installmentCashKey = "SALE-INSTALLMENT:" + sale.getId() + ":" + paymentKey;
+        try {
+            salesWithCash.registerPayment(sale.getId(), installment, paymentKey, PaymentMethod.TRANSFERENCIA);
+            assertEquals(PaymentMethod.TARJETA, cash.findByIdempotencyKey(initialCashKey).orElseThrow().movement().paymentMethod());
+            assertEquals(PaymentMethod.TRANSFERENCIA, cash.findByIdempotencyKey(installmentCashKey).orElseThrow().movement().paymentMethod());
+            assertEquals(sale.getId(), salesWithCash.registerSale(request, sellerId, customerId, initial,
+                    saleKey, PaymentMethod.TARJETA).getId());
+            assertEquals(2, salesWithCash.registerPayment(sale.getId(), installment, paymentKey,
+                    PaymentMethod.TRANSFERENCIA).getPayments().size());
+            assertThrows(IllegalArgumentException.class, () -> salesWithCash.registerSale(request, sellerId,
+                    customerId, initial, saleKey, PaymentMethod.EFECTIVO));
+            assertThrows(IllegalArgumentException.class, () -> salesWithCash.registerPayment(sale.getId(),
+                    installment, paymentKey, PaymentMethod.EFECTIVO));
+            assertEquals(new BigDecimal("115.00"), customers.findById(customerId).getBalance());
+        } finally {
+            provider.withConnection(connection -> {
+                delete(connection, "DELETE FROM cash_movement WHERE idempotency_key = ?", initialCashKey);
+                delete(connection, "DELETE FROM cash_movement WHERE idempotency_key = ?", installmentCashKey);
+                return null;
+            });
+        }
     }
 
     private void verifyCreditSaleAndPaymentOrder(String targetCustomerId, boolean creditSaleFirst,
