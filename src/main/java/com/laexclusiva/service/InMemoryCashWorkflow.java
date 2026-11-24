@@ -80,7 +80,8 @@ public final class InMemoryCashWorkflow implements CashWorkflow {
                 String source = sale.getId() + ":" + index + ":" + payment.getTimestamp();
                 all.add(new CashMovement(0, CashDirection.INCOME, paymentCategory, payment.getAmount(),
                         payment.getTimestamp(), (initial ? "Pago inicial de venta " : "Abono a venta ") + sale.getId(),
-                        "MEMORY-SALE:" + source, initial ? "SALE_INITIAL" : "SALE_INSTALLMENT", source, payment.getReceivedByUserId(), null));
+                        "MEMORY-SALE:" + source, initial ? "SALE_INITIAL" : "SALE_INSTALLMENT", source,
+                        payment.getReceivedByUserId(), payment.getPaymentMethod()));
             }
         }
         for (GeneralDebtMovement movement : generalDebt.listMovements(null, from, through, null)) {
@@ -88,7 +89,7 @@ public final class InMemoryCashWorkflow implements CashWorkflow {
                 all.add(new CashMovement(0, CashDirection.INCOME, CashCategory.GENERAL_DEBT_PAYMENT,
                         movement.amount(), movement.occurredAt(), movement.description(),
                         "MEMORY-GENERAL:" + movement.idempotencyKey(), "GENERAL_DEBT_PAYMENT",
-                        movement.idempotencyKey(), movement.receivedByUserId(), null));
+                        movement.idempotencyKey(), movement.receivedByUserId(), movement.paymentMethod()));
             }
         }
         return all.stream()

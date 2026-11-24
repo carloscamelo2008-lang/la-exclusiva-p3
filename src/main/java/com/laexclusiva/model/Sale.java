@@ -41,6 +41,11 @@ public final class Sale {
 
     public Sale(LocalDateTime createdAt, Seller seller, Customer customer,
                 List<SaleLine> lines, BigDecimal initialPayment, Long receivedByUserId) {
+        this(createdAt, seller, customer, lines, initialPayment, receivedByUserId, null);
+    }
+
+    public Sale(LocalDateTime createdAt, Seller seller, Customer customer,
+                List<SaleLine> lines, BigDecimal initialPayment, Long receivedByUserId, PaymentMethod paymentMethod) {
         if (createdAt == null) {
             throw new IllegalArgumentException("La fecha y hora de la venta son obligatorias.");
         }
@@ -79,7 +84,7 @@ public final class Sale {
         this.customer = customer == null ? null : customer.copy();
         this.lines = lineSnapshot;
         if (initialPayment.compareTo(BigDecimal.ZERO) > 0) {
-            this.payments.add(new SalePayment(initialPayment, createdAt, receivedByUserId));
+            this.payments.add(new SalePayment(initialPayment, createdAt, receivedByUserId, paymentMethod));
         }
     }
 

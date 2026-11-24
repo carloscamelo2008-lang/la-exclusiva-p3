@@ -57,6 +57,8 @@
     <Label text="Deuda general (no asociada a ventas)" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
     <HBox fx:id="generalDebtPane" spacing="8.0"><FlowPane hgap="8" vgap="8" minWidth="0" prefWidth="0" HBox.hgrow="ALWAYS">
         <TextField fx:id="generalDebtAmountField" promptText="Importe (COP)" prefWidth="135.0" />
+        <ComboBox fx:id="generalDebtPaymentMethodCombo" promptText="Medio de pago"
+                  accessibleText="Medio de pago del abono general" />
         <TextField fx:id="generalDebtCategoryField" promptText="Categoría" prefWidth="150.0" />
         <TextField fx:id="generalDebtDescriptionField" promptText="Descripción auditable" HBox.hgrow="ALWAYS" />
         <Button fx:id="registerGeneralDebtButton" text="Registrar deuda" onAction="#handleRegisterGeneralDebt" />

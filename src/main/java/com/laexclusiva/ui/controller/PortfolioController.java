@@ -56,6 +56,7 @@ public class PortfolioController {
     @FXML private Button registerGeneralDebtButton;
     @FXML private Button payGeneralDebtButton;
     @FXML private TextField generalDebtAmountField;
+    @FXML private ComboBox<PaymentMethod> generalDebtPaymentMethodCombo;
     @FXML private TextField generalDebtCategoryField;
     @FXML private TextField generalDebtDescriptionField;
     @FXML private Label generalDebtOperationKeyLabel;
@@ -94,6 +95,7 @@ public class PortfolioController {
     private void initialize() {
         paymentMethodCombo.getItems().setAll(PaymentMethod.values());
         paymentMethodCombo.setValue(PaymentMethod.EFECTIVO);
+        generalDebtPaymentMethodCombo.getItems().setAll(PaymentMethod.values());
         idColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getId()));
         nameColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getName()));
         balanceColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().getBalance()));
@@ -170,6 +172,8 @@ public class PortfolioController {
         registerGeneralDebtButton.setManaged(canRegisterGeneralDebt);
         payGeneralDebtButton.setVisible(canRegisterPayment);
         payGeneralDebtButton.setManaged(canRegisterPayment);
+        generalDebtPaymentMethodCombo.setVisible(canRegisterPayment);
+        generalDebtPaymentMethodCombo.setManaged(canRegisterPayment);
         if (generalDebtOperationKeyLabel != null) {
             generalDebtOperationKeyLabel.setText(generalDebtWorkflow == null
                     ? "Deuda general no conectada." : "La clave se conserva durante reintentos inciertos.");
@@ -295,6 +299,7 @@ public class PortfolioController {
         BigDecimal amount;
         String category;
         String description;
+        PaymentMethod method;
         String fingerprint;
         try {
             requirePermission(payment ? Permission.REGISTER_PAYMENT : Permission.REGISTER_GENERAL_DEBT,
@@ -305,8 +310,11 @@ public class PortfolioController {
             amount = new BigDecimal(generalDebtAmountField.getText().trim());
             category = requireText(generalDebtCategoryField.getText(), "La categoría es obligatoria.");
             description = requireText(generalDebtDescriptionField.getText(), "La descripción es obligatoria.");
+            method = payment ? generalDebtPaymentMethodCombo.getValue() : null;
+            if (payment && method == null) throw new IllegalArgumentException("Seleccione el medio de pago.");
             fingerprint = String.join("|", payment ? "PAYMENT" : "DEBT", selected.getId(),
-                    amount.stripTrailingZeros().toPlainString(), category, description);
+                    amount.stripTrailingZeros().toPlainString(), category, description,
+                    payment ? method.name() : "");
             if (pendingGeneralFingerprint != null && !pendingGeneralFingerprint.equals(fingerprint)) {
                 throw new IllegalStateException("Hay una operación general de resultado incierto. Reintente los "
                         + "mismos datos antes de iniciar otra operación.");
@@ -324,7 +332,7 @@ public class PortfolioController {
             if (payment) {
                 authorizationService.execute(session, Permission.REGISTER_PAYMENT,
                         () -> generalDebtWorkflow.registerPayment(selected.getId(), amount, category,
-                                description, pendingGeneralKey));
+                                description, pendingGeneralKey, method));
             } else {
                 authorizationService.execute(session, Permission.REGISTER_GENERAL_DEBT,
                         () -> generalDebtWorkflow.registerDebt(selected.getId(), amount, category,

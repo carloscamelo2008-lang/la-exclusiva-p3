@@ -1,5 +1,6 @@
 package com.laexclusiva.ui.controller;
 
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
@@ -277,6 +278,7 @@ class FinancialControllersTest {
             text(loader, "generalDebtAmountField").setText("15.00");
             text(loader, "generalDebtCategoryField").setText("Abono ficticio");
             text(loader, "generalDebtDescriptionField").setText("Abono solo a deuda general");
+            selectGeneralPaymentMethod(loader, PaymentMethod.TRANSFERENCIA);
             generalDebt.throwAfterNextPayment = true;
             button(loader, "payGeneralDebtButton").fire();
             String uncertainKey = label(loader, "generalDebtOperationKeyLabel").getText();
@@ -289,6 +291,10 @@ class FinancialControllersTest {
             assertEquals(uncertainKey, label(loader, "generalDebtOperationKeyLabel").getText());
 
             text(loader, "generalDebtAmountField").setText("15.00");
+            selectGeneralPaymentMethod(loader, PaymentMethod.EFECTIVO);
+            button(loader, "payGeneralDebtButton").fire();
+            assertEquals(1, generalDebt.paymentKeys.size());
+            selectGeneralPaymentMethod(loader, PaymentMethod.TRANSFERENCIA);
             button(loader, "payGeneralDebtButton").fire();
 
             assertEquals(0, services.sales().findById(sale.getId()).calculateTotalPaid().compareTo(BigDecimal.ZERO));
@@ -358,6 +364,7 @@ class FinancialControllersTest {
             text(loader, "generalDebtAmountField").setText("20.00");
             text(loader, "generalDebtCategoryField").setText("Abono ficticio");
             text(loader, "generalDebtDescriptionField").setText("Pago con fallo de consulta");
+            selectGeneralPaymentMethod(loader, PaymentMethod.TRANSFERENCIA);
 
             button(loader, "payGeneralDebtButton").fire();
 
@@ -526,6 +533,11 @@ class FinancialControllersTest {
         @Override public boolean supportsDurableIdempotency() { return true; }
     }
 
+    @SuppressWarnings("unchecked")
+    private static void selectGeneralPaymentMethod(FXMLLoader loader, PaymentMethod method) {
+        ((ComboBox<PaymentMethod>) loader.getNamespace().get("generalDebtPaymentMethodCombo")).setValue(method);
+    }
+
     private static final class UncertainGeneralDebtWorkflow implements CustomerGeneralDebtWorkflow {
         private final CustomerGeneralDebtWorkflow delegate;
         private final java.util.ArrayList<String> paymentKeys = new java.util.ArrayList<>();
@@ -541,10 +553,10 @@ class FinancialControllersTest {
             return delegate.registerDebt(customerId, amount, category, description, idempotencyKey);
         }
         @Override public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
-                                                             String description, String idempotencyKey) {
+                                                             String description, String idempotencyKey, PaymentMethod method) {
             paymentKeys.add(idempotencyKey);
             GeneralDebtMovement result = delegate.registerPayment(customerId, amount, category, description,
-                    idempotencyKey);
+                    idempotencyKey, method);
             if (throwAfterNextPayment) {
                 throwAfterNextPayment = false;
                 throw new IllegalStateException("Respuesta perdida después de guardar.");
@@ -586,10 +598,10 @@ class FinancialControllersTest {
         }
 
         @Override public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
-                                                             String description, String idempotencyKey) {
+                                                             String description, String idempotencyKey, PaymentMethod method) {
             paymentWrites++;
             GeneralDebtMovement confirmed = delegate.registerPayment(customerId, amount, category, description,
-                    idempotencyKey);
+                    idempotencyKey, method);
             failNextBalance = true;
             return confirmed;
         }

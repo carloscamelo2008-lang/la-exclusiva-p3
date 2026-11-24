@@ -1,5 +1,7 @@
 package com.laexclusiva.service;
 
+import com.laexclusiva.model.PaymentMethod;
+
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.InsufficientStockException;
 import com.laexclusiva.model.Sale;
@@ -88,6 +90,11 @@ public class SaleService {
      */
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                             BigDecimal initialPayment) {
+        return registerSale(lines, sellerId, customerId, initialPayment, PaymentMethod.OTRO);
+    }
+
+    Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                      BigDecimal initialPayment, PaymentMethod paymentMethod) {
         authorizeSeller(sellerId);
         List<StockRequest> requests = validateAndCopyRequests(lines);
         requireIdentifier(sellerId, "El identificador del vendedor es obligatorio.");
@@ -113,7 +120,7 @@ public class SaleService {
         }
 
         Sale sale = new Sale(LocalDateTime.now(), seller, customer, saleLines, initialPayment,
-                AuthorizationService.operationUserId());
+                AuthorizationService.operationUserId(), paymentMethod);
         if (saleRepository.findById(sale.getId()).isPresent()) {
             throw new IllegalStateException("Ya existe una venta con el ID " + sale.getId() + ".");
         }
@@ -165,6 +172,10 @@ public class SaleService {
      * @throws IllegalStateException si el saldo agregado del cliente no coincide con sus ventas
      */
     public Sale registerPayment(String saleId, BigDecimal amount) {
+        return registerPayment(saleId, amount, PaymentMethod.OTRO);
+    }
+
+    Sale registerPayment(String saleId, BigDecimal amount, PaymentMethod paymentMethod) {
         requireIdentifier(saleId, "El identificador de la venta es obligatorio.");
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El importe del abono debe ser mayor que cero.");
@@ -191,7 +202,8 @@ public class SaleService {
         CustomerService.SaleDebtSnapshot customerSnapshot =
                 customerService.snapshotSaleDebtState(customerId);
         Sale updated = before.copy();
-        updated.registerPayment(new SalePayment(amount, LocalDateTime.now(), AuthorizationService.operationUserId()));
+        updated.registerPayment(new SalePayment(amount, LocalDateTime.now(),
+                AuthorizationService.operationUserId(), paymentMethod));
         boolean saleUpdateAttempted = false;
         boolean customerPaymentAttempted = false;
         try {

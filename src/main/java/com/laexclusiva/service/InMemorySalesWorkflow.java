@@ -1,6 +1,7 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Sale;
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.StockRequest;
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -11,7 +12,7 @@ import java.util.Map;
 public final class InMemorySalesWorkflow implements SalesWorkflow {
     private final SaleService saleService;
     private final CustomerService customerService;
-    private final Map<PaymentKey, BigDecimal> paymentsByKey = new HashMap<>();
+    private final Map<PaymentKey, PaymentRequest> paymentsByKey = new HashMap<>();
     private final Map<String, SaleRequestRecord> salesByKey = new HashMap<>();
 
     /** Crea el adaptador con los servicios en memoria ya existentes. */
@@ -37,11 +38,13 @@ public final class InMemorySalesWorkflow implements SalesWorkflow {
      * @param customerId cliente o {@code null}
      * @param initialPayment pago inicial
      * @param idempotencyKey clave estable de la pantalla
+     * @param paymentMethod medio informado para el pago inicial
      * @return venta creada o recuperada de esta sesión del proceso
      */
     @Override
     public synchronized Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
-                                          BigDecimal initialPayment, String idempotencyKey) {
+                                          BigDecimal initialPayment, String idempotencyKey, PaymentMethod paymentMethod) {
+        requirePaymentMethod(paymentMethod);
         saleService.authorizeSeller(sellerId);
         if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 64) {
             throw new IllegalArgumentException("La clave de la venta debe tener entre 1 y 64 caracteres.");
@@ -49,13 +52,13 @@ public final class InMemorySalesWorkflow implements SalesWorkflow {
         String fingerprint = SaleRequestFingerprint.calculate(lines, sellerId, customerId, initialPayment);
         SaleRequestRecord existing = salesByKey.get(idempotencyKey);
         if (existing != null) {
-            if (!existing.fingerprint().equals(fingerprint)) {
+            if (!existing.fingerprint().equals(fingerprint) || existing.paymentMethod() != paymentMethod) {
                 throw new IllegalArgumentException("La clave de venta ya se usó con datos diferentes.");
             }
             return saleService.findById(existing.saleId());
         }
-        Sale created = saleService.registerSale(lines, sellerId, customerId, initialPayment);
-        salesByKey.put(idempotencyKey, new SaleRequestRecord(fingerprint, created.getId()));
+        Sale created = saleService.registerSale(lines, sellerId, customerId, initialPayment, paymentMethod);
+        salesByKey.put(idempotencyKey, new SaleRequestRecord(fingerprint, created.getId(), paymentMethod));
         return created;
     }
 
@@ -63,21 +66,23 @@ public final class InMemorySalesWorkflow implements SalesWorkflow {
      * Deduplica reintentos durante la vida del proceso; la clave no es durable en modo demo.
      */
     @Override
-    public synchronized Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+    public synchronized Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey,
+                                             PaymentMethod paymentMethod) {
         requireKey(saleId, idempotencyKey);
+        requirePaymentMethod(paymentMethod);
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El importe del abono debe ser mayor que cero.");
         }
         PaymentKey key = new PaymentKey(saleId, idempotencyKey);
-        BigDecimal existing = paymentsByKey.get(key);
+        PaymentRequest existing = paymentsByKey.get(key);
         if (existing != null) {
-            if (existing.compareTo(amount) != 0) {
-                throw new IllegalArgumentException("La clave de idempotencia ya se usó con otro importe.");
+            if (existing.amount().compareTo(amount) != 0 || existing.paymentMethod() != paymentMethod) {
+                throw new IllegalArgumentException("La clave de idempotencia ya se usó con otro importe o medio.");
             }
             return saleService.findById(saleId);
         }
-        Sale updated = saleService.registerPayment(saleId, amount);
-        paymentsByKey.put(key, amount);
+        Sale updated = saleService.registerPayment(saleId, amount, paymentMethod);
+        paymentsByKey.put(key, new PaymentRequest(amount, paymentMethod));
         return updated;
     }
 
@@ -115,7 +120,12 @@ public final class InMemorySalesWorkflow implements SalesWorkflow {
         }
     }
 
+    private static void requirePaymentMethod(PaymentMethod method) {
+        if (method == null) throw new IllegalArgumentException("El medio de pago es obligatorio.");
+    }
+
     private record PaymentKey(String saleId, String idempotencyKey) { }
-    private record SaleRequestRecord(String fingerprint, String saleId) { }
+    private record PaymentRequest(BigDecimal amount, PaymentMethod paymentMethod) { }
+    private record SaleRequestRecord(String fingerprint, String saleId, PaymentMethod paymentMethod) { }
 
 }

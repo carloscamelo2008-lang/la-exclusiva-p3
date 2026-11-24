@@ -1,5 +1,6 @@
 package com.laexclusiva.persistence.jdbc;
 
+import com.laexclusiva.model.PaymentMethod;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -261,8 +262,12 @@ class CustomerCollectionPostgresIntegrationTest {
             CustomerService customerService = new CustomerService(jdbcCustomers);
             SalesWorkflow sales = new SalesWorkflow() {
                 @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                                   BigDecimal initialPayment, String key, PaymentMethod method) {
+                    throw new UnsupportedOperationException();
+                }
+                @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                         BigDecimal initialPayment) { throw new UnsupportedOperationException(); }
-                @Override public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+                @Override public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey, PaymentMethod method) {
                     throw new UnsupportedOperationException();
                 }
                 @Override public Sale findById(String saleId) { throw new UnsupportedOperationException(); }
@@ -280,7 +285,7 @@ class CustomerCollectionPostgresIntegrationTest {
                     throw new UnsupportedOperationException();
                 }
                 @Override public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount,
-                        String category, String description, String idempotencyKey) {
+                        String category, String description, String idempotencyKey, PaymentMethod method) {
                     throw new UnsupportedOperationException();
                 }
                 @Override public List<GeneralDebtMovement> listMovements(String customerId, LocalDate from,

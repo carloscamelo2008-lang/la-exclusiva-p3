@@ -2,6 +2,7 @@ package com.laexclusiva.service;
 
 import com.laexclusiva.model.CustomerDebtBreakdown;
 import com.laexclusiva.model.GeneralDebtMovement;
+import com.laexclusiva.model.PaymentMethod;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -43,8 +44,13 @@ public interface CustomerGeneralDebtWorkflow {
      * @return pago original o recién creado
      * @throws IllegalArgumentException si excede el saldo general o reutiliza una clave con otra carga útil
      */
+    default GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
+                                                String description, String idempotencyKey) {
+        return registerPayment(customerId, amount, category, description, idempotencyKey, PaymentMethod.OTRO);
+    }
+
     GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
-                                        String description, String idempotencyKey);
+                                        String description, String idempotencyKey, PaymentMethod paymentMethod);
 
     /**
      * Consulta el historial por cliente, rango de fechas y categoría; los filtros pueden omitirse.
