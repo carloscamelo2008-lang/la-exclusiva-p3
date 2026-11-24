@@ -88,6 +88,7 @@ class VisualRefreshTest {
                 ((Button) loader.getNamespace().get("btnDashboard")).fire();
             }
             button(loader, "btnAdminUsers").fire();
+            root.applyCss(); root.layout();
             assertNotNull(root.getCenter().lookup("#usersTable"));
             button(loader, "btnDashboard").fire();
             root.resize(780, 600); root.layout();
@@ -569,14 +570,16 @@ class VisualRefreshTest {
         onFx(() -> {
             ApplicationServices services = ApplicationServices.create("memory", Map.of());
             UserSession session = issue(services, UserRole.ADMINISTRATOR);
-            for (int width : new int[]{1280, 800, 700}) {
+            for (int[] size : new int[][]{{1280, 800}, {1024, 768}, {800, 600}, {700, 600},
+                    {(int) javafx.stage.Screen.getPrimary().getVisualBounds().getWidth(),
+                     (int) javafx.stage.Screen.getPrimary().getVisualBounds().getHeight()}}) {
                 FXMLLoader loader = loader("main_menu_view.fxml");
                 BorderPane root = loader.load();
                 MainController controller = loader.getController();
                 controller.setApplicationServices(services); controller.initSession(session);
-                new Scene(root, width, 820); root.applyCss(); root.layout();
+                new Scene(root, size[0], size[1]); root.applyCss(); root.layout();
                 javafx.scene.image.ImageView mascot = (javafx.scene.image.ImageView) loader.getNamespace().get("mascotImage");
-                javafx.scene.layout.FlowPane banner = (javafx.scene.layout.FlowPane) loader.getNamespace().get("welcomeBanner");
+                javafx.scene.layout.HBox banner = (javafx.scene.layout.HBox) loader.getNamespace().get("welcomeBanner");
                 assertNotNull(mascot.getImage()); assertFalse(mascot.getImage().isError());
                 assertTrue(mascot.isPreserveRatio()); assertNull(mascot.getViewport()); assertNull(mascot.getClip());
                 var bounds = mascot.getBoundsInParent();
@@ -584,9 +587,13 @@ class VisualRefreshTest {
                 assertTrue(bounds.getMinX() >= 0 && bounds.getMinY() >= 0);
                 assertTrue(bounds.getMaxX() <= banner.getWidth() + .5);
                 assertTrue(bounds.getMaxY() <= banner.getHeight() + .5);
+                assertEquals(banner.getInsets().getRight(), banner.getWidth() - bounds.getMaxX(), 1,
+                        "La mascota debe quedar al extremo derecho con el margen del banner");
+                assertTrue(bounds.getWidth() <= banner.getWidth() * .22 + .5,
+                        "La mascota debe reducirse proporcionalmente en ventanas compactas");
                 assertFalse(bounds.intersects(banner.getChildren().get(0).getBoundsInParent()), "No debe tapar el texto");
                 assertFalse(mascot.getAccessibleText().isBlank());
-                snapshot(root, "dashboard-mascot-" + width);
+                snapshot(root, "dashboard-mascot-right-" + size[0] + "x" + size[1]);
             }
             return null;
         });

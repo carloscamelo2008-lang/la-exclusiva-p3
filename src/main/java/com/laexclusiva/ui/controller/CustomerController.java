@@ -47,12 +47,15 @@ public class CustomerController {
         nameColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getName()));
         phoneColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getPhone()));
         addressColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getAddress()));
+        idColumn.setSortType(TableColumn.SortType.ASCENDING);
+        customersTable.getSortOrder().setAll(idColumn);
     }
 
     /** Reemplaza las filas visibles por los clientes obtenidos del servicio configurado. */
     public void showCustomers(List<Customer> customers) {
         requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         customersTable.getItems().setAll(customers);
+        customersTable.sort();
     }
 
     /** Configura el servicio y deriva la visibilidad y autorización del alta de la sesión activa.

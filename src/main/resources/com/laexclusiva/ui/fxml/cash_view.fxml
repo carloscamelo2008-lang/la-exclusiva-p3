@@ -8,12 +8,14 @@
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.VBox?>
 
-<VBox spacing="10.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.laexclusiva.ui.controller.CashController" stylesheets="@../css/theme.css" styleClass="workspace">
+<ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.laexclusiva.ui.controller.CashController" stylesheets="@../css/theme.css" styleClass="workspace"><content>
+<VBox spacing="10.0" minHeight="-Infinity" styleClass="workspace">
     <padding><Insets top="18.0" right="18.0" bottom="18.0" left="18.0" /></padding>
     <Label text="Caja y cierre operativo" style="-fx-font-size: 22px; -fx-font-weight: bold;" />
     <Label text="Las ventas facturadas se muestran separadas del efectivo realmente recibido." wrapText="true" />
@@ -48,7 +50,7 @@
     </FlowPane>
     <Label fx:id="operationKeyLabel" wrapText="true" />
     <Label fx:id="messageLabel" wrapText="true" />
-    <TableView fx:id="movementsTable" VBox.vgrow="ALWAYS" prefHeight="260.0">
+    <TableView fx:id="movementsTable" minHeight="180" VBox.vgrow="ALWAYS" prefHeight="260.0">
         <columns>
             <TableColumn fx:id="dateColumn" text="Fecha y hora" prefWidth="165.0" />
             <TableColumn fx:id="directionColumn" text="Tipo" prefWidth="90.0" />
@@ -58,3 +60,4 @@
         </columns>
     </TableView>
 </VBox>
+</content></ScrollPane>

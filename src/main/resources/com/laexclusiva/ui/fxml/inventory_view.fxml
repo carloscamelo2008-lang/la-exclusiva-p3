@@ -44,8 +44,8 @@
     </VBox>
     <HBox fx:id="stockEntryPane" spacing="8.0"><FlowPane hgap="8" vgap="8" minWidth="0" prefWidth="0" HBox.hgrow="ALWAYS">
         <ComboBox fx:id="productCombo" promptText="Producto" prefWidth="220.0" />
-        <TextField fx:id="fullBasketsField" text="0" promptText="Canastas" prefWidth="95.0" />
-        <TextField fx:id="looseUnitsField" text="0" promptText="Unidades sueltas" prefWidth="150.0" />
+        <VBox spacing="3"><Label text="Canastas" labelFor="${fullBasketsField}"/><TextField fx:id="fullBasketsField" text="0" promptText="Canastas" accessibleText="Canastas completas a ingresar" prefWidth="95.0" /></VBox>
+        <VBox spacing="3"><Label text="Unidades sueltas" labelFor="${looseUnitsField}"/><TextField fx:id="looseUnitsField" text="0" promptText="Unidades sueltas" accessibleText="Unidades sueltas a ingresar" prefWidth="150.0" /></VBox>
         <TextField fx:id="reasonField" promptText="Motivo de entrada" prefWidth="220.0" />
         <Button fx:id="registerStockButton" text="Registrar entrada" onAction="#handleAddStock" />
     </FlowPane></HBox>

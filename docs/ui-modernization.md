@@ -263,3 +263,61 @@ La repetición local de `mvn -o clean verify` con Temurin 17.0.21+9 pasa 841 cas
 Este hallazgo amplía las correcciones anteriores: la revisión local de Windows
 no había reproducido ese recorte de fuente. La CI de la corrección se comprobará
 tras publicar, sin presentar los resultados anteriores fallidos como aprobados.
+## Ajuste local tras revisión personal — mascota al extremo derecho
+
+Cambio solicitado el 23/11/2026, pendiente de aprobación visual antes de publicar.
+Ambos menús mantienen marcado idéntico. El banner cambia de FlowPane a HBox:
+la columna de bienvenida crece para ocupar el espacio disponible y la mascota
+queda en el extremo derecho con el padding de 28 px del banner. No hay posiciones
+absolutas. El ImageView conserva proporciones, limita su altura a 300 px y su ancho
+al 22 % del banner, por lo que se reduce en ventanas pequeñas sin cubrir el texto.
+No se modifica el PNG original ni las acciones, permisos o controladores.
+
+La prueba de mascota conserva las comprobaciones de integridad, proporción,
+ausencia de recorte y solapamiento; añade margen derecho y reducción proporcional.
+Renderiza 1280×800, 1024×768, 800×600, 700×600 y el área de trabajo detectada de
+1536×816 unidades lógicas. Esta última escena es una prueba de distribución al
+ancho disponible, no una captura de una ventana nativa maximizada.
+
+Capturas reales de escenas JavaFX:
+
+- [1280×800](ui-review/dashboard-mascot-right-1280x800.png).
+- [1024×768](ui-review/dashboard-mascot-right-1024x768.png).
+- [800×600](ui-review/dashboard-mascot-right-800x600.png).
+- [Área de trabajo 1536×816](ui-review/dashboard-mascot-right-1536x816.png).
+
+Temurin 17.0.21+9: pruebas dirigidas 18/18; `mvn -o clean verify`: **841 casos,
+781 aprobados, 60 PostgreSQL omitidos, 0 fallos y 0 errores**. Sin SQL ni migraciones.
+La aplicación real se volvió a abrir en Windows y se comprobaron visibilidad y
+estado nativo maximizado. Para dejar el dashboard listo se utilizó un arranque
+local temporal en target, ignorado por Git, que llama App y envía credenciales demo
+al formulario de login real; no se sustituye ni se modifica autenticación. Las
+credenciales se muestran en un cuadro local y no se guardan en archivos o registros.
+Una tentativa de captura de escritorio quedó obstruida por otra ventana y no se
+incluye como evidencia; las imágenes enlazadas son escenas JavaFX de las pruebas.
+
+**Animación pendiente:** solo existe el PNG estático aprobado. No se dispone de una
+secuencia aprobada que conserve el diseño exacto durante el gesto de beber; no se
+ha deformado ni generado otro personaje. [Especificación del recurso necesario](mascot-animation-resource.md):
+PNG RGBA o GIF transparente de 4–6 s, inicio/final en reposo, ciclo de unos 25 s,
+alternativa estática y futura opción de reducir/desactivar movimiento. No se añade
+un control de animación sin funcionalidad real. El ciclo de vida visual deberá
+coordinarse si requiere integrar MainController.
+
+No se integró el PR #27, no hubo merge, commit ni push. El PR #25 permanece Draft.
+Los cambios locales esperan la aprobación visual del usuario.
+## Ajustes visuales compactos aprobados para publicación
+
+El usuario autorizó separar la modernización de la herramienta de demostración.
+Este grupo conserva la alineación derecha de la mascota y adapta únicamente la
+presentación: etiquetas persistentes en campos numéricos, columnas sin recorte,
+estados/envases/roles en español y orden inicial de Clientes por ID. Ventas, Caja
+y Usuarios conservan acceso a sus formularios e historiales mediante desplazamiento.
+Las acciones, cálculos, permisos y servicios no cambian. La animación de sorbo
+continúa pendiente de un recurso gráfico aprobado; no se deforma el PNG original.
+
+Las pruebas existentes conservan sus aserciones de seguridad y negocio; solo se
+adaptan la búsqueda dentro de ScrollPane, el pase de CSS/layout y textos traducidos.
+Este commit no incorpora carga de datos ni recursos de demostración. La herramienta
+queda para el siguiente commit independiente. No se integra el PR #27 ni se hace merge.
+Validación independiente del índice visual exportado: Temurin 17.0.21+9, Maven offline clean verify, 841 casos; 781 aprobados, 60 PostgreSQL omitidos y cero fallos/errores. La carga y las pruebas de la nueva demo no formaron parte de esa copia.

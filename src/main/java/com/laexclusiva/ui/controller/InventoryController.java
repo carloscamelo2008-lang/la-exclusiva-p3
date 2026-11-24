@@ -74,7 +74,8 @@ public class InventoryController {
         basketsColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().stock().fullBaskets()));
         looseColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().stock().looseUnits()));
         movementProductColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().productId()));
-        movementTypeColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().type().name()));
+        movementTypeColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(
+                cell.getValue().type() == com.laexclusiva.model.MovementType.ENTRY ? "Entrada" : "Salida"));
         movementUnitsColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().units()));
         movementReasonColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().reason()));
         movementTimeColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(
@@ -86,8 +87,20 @@ public class InventoryController {
         containerTypeCombo.getItems().setAll(ContainerType.values());
         containerTypeCombo.setValue(ContainerType.NON_RETURNABLE_CAN);
         containerTypeCombo.setConverter(new StringConverter<>() {
-            @Override public String toString(ContainerType value) { return value == null ? "" : value.name(); }
-            @Override public ContainerType fromString(String value) { return ContainerType.valueOf(value); }
+            @Override public String toString(ContainerType value) {
+                if (value == null) return "";
+                return switch (value) {
+                    case RETURNABLE_EXCLUSIVE -> "Retornable exclusivo";
+                    case RETURNABLE_SHARED -> "Retornable compartido";
+                    case NON_RETURNABLE_CAN -> "No retornable (lata)";
+                };
+            }
+            @Override public ContainerType fromString(String value) {
+                for (ContainerType type : ContainerType.values()) {
+                    if (type.name().equals(value) || toString(type).equals(value)) return type;
+                }
+                throw new IllegalArgumentException("Tipo de envase desconocido.");
+            }
         });
     }
 

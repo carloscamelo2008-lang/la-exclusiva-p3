@@ -7,26 +7,28 @@
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.VBox?>
 
-<VBox spacing="10.0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="com.laexclusiva.ui.controller.SalesController" stylesheets="@../css/theme.css" styleClass="workspace">
+<ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.laexclusiva.ui.controller.SalesController" stylesheets="@../css/theme.css" styleClass="workspace"><content>
+<VBox spacing="10.0" minHeight="-Infinity" styleClass="workspace">
     <padding><Insets top="14.0" right="16.0" bottom="14.0" left="16.0" /></padding>
     <Label text="Registrar venta" style="-fx-font-size: 21px; -fx-font-weight: bold;" />
     <FlowPane hgap="8.0" vgap="8">
         <ComboBox fx:id="productCombo" promptText="Producto" prefWidth="240.0" />
         <ComboBox fx:id="presentationCombo" promptText="Presentación" prefWidth="150.0" />
-        <TextField fx:id="quantityField" promptText="Cantidad" prefWidth="90.0" />
+        <VBox spacing="3"><Label text="Cantidad" labelFor="${quantityField}"/><TextField fx:id="quantityField" promptText="Cantidad" accessibleText="Cantidad de la presentación elegida" prefWidth="100.0" /></VBox>
         <Button fx:id="addLineButton" text="Agregar línea" onAction="#handleAddLine" />
         <Button fx:id="removeLineButton" text="Quitar seleccionada" onAction="#handleRemoveLine" />
     </FlowPane>
-    <TableView fx:id="cartTable" prefHeight="170.0">
+    <TableView fx:id="cartTable" minHeight="150" prefHeight="170.0">
         <columns>
             <TableColumn fx:id="cartProductColumn" text="Producto" prefWidth="190.0" />
             <TableColumn fx:id="cartPresentationColumn" text="Presentación" prefWidth="115.0" />
-            <TableColumn fx:id="cartQuantityColumn" text="Cantidad" prefWidth="75.0" />
+            <TableColumn fx:id="cartQuantityColumn" text="Cantidad" prefWidth="110.0" />
             <TableColumn fx:id="cartPriceColumn" text="Precio" prefWidth="105.0" />
             <TableColumn fx:id="cartSubtotalColumn" text="Subtotal" prefWidth="115.0" />
         </columns>
@@ -34,7 +36,7 @@
     <FlowPane hgap="8.0" vgap="8">
         <ComboBox fx:id="sellerCombo" promptText="Vendedor" prefWidth="180.0" />
         <ComboBox fx:id="customerCombo" promptText="Cliente (requerido para crédito)" prefWidth="230.0" />
-        <TextField fx:id="initialPaymentField" promptText="Pago inicial (COP)" prefWidth="150.0" />
+        <VBox spacing="3"><Label text="Pago inicial (COP)" labelFor="${initialPaymentField}"/><TextField fx:id="initialPaymentField" promptText="Pago inicial (COP)" accessibleText="Pago inicial en pesos colombianos; cero para crédito total" prefWidth="180.0" /></VBox>
         <Label fx:id="totalLabel" text="Total: $ 0,00" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
         <Button fx:id="registerSaleButton" text="Registrar venta" onAction="#handleRegisterSale" />
     </FlowPane>
@@ -44,7 +46,7 @@
         <Label text="Ventas registradas" style="-fx-font-size: 17px; -fx-font-weight: bold;" />
         <Button fx:id="refreshHistoryButton" text="Actualizar historial" onAction="#handleRefreshHistory" />
     </FlowPane>
-    <TableView fx:id="historyTable" VBox.vgrow="ALWAYS">
+    <TableView fx:id="historyTable" minHeight="180" prefHeight="250" VBox.vgrow="ALWAYS">
         <columns>
             <TableColumn fx:id="historyIdColumn" text="Venta" prefWidth="330.0" />
             <TableColumn fx:id="historyCustomerColumn" text="Cliente" prefWidth="160.0" />
@@ -53,3 +55,4 @@
         </columns>
     </TableView>
 </VBox>
+</content></ScrollPane>

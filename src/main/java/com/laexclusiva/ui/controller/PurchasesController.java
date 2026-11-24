@@ -116,12 +116,12 @@ public final class PurchasesController {
     @FXML
     private void initialize() {
         column(suppliersTable, "Proveedor", 220, Supplier::name);
-        column(suppliersTable, "Identificación tributaria", 165, Supplier::taxId);
+        column(suppliersTable, "Identificación tributaria", 230, Supplier::taxId);
         column(suppliersTable, "Contacto", 200, Supplier::contactInfo);
         column(suppliersTable, "Estado", 105, supplier -> supplier.active() ? "Activo" : "Inactivo");
         column(ordersTable, "Pedido", 85, PurchaseOrder::id);
         column(ordersTable, "Proveedor (ID)", 120, PurchaseOrder::supplierId);
-        column(ordersTable, "Estado", 120, order -> order.status().name());
+        column(ordersTable, "Estado", 155, order -> statusLabel(order.status()));
         column(ordersTable, "Creado por", 145, PurchaseOrder::createdByUsername);
         column(ordersTable, "Notas", 240, PurchaseOrder::notes);
         column(orderLinesTable, "Línea", 75, PurchaseOrderLine::id);
@@ -345,7 +345,7 @@ public final class PurchasesController {
             case PENDING, PARTIAL -> true;
             case COMPLETED, CANCELLED -> false;
         };
-        selectedOrderLabel.setText("Pedido " + selectedOrderId + " · " + details.order().status());
+        selectedOrderLabel.setText("Pedido " + selectedOrderId + " · " + statusLabel(details.order().status()));
         updatePermissions();
         refreshHistory();
     }
@@ -447,6 +447,16 @@ public final class PurchasesController {
 
     private static String optional(TextField field) {
         return field.getText().isBlank() ? null : field.getText();
+    }
+
+    /** Etiquetas de presentación; los estados y sus transiciones permanecen intactos. */
+    private static String statusLabel(com.laexclusiva.model.PurchaseOrderStatus status) {
+        return switch (status) {
+            case PENDING -> "Pendiente";
+            case PARTIAL -> "Recepción parcial";
+            case COMPLETED -> "Recibido";
+            case CANCELLED -> "Cancelado";
+        };
     }
 
     private static <T> T selected(TableView<T> table, String message) {

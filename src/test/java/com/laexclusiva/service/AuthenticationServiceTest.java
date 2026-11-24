@@ -825,6 +825,7 @@ public class AuthenticationServiceTest {
                 assertNotNull(scrollContent(adminMenu.getCenter()).lookup("#ordersTable"));
                 assertFalse(scrollContent(adminMenu.getCenter()).lookup("#supplierEditor").isDisabled());
                 ((Button) adminMenu.lookup("#btnAdminUsers")).fire();
+                adminMenu.applyCss(); adminMenu.layout();
                 assertNotNull(adminMenu.lookup("#usersTable"), "La pantalla administrativa debe cargar la tabla de usuarios");
                 ((Button) adminMenu.lookup("#btnCustomers")).fire();
                 stage.setMaximized(true);
