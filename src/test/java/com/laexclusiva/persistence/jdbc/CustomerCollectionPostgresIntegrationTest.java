@@ -359,8 +359,10 @@ class CustomerCollectionPostgresIntegrationTest {
                             .filter(value -> value.result() == AdministrativeAuditEvent.Result.UNCERTAIN)
                             .findFirst().orElseThrow().result());
         } finally {
-            cleanup(provider, firstCustomerId, actor.getId(), firstCustomerCreated, actorCreated);
+            // Ambos clientes comparten el actor: eliminar primero todas sus referencias
+            // antes de borrar la cuenta temporal (FK RESTRICT de seguimiento/auditoría).
             cleanup(provider, secondCustomerId, actor.getId(), secondCustomerCreated, false);
+            cleanup(provider, firstCustomerId, actor.getId(), firstCustomerCreated, actorCreated);
         }
     }
 
