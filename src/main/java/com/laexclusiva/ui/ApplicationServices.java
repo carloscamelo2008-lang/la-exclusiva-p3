@@ -7,6 +7,8 @@ import com.laexclusiva.persistence.jdbc.InventoryStockAdjusterJdbc;
 import com.laexclusiva.persistence.jdbc.JdbcConnectionProvider;
 import com.laexclusiva.persistence.jdbc.JdbcTransactionManager;
 import com.laexclusiva.repository.CashMovementRepository;
+import com.laexclusiva.repository.AdministrativeAuditRepository;
+import com.laexclusiva.repository.CustomerCollectionRepository;
 import com.laexclusiva.persistence.jdbc.ProductRepositoryJdbc;
 import com.laexclusiva.persistence.jdbc.StockMovementRepositoryJdbc;
 import com.laexclusiva.repository.CustomerDebtQuery;
@@ -15,6 +17,8 @@ import com.laexclusiva.repository.CustomerRepositoryInterface;
 import com.laexclusiva.repository.InMemoryInventoryRepository;
 import com.laexclusiva.repository.InMemoryProductRepository;
 import com.laexclusiva.repository.InMemorySaleRepository;
+import com.laexclusiva.repository.InMemoryAdministrativeAuditRepository;
+import com.laexclusiva.repository.InMemoryCustomerCollectionRepository;
 import com.laexclusiva.repository.InMemoryStockMovementRepository;
 import com.laexclusiva.repository.InventoryRepository;
 import com.laexclusiva.repository.ProductRepository;
@@ -27,9 +31,18 @@ import com.laexclusiva.repository.jdbc.CustomerDebtQueryJdbc;
 import com.laexclusiva.repository.jdbc.CustomerGeneralDebtMovementRepositoryJdbc;
 import com.laexclusiva.repository.jdbc.CashMovementRepositoryJdbc;
 import com.laexclusiva.repository.jdbc.CustomerRepositoryJdbc;
+import com.laexclusiva.repository.jdbc.CustomerCollectionRepositoryJdbc;
+import com.laexclusiva.repository.jdbc.AdministrativeAuditRepositoryJdbc;
 import com.laexclusiva.repository.jdbc.SaleRepositoryJdbc;
 import com.laexclusiva.repository.jdbc.SellerRepositoryJdbc;
 import com.laexclusiva.service.CustomerService;
+import com.laexclusiva.service.CollectionAssistantService;
+import com.laexclusiva.service.AccountStatementPdfGenerator;
+import com.laexclusiva.service.ColombiaContactWindow;
+import com.laexclusiva.service.EmailDeliveryProvider;
+import com.laexclusiva.service.SimulatedEmailDeliveryProvider;
+import com.laexclusiva.service.SmtpEmailDeliveryProvider;
+import com.laexclusiva.service.AdministrativeAuditService;
 import com.laexclusiva.service.CustomerGeneralDebtWorkflow;
 import com.laexclusiva.service.CustomerGeneralDebtWorkflowJdbc;
 import com.laexclusiva.service.InMemoryCustomerGeneralDebtWorkflow;
@@ -46,6 +59,12 @@ import com.laexclusiva.service.SaleService;
 import com.laexclusiva.service.SalesWorkflow;
 import com.laexclusiva.service.SellerService;
 import java.util.Map;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /** Ensambla una sola configuración coherente de repositorios para la aplicación JavaFX. */
 public final class ApplicationServices {
@@ -64,12 +83,16 @@ public final class ApplicationServices {
     private final CashWorkflow cash;
     private final IdentityServices identity;
     private final Services purchases;
+    private final CollectionAssistantService collections;
+    private final AdministrativeAuditService administrativeAudit;
 
     private ApplicationServices(CustomerService customers, SellerService sellers, ProductService products,
                                 InventoryService inventory, SalesWorkflow sales,
                                 CustomerDebtQuery debtQuery, boolean postgresMode,
                                 CustomerGeneralDebtWorkflow generalDebt, CashWorkflow cash,
-                                IdentityServices identity, Services purchases) {
+                                IdentityServices identity, Services purchases,
+                                CollectionAssistantService collections,
+                                AdministrativeAuditService administrativeAudit) {
         this.customers = customers;
         this.sellers = sellers;
         this.products = products;
@@ -81,6 +104,8 @@ public final class ApplicationServices {
         this.cash = cash;
         this.identity = identity;
         this.purchases = purchases;
+        this.collections = collections;
+        this.administrativeAudit = administrativeAudit;
     }
 
     /**
@@ -105,18 +130,23 @@ public final class ApplicationServices {
         if (mode == null || mode.isBlank()) {
             throw new IllegalArgumentException(MODE_ENV + " debe ser memory o postgres.");
         }
+        Map<String, String> configured = environment == null ? Map.of() : Map.copyOf(environment);
         return switch (mode.trim().toLowerCase()) {
-            case MEMORY_MODE -> inMemory();
-            case POSTGRES_MODE -> postgres(DatabaseConfig.fromEnvironment(environment));
+            case MEMORY_MODE -> inMemory(configured);
+            case POSTGRES_MODE -> postgres(DatabaseConfig.fromEnvironment(configured), configured);
             default -> throw new IllegalArgumentException(MODE_ENV + " solo admite memory o postgres.");
         };
     }
 
-    private static ApplicationServices inMemory() {
+    private static ApplicationServices inMemory(Map<String, String> environment) {
+        if (enabled(environment, "LAEXCLUSIVA_SMTP_ENABLED")) {
+            throw new IllegalArgumentException("El envío SMTP real requiere persistencia PostgreSQL.");
+        }
         CustomerRepositoryInterface customerRepository = new CustomerRepository();
         SellerRepositoryInterface sellerRepository = new SellerRepository();
         SellerService sellers = new SellerService(sellerRepository);
-        IdentityServices identity = IdentityServices.inMemory(sellers);
+        InMemoryAdministrativeAuditRepository auditRepository = new InMemoryAdministrativeAuditRepository();
+        IdentityServices identity = IdentityServices.inMemory(sellers, auditRepository);
         ProductRepository productRepository = new InMemoryProductRepository();
         InMemoryInventoryRepository inventoryRepository = new InMemoryInventoryRepository();
         InMemoryStockMovementRepository movements = new InMemoryStockMovementRepository();
@@ -131,17 +161,26 @@ public final class ApplicationServices {
         CashWorkflow cash = new InMemoryCashWorkflow(sales, generalDebt);
         Services purchases = PurchasesModuleFactory.inMemory(products, inventoryRepository, movements,
                 identity.authorization(), identity.users());
+        CustomerCollectionRepository collectionRepository = new InMemoryCustomerCollectionRepository();
+        AdministrativeAuditService auditService = new AdministrativeAuditService(auditRepository, identity.authorization());
+        CollectionAssistantService collections = new CollectionAssistantService(customers, sales, generalDebt,
+                collectionRepository, auditRepository, identity.authorization(), new SimulatedEmailDeliveryProvider(),
+                new AccountStatementPdfGenerator(), contactWindow(environment), directTransactions(),
+                Clock.system(ZoneId.of("America/Bogota")), environment.get("LAEXCLUSIVA_PAYMENT_KEY"),
+                enabled(environment, "LAEXCLUSIVA_PAYMENT_KEY_OWNER_CONFIRMED"),
+                enabled(environment, "LAEXCLUSIVA_PAYMENT_KEY_VERIFIED_BY_ADMIN"));
         return new ApplicationServices(customers, sellers, products, inventory, sales, null, false,
-                generalDebt, cash, identity, purchases);
+                generalDebt, cash, identity, purchases, collections, auditService);
     }
 
-    private static ApplicationServices postgres(DatabaseConfig config) {
+    private static ApplicationServices postgres(DatabaseConfig config, Map<String, String> environment) {
         JdbcConnectionProvider provider = new JdbcConnectionProvider(config);
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
         CustomerRepositoryJdbc customerRepository = new CustomerRepositoryJdbc(provider);
         SellerRepositoryJdbc sellerRepository = new SellerRepositoryJdbc(provider);
         SellerService sellers = new SellerService(sellerRepository);
-        IdentityServices identity = IdentityServices.postgres(provider, sellers);
+        AdministrativeAuditRepository auditRepository = new AdministrativeAuditRepositoryJdbc(provider);
+        IdentityServices identity = IdentityServices.postgres(provider, sellers, auditRepository);
         ProductRepositoryJdbc productRepository = new ProductRepositoryJdbc(provider, transactions);
         InventoryRepositoryJdbc inventoryRepository = new InventoryRepositoryJdbc(provider, transactions);
         StockMovementRepositoryJdbc movementRepository = new StockMovementRepositoryJdbc(provider);
@@ -163,10 +202,68 @@ public final class ApplicationServices {
         CustomerGeneralDebtWorkflow generalDebt = new CustomerGeneralDebtWorkflowJdbc(customerRepository,
                 debtQuery, customerBalances, generalDebtRepository, cashRepository, transactions);
         CashWorkflow cash = new CashWorkflowJdbc(cashRepository, transactions);
+        CustomerCollectionRepository collectionRepository = new CustomerCollectionRepositoryJdbc(provider, transactions);
+        AdministrativeAuditService auditService = new AdministrativeAuditService(auditRepository,
+                identity.authorization());
+        CollectionAssistantService collections = new CollectionAssistantService(customers, sales, generalDebt,
+                collectionRepository, auditRepository, identity.authorization(), emailProvider(environment),
+                new AccountStatementPdfGenerator(), contactWindow(environment), transactions,
+                Clock.system(ZoneId.of("America/Bogota")), environment.get("LAEXCLUSIVA_PAYMENT_KEY"),
+                enabled(environment, "LAEXCLUSIVA_PAYMENT_KEY_OWNER_CONFIRMED"),
+                enabled(environment, "LAEXCLUSIVA_PAYMENT_KEY_VERIFIED_BY_ADMIN"));
         Services purchases = PurchasesModuleFactory.postgres(provider, identity.authorization(), identity.users(),
                 products, transactions, inventoryAdjuster, movementRepository);
         return new ApplicationServices(customers, sellers, products, inventory, sales, debtQuery, true,
-                generalDebt, cash, identity, purchases);
+                generalDebt, cash, identity, purchases, collections, auditService);
+    }
+
+    private static EmailDeliveryProvider emailProvider(Map<String, String> environment) {
+        if (!enabled(environment, "LAEXCLUSIVA_SMTP_ENABLED")) return new SimulatedEmailDeliveryProvider();
+        try {
+            return new SmtpEmailDeliveryProvider(required(environment, "LAEXCLUSIVA_SMTP_HOST"),
+                    Integer.parseInt(required(environment, "LAEXCLUSIVA_SMTP_PORT")),
+                    required(environment, "LAEXCLUSIVA_SMTP_USERNAME"),
+                    required(environment, "LAEXCLUSIVA_SMTP_PASSWORD"),
+                    required(environment, "LAEXCLUSIVA_SMTP_FROM"));
+        } catch (RuntimeException invalidConfiguration) {
+            throw new IllegalArgumentException("La configuración SMTP habilitada está incompleta o no es válida.");
+        }
+    }
+
+    private static ColombiaContactWindow contactWindow(Map<String, String> environment) {
+        String yearValue = environment.get("LAEXCLUSIVA_COLOMBIA_HOLIDAYS_YEAR");
+        String holidayValues = environment.get("LAEXCLUSIVA_COLOMBIA_HOLIDAYS");
+        int currentYear = LocalDate.now(ZoneId.of("America/Bogota")).getYear();
+        if (yearValue == null || holidayValues == null || holidayValues.isBlank()) {
+            return new ColombiaContactWindow(Set.of(), false);
+        }
+        try {
+            if (Integer.parseInt(yearValue) != currentYear) return new ColombiaContactWindow(Set.of(), false);
+            Set<LocalDate> holidays = Arrays.stream(holidayValues.split(","))
+                    .map(String::trim).map(LocalDate::parse).collect(Collectors.toUnmodifiableSet());
+            if (holidays.isEmpty() || holidays.stream().anyMatch(date -> date.getYear() != currentYear)) {
+                return new ColombiaContactWindow(Set.of(), false);
+            }
+            return new ColombiaContactWindow(holidays, true);
+        } catch (RuntimeException invalidCalendar) {
+            return new ColombiaContactWindow(Set.of(), false);
+        }
+    }
+
+    private static boolean enabled(Map<String, String> environment, String key) {
+        return "true".equalsIgnoreCase(environment.getOrDefault(key, "false").trim());
+    }
+
+    private static String required(Map<String, String> environment, String key) {
+        String value = environment.get(key);
+        if (value == null || value.isBlank()) throw new IllegalArgumentException();
+        return value;
+    }
+
+    private static com.laexclusiva.persistence.jdbc.TransactionBoundary directTransactions() {
+        return new com.laexclusiva.persistence.jdbc.TransactionBoundary() {
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> operation) { return operation.get(); }
+        };
     }
 
     /** Servicio de clientes conectado al repositorio seleccionado. */
@@ -193,4 +290,8 @@ public final class ApplicationServices {
     public com.laexclusiva.service.AuthorizationService authorization() { return identity.authorization(); }
     /** Proveedores, pedidos y recepción conectados al mismo catálogo, inventario y autoridad. */
     public Services purchases() { return purchases; }
+    /** Asistente de cartera, preferencias de contacto, estados comerciales y avisos revisables. */
+    public CollectionAssistantService collectionAssistant() { return collections; }
+    /** Lectura de auditoría administrativa revalidada contra la sesión actual. */
+    public AdministrativeAuditService administrativeAudit() { return administrativeAudit; }
 }

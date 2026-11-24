@@ -252,6 +252,17 @@ class IdentityApplicationPostgresIntegrationTest {
         executeCleanup(config, connection -> {
             for (Long id : ids) {
                 if (id == null) continue;
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        DELETE FROM administrative_audit_event
+                        WHERE actor_user_id = ? OR (target_type = 'USER' AND target_reference = ?)
+                        """)) {
+                    statement.setLong(1, id);
+                    statement.setString(2, id.toString());
+                    statement.executeUpdate();
+                }
+            }
+            for (Long id : ids) {
+                if (id == null) continue;
                 try (PreparedStatement statement = connection.prepareStatement("DELETE FROM user_account WHERE id = ?")) {
                     statement.setLong(1, id);
                     statement.executeUpdate();
@@ -344,6 +355,18 @@ class IdentityApplicationPostgresIntegrationTest {
             try (PreparedStatement statement = connection.prepareStatement("DELETE FROM beer_product WHERE id = ?")) {
                 statement.setString(1, productId);
                 statement.executeUpdate();
+            }
+            try (PreparedStatement auditCleanup = connection.prepareStatement("""
+                    DELETE FROM administrative_audit_event
+                    WHERE actor_user_id IN (SELECT id FROM user_account WHERE username = ?)
+                       OR (target_type = 'USER' AND target_reference IN
+                           (SELECT id::text FROM user_account WHERE username = ?))
+                       OR (target_type = 'CUSTOMER' AND target_reference = ?)
+                    """)) {
+                auditCleanup.setString(1, username);
+                auditCleanup.setString(2, username);
+                auditCleanup.setString(3, customerId);
+                auditCleanup.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement("DELETE FROM customer WHERE id = ?")) {
                 statement.setString(1, customerId);

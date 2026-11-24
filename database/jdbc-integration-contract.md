@@ -546,3 +546,43 @@ La evidencia específica de transacciones, consultas, FXML, límites del modo me
 PostgreSQL se mantiene en [sales-jdbc-integration.md](sales-jdbc-integration.md). Las pruebas
 permanecen restringidas a fixtures ficticios propios de `la_exclusiva_test`; ninguna limpieza de
 estas suites afecta filas ajenas.
+
+## Cartera asistida, avisos y auditoría (V107/V108/V109)
+
+V107 agrega `customer_collection_profile`, `customer_collection_follow_up` y
+`customer_collection_reminder`; V108 agrega `administrative_audit_event`; V109 agrega el identificador
+del intento, propietario efímero y evidencia cerrada del proveedor. También añade
+`RECONCILIATION_REQUIRED` y el resultado de auditoría `UNCERTAIN`. Son cambios aditivos y no reescriben
+cliente, venta o pago históricos. V109 conserva en conciliación los intentos antiguos `SENDING` y
+`FAILED/PROVIDER_FAILED`, pues pudieron haber alcanzado el transporte. La aplicación no aplica
+migraciones automáticamente.
+Antes de habilitar esta parte de la aplicación, el esquema destino debe tener las versiones
+prerrequisito de clientes, ventas, libros financieros y usuarios, además de V107, V108 y V109. Un esquema
+incompleto debe fallar cerrado.
+
+En modo PostgreSQL, `ApplicationServices.collectionAssistant()` compone adaptadores JDBC sobre el
+mismo `JdbcConnectionProvider` y la transacción compartida. Los avisos semanales son únicos por
+cliente/semana ISO. Antes de llamar al proveedor, una transacción bloquea cliente y perfil, verifica
+el saldo/destinatario/perfil capturados y reclama el aviso con un UUID único y el propietario de la
+instancia. La evidencia persistida solo puede ser `SMTP_ACCEPTED`, `SMTP_REJECTED`,
+`SMTP_OUTCOME_UNCERTAIN` o `SIMULATED`; no contiene secretos, destinatario ni cuerpo. La entrega
+externa no es atómica con PostgreSQL: el UUID permite consultar el intento y un fallo de respuesta o
+de persistencia se conserva como `RECONCILIATION_REQUIRED`, sin reintento automático. Al iniciar
+otro servicio, un `SENDING` abandonado pasa a conciliación conservando su identificador.
+
+La vista previa se enlaza a la sesión y versión de seguridad actuales, destino, versión del perfil,
+saldo, huella del contenido financiero y SHA-256 del PDF exacto revisado. El token de cinco minutos
+es de un uso y el servicio vuelve a validar el estado antes de enviar esos mismos bytes. La
+preparación semanal puede refrescar la misma fila solamente antes del primer intento si cambió el
+saldo; registra `BALANCE_CHANGED` y exige una nueva revisión. Nunca revive un aviso reclamado,
+aceptado, rechazado o pendiente de conciliación.
+
+El perfil y el seguimiento no modifican el modelo histórico de clientes. El detalle de contacto
+requiere `MANAGE_COLLECTION`; dashboard/PDF requieren `VIEW_PORTFOLIO`; lectura de auditoría requiere
+`VIEW_ADMIN_AUDIT`. La guía de consentimiento, variables de correo, política horaria, contadores del
+dashboard, estado de cuenta y límites conocidos está en
+[`docs/collection-reminders-security.md`](../docs/collection-reminders-security.md).
+
+`CustomerCollectionPostgresIntegrationTest` solo se activa en el laboratorio efímero de GitHub
+Actions. Una omisión Surefire local sin las propiedades/URL de prueba no acredita validación
+PostgreSQL. Las pruebas no envían correos reales y no se deben ejecutar contra una base compartida.

@@ -18,4 +18,31 @@ $empty$;
 \ir ../../migrations/V104__user_security_version.sql
 \ir ../../migrations/V105__unique_active_user_seller.sql
 \ir ../../migrations/V106__user_account_instance_identity.sql
+\ir ../../migrations/V107__customer_collection_preferences.sql
+\ir ../../migrations/V108__administrative_audit.sql
+
+-- Fixtures efímeros para verificar la conversión segura de filas de V107/V108 antes de V109.
+INSERT INTO public.customer (id,name,phone,address,balance)
+VALUES ('IV_V109_LEGACY', 'Fixture de migración', '0000000000', 'Ficticia', 85000.00);
+INSERT INTO public.customer_collection_reminder
+  (customer_id,week_start,channel,status,balance_snapshot,generated_at,last_attempt_at,attempt_count,result_code)
+VALUES ('IV_V109_LEGACY','2026-11-23','EMAIL','SENDING',85000.00,'2026-11-23 10:00:00',NULL,0,'PREPARED'),
+       ('IV_V109_LEGACY','2026-11-30','EMAIL','FAILED',65000.00,'2026-11-23 10:00:00',
+        '2026-11-23 10:05:00',1,'PROVIDER_FAILED');
+\ir ../../migrations/V109__reminder_review_and_delivery_reconciliation.sql
+DO $v109_backfill$
+BEGIN
+    IF (SELECT count(*) FROM customer_collection_reminder
+        WHERE customer_id='IV_V109_LEGACY' AND status='RECONCILIATION_REQUIRED'
+          AND result_code='PROVIDER_OUTCOME_UNCERTAIN' AND attempt_count >= 1
+          AND attempt_id IS NOT NULL AND attempt_owner_id IS NULL
+          AND provider_evidence='SMTP_OUTCOME_UNCERTAIN') <> 2
+       OR (SELECT count(DISTINCT attempt_id) FROM customer_collection_reminder
+           WHERE customer_id='IV_V109_LEGACY') <> 2 THEN
+        RAISE EXCEPTION 'V109 no conservó como inciertos los intentos históricos sin certeza';
+    END IF;
+END;
+$v109_backfill$;
+DELETE FROM customer_collection_reminder WHERE customer_id='IV_V109_LEGACY';
+DELETE FROM customer WHERE id='IV_V109_LEGACY';
 \echo 'Esquema completo aplicado al cluster temporal aislado.'

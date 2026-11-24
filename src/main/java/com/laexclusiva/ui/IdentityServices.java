@@ -15,6 +15,7 @@ import com.laexclusiva.service.UserAdministrationBoundary;
 import com.laexclusiva.service.UserManagementService;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
+import com.laexclusiva.repository.AdministrativeAuditRepository;
 
 /** Compone repositorio, autenticación, autorización y administración para una aplicación. */
 public final class IdentityServices {
@@ -25,13 +26,13 @@ public final class IdentityServices {
     private final UserAdministrationBoundary administrationBoundary;
 
     private IdentityServices(UserRepository users, UserAdministrationBoundary administrationBoundary,
-                             SellerService sellers) {
+                             SellerService sellers, AdministrativeAuditRepository audit) {
         this.users = users;
         this.authentication = new AuthenticationService(users);
         this.authorization = new AuthorizationService(authentication.sessions());
         this.administrationBoundary = administrationBoundary;
         this.userManagement = new UserManagementService(users, administrationBoundary, authorization,
-                sellers, authentication);
+                sellers, authentication, audit);
     }
 
     /**
@@ -44,8 +45,13 @@ public final class IdentityServices {
 
     /** Compone identidad en memoria con consulta de vendedores para la administración de cuentas. */
     public static IdentityServices inMemory(SellerService sellers) {
+        return inMemory(sellers, null);
+    }
+
+    /** Compone administración con un registro de auditoría del mismo modo de almacenamiento. */
+    public static IdentityServices inMemory(SellerService sellers, AdministrativeAuditRepository audit) {
         InMemoryUserRepository users = new InMemoryUserRepository();
-        return new IdentityServices(users, new InMemoryUserAdministrationBoundary(users), sellers);
+        return new IdentityServices(users, new InMemoryUserAdministrationBoundary(users), sellers, audit);
     }
 
     /**
@@ -61,11 +67,17 @@ public final class IdentityServices {
 
     /** Compone usuarios, autorización y administración sobre el proveedor JDBC compartido. */
     public static IdentityServices postgres(JdbcConnectionProvider provider, SellerService sellers) {
+        return postgres(provider, sellers, null);
+    }
+
+    /** Compone usuarios, autorización y auditoría con el proveedor JDBC compartido. */
+    public static IdentityServices postgres(JdbcConnectionProvider provider, SellerService sellers,
+                                            AdministrativeAuditRepository audit) {
         if (provider == null) {
             throw new IllegalArgumentException("El proveedor JDBC es obligatorio.");
         }
         return new IdentityServices(new UserRepositoryJdbc(provider),
-                new JdbcUserAdministrationBoundary(provider), sellers);
+                new JdbcUserAdministrationBoundary(provider), sellers, audit);
     }
 
     /** @return la misma instancia de repositorio durante la vida de la composición */
