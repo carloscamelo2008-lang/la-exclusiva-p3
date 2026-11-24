@@ -1,5 +1,7 @@
 package com.laexclusiva.persistence.jdbc;
 
+import com.laexclusiva.model.PaymentMethod;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -138,7 +140,7 @@ class FinancialOperationsPostgresIntegrationTest {
         assertEquals(0, count("SELECT COUNT(*) FROM beer_product WHERE id = ?", productId));
 
         customers.save(new Customer(customerId, "Cliente ficticio finanzas", "3000000301",
-                "Dirección ficticia aislada", new BigDecimal("30.00")));
+                "Dirección ficticia aislada", new BigDecimal("30.00"), new BigDecimal("10000000")));
         customerCreated = true;
         sellers.save(new Seller(sellerId, "Vendedor ficticio finanzas", "3000000302", "Dirección ficticia"));
         sellerCreated = true;
@@ -200,9 +202,11 @@ class FinancialOperationsPostgresIntegrationTest {
         assertEquals(new BigDecimal("30.00"), generalDebt.findBalance(customerId).generalDebt());
         String key = "general-pay-" + UUID.randomUUID();
         var first = generalDebt.registerPayment(customerId, new BigDecimal("20.00"),
-                "Pago semanal", "Abono general ficticio", key);
+                "Pago semanal", "Abono general ficticio", key, PaymentMethod.TRANSFERENCIA);
         var replay = generalDebt.registerPayment(customerId, new BigDecimal("20.00"),
-                "Pago semanal", "Abono general ficticio", key);
+                "Pago semanal", "Abono general ficticio", key, PaymentMethod.TRANSFERENCIA);
+        assertThrows(IllegalArgumentException.class, () -> generalDebt.registerPayment(customerId,
+                new BigDecimal("20.00"), "Pago semanal", "Abono general ficticio", key, PaymentMethod.EFECTIVO));
 
         assertEquals(first.id(), replay.id());
         assertEquals(GeneralDebtMovementType.PAYMENT, first.type());
@@ -212,6 +216,10 @@ class FinancialOperationsPostgresIntegrationTest {
         assertEquals(1, count("SELECT COUNT(*) FROM customer_general_debt_movement WHERE idempotency_key = ?", key));
         assertEquals(1, count("SELECT COUNT(*) FROM cash_movement WHERE source_type = 'GENERAL_DEBT_PAYMENT' "
                 + "AND source_reference = ?", key));
+        var receipt = cashRepository.findByIdempotencyKey("GENERAL-DEBT-PAYMENT:" + key).orElseThrow().movement();
+        assertEquals(PaymentMethod.TRANSFERENCIA, receipt.paymentMethod());
+        assertEquals(new BigDecimal("20.00"), receipt.amount());
+        assertEquals(first.receivedByUserId(), receipt.userId());
         assertEquals(1, sales.findById(saleId).getPayments().size(),
                 "El pago general no se transforma en abono de una venta.");
         assertThrows(IllegalArgumentException.class, () -> generalDebt.registerPayment(customerId,

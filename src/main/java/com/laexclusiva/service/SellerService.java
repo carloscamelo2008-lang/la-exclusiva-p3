@@ -23,6 +23,14 @@ public class SellerService {
         return sellerRepository.findById(id);
     }
 
+    public void setActive(String id, boolean active) {
+        sellerRepository.setActive(id, active);
+    }
+
+    public List<Seller> getActiveSellers() {
+        return sellerRepository.findAll().stream().filter(Seller::isActive).toList();
+    }
+
     public List<Seller> getAllSellers() {
         return sellerRepository.findAll();
     }

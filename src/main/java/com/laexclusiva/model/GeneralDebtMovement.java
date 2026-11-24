@@ -6,7 +6,19 @@ import java.time.LocalDateTime;
 /** Registro histórico auditable de una creación o pago de deuda general. */
 public record GeneralDebtMovement(long id, String customerId, GeneralDebtMovementType type,
                                   BigDecimal amount, LocalDateTime occurredAt, String category,
-                                  String description, String idempotencyKey) {
+                                  String description, String idempotencyKey, Long receivedByUserId,
+                                  PaymentMethod paymentMethod) {
+    public GeneralDebtMovement(long id, String customerId, GeneralDebtMovementType type,
+                               BigDecimal amount, LocalDateTime occurredAt, String category,
+                               String description, String idempotencyKey, Long receivedByUserId) {
+        this(id, customerId, type, amount, occurredAt, category, description, idempotencyKey, receivedByUserId, null);
+    }
+
+    public GeneralDebtMovement(long id, String customerId, GeneralDebtMovementType type,
+                               BigDecimal amount, LocalDateTime occurredAt, String category,
+                               String description, String idempotencyKey) {
+        this(id, customerId, type, amount, occurredAt, category, description, idempotencyKey, null);
+    }
     /** Valida los campos de dominio conservando la identidad generada por PostgreSQL. */
     public GeneralDebtMovement {
         if (id < 0 || customerId == null || customerId.isBlank() || type == null

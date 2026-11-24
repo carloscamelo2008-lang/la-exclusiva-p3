@@ -35,6 +35,13 @@ public interface CashWorkflow {
      * @param category filtro de categoría o {@code null}
      * @return movimientos visibles para caja
      */
+    /** Registra el medio declarado en el formulario de caja. */
+    default CashMovement registerMovement(CashDirection direction, CashCategory category, BigDecimal amount,
+            LocalDateTime occurredAt, String description, String idempotencyKey,
+            com.laexclusiva.model.PaymentMethod paymentMethod) {
+        return registerMovement(direction, category, amount, occurredAt, description, idempotencyKey);
+    }
+
     List<CashMovement> listMovements(LocalDate from, LocalDate through, CashCategory category);
 
     /**

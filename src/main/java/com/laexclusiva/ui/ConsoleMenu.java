@@ -170,8 +170,9 @@ public final class ConsoleMenu {
             return;
         }
         try {
-            inventoryService.addStock(product.getId(), baskets, looseUnits,
-                    "Ingreso de existencias registrado desde consola");
+            authorizationService.execute(session, Permission.MANAGE_INVENTORY_ENTRIES,
+                    () -> inventoryService.addStock(product.getId(), baskets, looseUnits,
+                            "Ingreso de existencias registrado desde consola"));
             StockSnapshot stock = inventoryService.getStock(product.getId());
             out.printf("Existencias registradas. Inventario actual: %d canastas, %d unidades sueltas (%d unidades).%n",
                     stock.fullBaskets(), stock.looseUnits(), stock.totalUnits());
@@ -375,10 +376,13 @@ public final class ConsoleMenu {
 
         // SaleService coordina el descuento, la deuda del cliente y el guardado de la venta.
         try {
-            Sale sale = saleService.registerSale(lines, seller.getId(), customerId, initialPayment);
+            String selectedCustomerId = customerId;
+            BigDecimal confirmedPayment = initialPayment;
+            Sale sale = authorizationService.execute(session, Permission.REGISTER_SALE,
+                    () -> saleService.registerSale(lines, seller.getId(), selectedCustomerId, confirmedPayment));
             out.println("Venta registrada correctamente.");
             printSaleSummary(sale);
-        } catch (IllegalArgumentException | IllegalStateException | InsufficientStockException exception) {
+        } catch (IllegalArgumentException | IllegalStateException | InsufficientStockException | SecurityException exception) {
             out.println("No se pudo registrar la venta: " + exception.getMessage());
         }
     }
@@ -447,7 +451,8 @@ public final class ConsoleMenu {
         if (amount == null) return;
         try {
             // El servicio actualiza el pago de la venta y el saldo asignado al cliente.
-            Sale updatedSale = saleService.registerPayment(saleId, amount);
+            Sale updatedSale = authorizationService.execute(session, Permission.REGISTER_PAYMENT,
+                    () -> saleService.registerPayment(saleId, amount));
             out.println("Abono registrado correctamente.");
             out.println("Total pagado: " + formatMoney(updatedSale.calculateTotalPaid()));
             out.println("Saldo pendiente: " + formatMoney(updatedSale.calculateBalance()));

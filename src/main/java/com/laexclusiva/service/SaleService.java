@@ -1,5 +1,7 @@
 package com.laexclusiva.service;
 
+import com.laexclusiva.model.PaymentMethod;
+
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.InsufficientStockException;
 import com.laexclusiva.model.Sale;
@@ -22,6 +24,17 @@ import java.util.List;
  * {@link CustomerService} los cambios de existencias y saldo asociados.
  */
 public class SaleService {
+    private boolean requireAuthenticatedSales;
+
+    void authorizeSeller(String sellerId) {
+        AuthorizationService.requireSaleSeller(sellerId, requireAuthenticatedSales);
+    }
+
+    /** Activa la exigencia de actor para la composición de la aplicación. */
+    public SaleService requireAuthenticatedSales() {
+        requireAuthenticatedSales = true;
+        return this;
+    }
 
     private final SaleRepository saleRepository;
     private final ProductService productService;
@@ -77,12 +90,20 @@ public class SaleService {
      */
     public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                             BigDecimal initialPayment) {
+        return registerSale(lines, sellerId, customerId, initialPayment, PaymentMethod.OTRO);
+    }
+
+    Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                      BigDecimal initialPayment, PaymentMethod paymentMethod) {
+        authorizeSeller(sellerId);
         List<StockRequest> requests = validateAndCopyRequests(lines);
         requireIdentifier(sellerId, "El identificador del vendedor es obligatorio.");
 
         Seller seller = sellerService.getSellerById(sellerId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No existe el vendedor con ID " + sellerId + "."));
+
+        if (!seller.isActive()) throw new IllegalArgumentException("El vendedor está inactivo.");
 
         Customer customer = null;
         if (customerId != null) {
@@ -98,11 +119,13 @@ public class SaleService {
                     request.presentation(), request.quantity()));
         }
 
-        Sale sale = new Sale(LocalDateTime.now(), seller, customer, saleLines, initialPayment);
+        Sale sale = new Sale(LocalDateTime.now(), seller, customer, saleLines, initialPayment,
+                AuthorizationService.operationUserId(), paymentMethod);
         if (saleRepository.findById(sale.getId()).isPresent()) {
             throw new IllegalStateException("Ya existe una venta con el ID " + sale.getId() + ".");
         }
         BigDecimal pendingBalance = sale.calculateBalance();
+        if (customer != null) customer.requireAvailableCredit(pendingBalance);
         CustomerService.SaleDebtSnapshot customerSnapshot = pendingBalance.signum() > 0
                 ? customerService.snapshotSaleDebtState(customer.getId()) : null;
         InventoryService.DiscountReceipt discount = null;
@@ -149,6 +172,10 @@ public class SaleService {
      * @throws IllegalStateException si el saldo agregado del cliente no coincide con sus ventas
      */
     public Sale registerPayment(String saleId, BigDecimal amount) {
+        return registerPayment(saleId, amount, PaymentMethod.OTRO);
+    }
+
+    Sale registerPayment(String saleId, BigDecimal amount, PaymentMethod paymentMethod) {
         requireIdentifier(saleId, "El identificador de la venta es obligatorio.");
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El importe del abono debe ser mayor que cero.");
@@ -175,7 +202,8 @@ public class SaleService {
         CustomerService.SaleDebtSnapshot customerSnapshot =
                 customerService.snapshotSaleDebtState(customerId);
         Sale updated = before.copy();
-        updated.registerPayment(new SalePayment(amount, LocalDateTime.now()));
+        updated.registerPayment(new SalePayment(amount, LocalDateTime.now(),
+                AuthorizationService.operationUserId(), paymentMethod));
         boolean saleUpdateAttempted = false;
         boolean customerPaymentAttempted = false;
         try {

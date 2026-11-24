@@ -9,6 +9,9 @@ BEGIN
 END;
 $empty$;
 \ir ../../migrations/V001__initial_schema.sql
+-- V112 cambia seller y agrega actores a los libros creados por V101 y V102.
+\ir ../../migrations/V101__general_debt_ledger.sql
+\ir ../../migrations/V102__cash_ledger.sql
 
 -- Cuentas ficticias anteriores a V104/V106, con identificadores exclusivos del laboratorio.
 INSERT INTO public.seller VALUES ('iv_seller', 'Fixture identidad', '000', 'Ficticia');
@@ -101,4 +104,16 @@ BEGIN
     END IF;
 END;
 $rollback$;
+
+-- Completa el esquema que usa JDBC sin cambiar las pruebas históricas anteriores.
+\ir ../../migrations/V110__customer_phone_uniqueness.sql
+\ir ../../migrations/V111__customer_credit_limit.sql
+\ir ../../migrations/V112__audit_actors_and_payment_methods.sql
+DO $seller_active$
+BEGIN
+    IF (SELECT active FROM public.seller WHERE id = 'iv_seller') IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION 'V112 no dejó activo al vendedor histórico';
+    END IF;
+END;
+$seller_active$;
 \echo 'Validaciones SQL completadas; solo fixtures históricos propios permanecen hasta desechar el contenedor.'

@@ -37,13 +37,20 @@ public final class InMemoryCashWorkflow implements CashWorkflow {
     public synchronized CashMovement registerMovement(CashDirection direction, CashCategory category,
                                                        BigDecimal amount, LocalDateTime occurredAt,
                                                        String description, String idempotencyKey) {
+        return registerMovement(direction, category, amount, occurredAt, description, idempotencyKey, null);
+    }
+
+    @Override
+    public synchronized CashMovement registerMovement(CashDirection direction, CashCategory category,
+            BigDecimal amount, LocalDateTime occurredAt, String description, String idempotencyKey,
+            com.laexclusiva.model.PaymentMethod paymentMethod) {
         if (direction == null || category == null || category.direction() != direction || !category.isManualEntry()
                 || amount == null || amount.signum() <= 0 || occurredAt == null
                 || description == null || description.isBlank() || idempotencyKey == null || idempotencyKey.isBlank()) {
             throw new IllegalArgumentException("El movimiento manual requiere datos válidos y una categoría manual.");
         }
         CashMovement proposed = new CashMovement(0, direction, category, amount, occurredAt,
-                description.trim(), idempotencyKey, "MANUAL", idempotencyKey);
+                description.trim(), idempotencyKey, "MANUAL", idempotencyKey, AuthorizationService.operationUserId(), paymentMethod);
         String fingerprint = CashWorkflowJdbc.cashFingerprint(proposed);
         ManualRecord old = manualByKey.get(idempotencyKey);
         if (old != null) {
@@ -73,7 +80,8 @@ public final class InMemoryCashWorkflow implements CashWorkflow {
                 String source = sale.getId() + ":" + index + ":" + payment.getTimestamp();
                 all.add(new CashMovement(0, CashDirection.INCOME, paymentCategory, payment.getAmount(),
                         payment.getTimestamp(), (initial ? "Pago inicial de venta " : "Abono a venta ") + sale.getId(),
-                        "MEMORY-SALE:" + source, initial ? "SALE_INITIAL" : "SALE_INSTALLMENT", source));
+                        "MEMORY-SALE:" + source, initial ? "SALE_INITIAL" : "SALE_INSTALLMENT", source,
+                        payment.getReceivedByUserId(), payment.getPaymentMethod()));
             }
         }
         for (GeneralDebtMovement movement : generalDebt.listMovements(null, from, through, null)) {
@@ -81,7 +89,7 @@ public final class InMemoryCashWorkflow implements CashWorkflow {
                 all.add(new CashMovement(0, CashDirection.INCOME, CashCategory.GENERAL_DEBT_PAYMENT,
                         movement.amount(), movement.occurredAt(), movement.description(),
                         "MEMORY-GENERAL:" + movement.idempotencyKey(), "GENERAL_DEBT_PAYMENT",
-                        movement.idempotencyKey()));
+                        movement.idempotencyKey(), movement.receivedByUserId(), movement.paymentMethod()));
             }
         }
         return all.stream()
@@ -113,7 +121,7 @@ public final class InMemoryCashWorkflow implements CashWorkflow {
     private static CashMovement withId(CashMovement movement, long id) {
         return new CashMovement(id, movement.direction(), movement.category(), movement.amount(),
                 movement.occurredAt(), movement.description(), movement.idempotencyKey(),
-                movement.sourceType(), movement.sourceReference());
+                movement.sourceType(), movement.sourceReference(), movement.userId(), movement.paymentMethod());
     }
 
     private static BigDecimal sum(List<CashMovement> rows, CashCategory category) {

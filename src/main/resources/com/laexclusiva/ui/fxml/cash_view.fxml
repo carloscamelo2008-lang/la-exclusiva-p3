@@ -18,7 +18,7 @@
 <VBox spacing="10.0" minHeight="-Infinity" styleClass="workspace">
     <padding><Insets top="18.0" right="18.0" bottom="18.0" left="18.0" /></padding>
     <Label text="Caja y cierre operativo" style="-fx-font-size: 22px; -fx-font-weight: bold;" />
-    <Label text="Las ventas facturadas se muestran separadas del efectivo realmente recibido." wrapText="true" />
+    <Label text="Los recaudos por ventas incluyen pagos de todos los medios." wrapText="true" />
     <Label fx:id="historicalCoverageNoticeLabel"
            text="Cobertura histórica: los cobros anteriores a la activación del libro podrían no estar incluidos. No hay una fecha de cobertura verificable y no se reconstruyen cobros automáticamente. La facturación histórica se muestra por separado."
            wrapText="true" style="-fx-text-fill: #8a4b08; -fx-font-weight: bold;" />
@@ -30,7 +30,7 @@
     </FlowPane>
     <FlowPane hgap="14.0" vgap="8">
         <Label fx:id="invoicedSalesLabel" text="Ventas facturadas: $ 0,00" />
-        <Label fx:id="saleReceiptsLabel" text="Efectivo recibido por ventas: $ 0,00" />
+        <Label fx:id="saleReceiptsLabel" text="Recaudos por ventas: $ 0,00" />
         <Label fx:id="generalDebtReceiptsLabel" text="Pagos de deuda general: $ 0,00" />
     </FlowPane>
     <FlowPane hgap="14.0" vgap="8">
@@ -44,6 +44,7 @@
         <DatePicker fx:id="movementDatePicker" promptText="Fecha" />
         <ComboBox fx:id="directionCombo" prefWidth="115.0" />
         <ComboBox fx:id="entryCategoryCombo" prefWidth="190.0" />
+        <ComboBox fx:id="paymentMethodCombo" promptText="Medio de pago" prefWidth="130" />
         <TextField fx:id="amountField" promptText="Importe (COP)" prefWidth="135.0" />
         <TextField fx:id="descriptionField" promptText="Descripción auditable" HBox.hgrow="ALWAYS" />
         <Button fx:id="registerMovementButton" text="Registrar" onAction="#handleRegisterMovement" />
@@ -56,6 +57,7 @@
             <TableColumn fx:id="directionColumn" text="Tipo" prefWidth="90.0" />
             <TableColumn fx:id="categoryColumn" text="Categoría" prefWidth="190.0" />
             <TableColumn fx:id="amountColumn" text="Importe" prefWidth="120.0" />
+            <TableColumn fx:id="paymentMethodColumn" text="Medio de pago" prefWidth="145.0" editable="false" />
             <TableColumn fx:id="descriptionColumn" text="Descripción" prefWidth="300.0" />
         </columns>
     </TableView>

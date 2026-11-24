@@ -11,6 +11,9 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Label;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.layout.HBox;
 
 import java.util.List;
@@ -29,6 +32,9 @@ public class CustomerController {
     @FXML private TextField phoneField;
     @FXML private TextField addressField;
     @FXML private Label messageLabel;
+    @FXML private TextField creditLimitField;
+    @FXML private Button registerCustomerButton, editCustomerButton, cancelEditButton, deleteCustomerButton;
+    private String editingId;
 
     private CustomerService customerService;
     private UserSession session;
@@ -48,7 +54,7 @@ public class CustomerController {
         phoneColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getPhone()));
         addressColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().getAddress()));
         idColumn.setSortType(TableColumn.SortType.ASCENDING);
-        customersTable.getSortOrder().setAll(idColumn);
+        customersTable.getSortOrder().setAll(List.of(idColumn));
     }
 
     /** Reemplaza las filas visibles por los clientes obtenidos del servicio configurado. */
@@ -58,7 +64,7 @@ public class CustomerController {
         customersTable.sort();
     }
 
-    /** Configura el servicio y deriva la visibilidad y autorización del alta de la sesión activa.
+    /** Configura el servicio y ajusta las acciones disponibles según los permisos vigentes.
      *
      * @param service servicio de clientes
      * @param session sesión autenticada
@@ -72,26 +78,155 @@ public class CustomerController {
         this.session = session;
         requirePermission(Permission.VIEW_CUSTOMER, "No tiene permiso para consultar clientes.");
         boolean canRegister = authorizationService.hasPermission(session, Permission.REGISTER_CUSTOMER);
-        registrationPane.setVisible(canRegister);
-        registrationPane.setManaged(canRegister);
+        registrationPane.setVisible(canRegister || authorizationService.hasPermission(session, Permission.EDIT_CUSTOMER));
+        registrationPane.setManaged(registrationPane.isVisible());
+        showAction(editCustomerButton, Permission.EDIT_CUSTOMER);
+        showAction(deleteCustomerButton, Permission.DELETE_CUSTOMER);
+        resetForm();
     }
 
     @FXML
     private void handleRegisterCustomer() {
+        boolean editing = editingId != null;
         try {
-            requirePermission(Permission.REGISTER_CUSTOMER, "No tiene permiso para registrar clientes.");
-            authorizationService.execute(session, Permission.REGISTER_CUSTOMER, () ->
-                    customerService.registerCustomer(idField.getText(), nameField.getText(),
-                            phoneField.getText(), addressField.getText()));
-            messageLabel.setText("Cliente registrado.");
-            idField.clear();
-            nameField.clear();
-            phoneField.clear();
-            addressField.clear();
+            if (editing) {
+                authorizationService.execute(session, Permission.EDIT_CUSTOMER, () ->
+                        customerService.updateCustomer(editingId, nameField.getText(), phoneField.getText(),
+                                addressField.getText(), creditLimit()));
+            } else {
+                requirePermission(Permission.REGISTER_CUSTOMER, "No tiene permiso para registrar clientes.");
+                if (!confirmSimilarNames()) return;
+                authorizationService.execute(session, Permission.REGISTER_CUSTOMER, () -> {
+                    if (authorizationService.hasPermission(session, Permission.EDIT_CUSTOMER)
+                            && !creditLimitField.getText().isBlank()) {
+                        customerService.registerCustomer(idField.getText(), nameField.getText(), phoneField.getText(),
+                                addressField.getText(), creditLimit());
+                    } else {
+                        customerService.registerCustomer(idField.getText(), nameField.getText(), phoneField.getText(),
+                                addressField.getText());
+                    }
+                });
+            }
+        } catch (RuntimeException failure) {
+            messageLabel.setText((editing ? "No se actualizó el cliente: " : "No se registró el cliente: ")
+                    + safeMessage(failure));
+            return;
+        }
+        resetForm();
+        refreshAfterWrite(editing ? "Cliente actualizado." : "Cliente registrado.");
+    }
+
+    private boolean confirmSimilarNames() {
+        var matches = authorizationService.execute(session, Permission.VIEW_CUSTOMER,
+                () -> customerService.findSimilarNames(nameField.getText()));
+        if (matches.isEmpty()) return true;
+
+        String names = matches.stream().limit(5).map(customer -> customer.getName() + " (" + customer.getId() + ")")
+                .collect(java.util.stream.Collectors.joining("\n"));
+        Alert warning = new Alert(Alert.AlertType.CONFIRMATION,
+                "Ya hay clientes con ese nombre:\n" + names + "\n\n¿Desea registrar otro cliente?",
+                ButtonType.CANCEL, ButtonType.OK);
+        warning.setTitle("Posibles clientes duplicados");
+        warning.setHeaderText(null);
+        if (customersTable.getScene() != null) warning.initOwner(customersTable.getScene().getWindow());
+        return warning.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
+    }
+
+    private java.math.BigDecimal creditLimit() {
+        String text = creditLimitField.getText().trim();
+        if (text.isEmpty()) return java.math.BigDecimal.ZERO;
+        try {
+            return new java.math.BigDecimal(text.replace(',', '.'));
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("Ingrese un cupo de crédito válido.");
+        }
+    }
+
+    @FXML
+    private void handleEditCustomer() {
+        try {
+            requirePermission(Permission.EDIT_CUSTOMER, "No tiene permiso para editar clientes.");
+            Customer customer = selectedCustomer();
+            editingId = customer.getId();
+            idField.setText(editingId);
+            idField.setDisable(true);
+            nameField.setText(customer.getName());
+            phoneField.setText(customer.getPhone());
+            addressField.setText(customer.getAddress());
+            creditLimitField.setText(customer.getCreditLimit().toPlainString());
+            registerCustomerButton.setText("Guardar cambios");
+            registerCustomerButton.setDisable(false);
+            cancelEditButton.setVisible(true);
+            cancelEditButton.setManaged(true);
+            nameField.requestFocus();
+        } catch (RuntimeException failure) {
+            messageLabel.setText(safeMessage(failure));
+        }
+    }
+
+    @FXML
+    private void handleCancelEdit() {
+        resetForm();
+    }
+
+    @FXML
+    private void handleDeleteCustomer() {
+        String id;
+        try {
+            requirePermission(Permission.DELETE_CUSTOMER, "No tiene permiso para eliminar clientes.");
+            Customer customer = selectedCustomer();
+            id = customer.getId();
+            Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
+                    "¿Eliminar al cliente " + customer.getName() + "?", ButtonType.CANCEL, ButtonType.OK);
+            confirmation.setTitle("Eliminar cliente");
+            confirmation.setHeaderText(null);
+            if (customersTable.getScene() != null) confirmation.initOwner(customersTable.getScene().getWindow());
+            if (confirmation.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            authorizationService.execute(session, Permission.DELETE_CUSTOMER, () -> customerService.deleteCustomer(id));
+        } catch (RuntimeException failure) {
+            messageLabel.setText("No se eliminó el cliente: " + safeMessage(failure));
+            return;
+        }
+        if (id.equals(editingId)) resetForm();
+        refreshAfterWrite("Cliente eliminado.");
+    }
+
+    private Customer selectedCustomer() {
+        Customer customer = customersTable.getSelectionModel().getSelectedItem();
+        if (customer == null) throw new IllegalArgumentException("Seleccione un cliente de la tabla.");
+        return customer;
+    }
+
+    private void showAction(Button button, Permission permission) {
+        boolean allowed = authorizationService.hasPermission(session, permission);
+        button.setVisible(allowed);
+        button.setManaged(allowed);
+    }
+
+    private void resetForm() {
+        editingId = null;
+        idField.clear();
+        idField.setDisable(false);
+        nameField.clear();
+        phoneField.clear();
+        addressField.clear();
+        creditLimitField.clear();
+        boolean canEdit = authorizationService.hasPermission(session, Permission.EDIT_CUSTOMER);
+        creditLimitField.setVisible(canEdit);
+        creditLimitField.setManaged(canEdit);
+        registerCustomerButton.setText("Registrar cliente");
+        registerCustomerButton.setDisable(!authorizationService.hasPermission(session, Permission.REGISTER_CUSTOMER));
+        cancelEditButton.setVisible(false);
+        cancelEditButton.setManaged(false);
+    }
+
+    private void refreshAfterWrite(String confirmation) {
+        try {
             showCustomers(authorizationService.execute(session, Permission.VIEW_CUSTOMER,
                     customerService::getAllCustomers));
+            messageLabel.setText(confirmation);
         } catch (RuntimeException failure) {
-            messageLabel.setText("No se registró el cliente: " + safeMessage(failure));
+            messageLabel.setText(confirmation + " No se pudo actualizar la lista.");
         }
     }
 

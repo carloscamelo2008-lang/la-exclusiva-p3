@@ -1,5 +1,6 @@
 package com.laexclusiva.ui;
 
+import com.laexclusiva.model.CustomerCollectionReminder;
 import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.persistence.jdbc.DatabaseConfig;
 import com.laexclusiva.persistence.jdbc.InventoryRepositoryJdbc;
@@ -13,7 +14,6 @@ import com.laexclusiva.persistence.jdbc.ProductRepositoryJdbc;
 import com.laexclusiva.persistence.jdbc.StockMovementRepositoryJdbc;
 import com.laexclusiva.repository.CustomerDebtQuery;
 import com.laexclusiva.repository.CustomerRepository;
-import com.laexclusiva.repository.CustomerRepositoryInterface;
 import com.laexclusiva.repository.InMemoryInventoryRepository;
 import com.laexclusiva.repository.InMemoryProductRepository;
 import com.laexclusiva.repository.InMemorySaleRepository;
@@ -59,6 +59,7 @@ import com.laexclusiva.service.SaleService;
 import com.laexclusiva.service.SalesWorkflow;
 import com.laexclusiva.service.SellerService;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -142,7 +143,6 @@ public final class ApplicationServices {
         if (enabled(environment, "LAEXCLUSIVA_SMTP_ENABLED")) {
             throw new IllegalArgumentException("El envío SMTP real requiere persistencia PostgreSQL.");
         }
-        CustomerRepositoryInterface customerRepository = new CustomerRepository();
         SellerRepositoryInterface sellerRepository = new SellerRepository();
         SellerService sellers = new SellerService(sellerRepository);
         InMemoryAdministrativeAuditRepository auditRepository = new InMemoryAdministrativeAuditRepository();
@@ -151,17 +151,28 @@ public final class ApplicationServices {
         InMemoryInventoryRepository inventoryRepository = new InMemoryInventoryRepository();
         InMemoryStockMovementRepository movements = new InMemoryStockMovementRepository();
         SaleRepository saleRepository = new InMemorySaleRepository();
+        CustomerCollectionRepository collectionRepository = new InMemoryCustomerCollectionRepository();
+        var generalDebtReference = new AtomicReference<InMemoryCustomerGeneralDebtWorkflow>();
+        CustomerRepository customerRepository = new CustomerRepository(id ->
+                saleRepository.findAll().stream().anyMatch(sale ->
+                        sale.getCustomer() != null && id.equals(sale.getCustomer().getId()))
+                || !generalDebtReference.get().listMovements(id, null, null, null).isEmpty()
+                || collectionRepository.findProfile(id).isPresent()
+                || !collectionRepository.findFollowUps(id).isEmpty()
+                || java.util.Arrays.stream(CustomerCollectionReminder.Status.values())
+                        .anyMatch(status -> collectionRepository.findReminders(status).stream()
+                                .anyMatch(reminder -> id.equals(reminder.customerId()))));
         CustomerService customers = new CustomerService(customerRepository);
         ProductService products = new ProductService(productRepository);
         products.registerAll(InitialCatalog.create());
         InventoryService inventory = new InventoryService(products, inventoryRepository, movements);
-        SaleService saleService = new SaleService(saleRepository, products, inventory, customers, sellers);
+        SaleService saleService = new SaleService(saleRepository, products, inventory, customers, sellers).requireAuthenticatedSales();
         SalesWorkflow sales = new InMemorySalesWorkflow(saleService, customers);
-        CustomerGeneralDebtWorkflow generalDebt = new InMemoryCustomerGeneralDebtWorkflow(customers, sales);
+        var generalDebt = new InMemoryCustomerGeneralDebtWorkflow(customers, sales);
+        generalDebtReference.set(generalDebt);
         CashWorkflow cash = new InMemoryCashWorkflow(sales, generalDebt);
         Services purchases = PurchasesModuleFactory.inMemory(products, inventoryRepository, movements,
                 identity.authorization(), identity.users());
-        CustomerCollectionRepository collectionRepository = new InMemoryCustomerCollectionRepository();
         AdministrativeAuditService auditService = new AdministrativeAuditService(auditRepository, identity.authorization());
         CollectionAssistantService collections = new CollectionAssistantService(customers, sales, generalDebt,
                 collectionRepository, auditRepository, identity.authorization(), new SimulatedEmailDeliveryProvider(),
@@ -198,7 +209,7 @@ public final class ApplicationServices {
                 movementRepository, inventoryAdjuster, transactions);
         SalesWorkflow sales = new JdbcSalesWorkflow(productRepository, customerRepository, sellerRepository,
                 saleRepository, saleRepository, debtQuery, customerBalances, inventoryAdjuster,
-                movementRepository, transactions, cashRepository);
+                movementRepository, transactions, cashRepository).requireAuthenticatedSales();
         CustomerGeneralDebtWorkflow generalDebt = new CustomerGeneralDebtWorkflowJdbc(customerRepository,
                 debtQuery, customerBalances, generalDebtRepository, cashRepository, transactions);
         CashWorkflow cash = new CashWorkflowJdbc(cashRepository, transactions);

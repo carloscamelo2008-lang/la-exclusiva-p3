@@ -14,7 +14,7 @@ import java.util.Optional;
 /** Adaptador JDBC del repositorio de vendedores, sin operaciones de reemplazo implícitas. */
 public final class SellerRepositoryJdbc implements SellerRepositoryInterface {
 
-    private static final String SELLER_COLUMNS = "id, name, phone, address";
+    private static final String SELLER_COLUMNS = "id, name, phone, address, active";
 
     private final JdbcConnectionProvider connectionProvider;
 
@@ -42,12 +42,13 @@ public final class SellerRepositoryJdbc implements SellerRepositoryInterface {
     public void save(Seller seller) {
         requireSeller(seller);
         connectionProvider.withConnection(connection -> {
-            String sql = "INSERT INTO seller (id, name, phone, address) VALUES (?, ?, ?, ?)";
+            String sql = "INSERT INTO seller (id, name, phone, address, active) VALUES (?, ?, ?, ?, ?)";
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, seller.getId());
                 statement.setString(2, seller.getName());
                 statement.setString(3, seller.getPhone());
                 statement.setString(4, seller.getAddress());
+                statement.setBoolean(5, seller.isActive());
                 try {
                     if (statement.executeUpdate() != 1) {
                         throw new SQLException("No se insertó exactamente un vendedor.");
@@ -108,9 +109,22 @@ public final class SellerRepositoryJdbc implements SellerRepositoryInterface {
         });
     }
 
+    @Override
+    public void setActive(String id, boolean active) {
+        connectionProvider.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE seller SET active = ? WHERE id = ?")) {
+                statement.setBoolean(1, active);
+                statement.setString(2, id);
+                if (statement.executeUpdate() != 1) throw new IllegalArgumentException("El vendedor no existe.");
+                return null;
+            }
+        });
+    }
+
     private static Seller mapSeller(ResultSet resultSet) throws SQLException {
         return new Seller(resultSet.getString("id"), resultSet.getString("name"),
-                resultSet.getString("phone"), resultSet.getString("address"));
+                resultSet.getString("phone"), resultSet.getString("address"), resultSet.getBoolean("active"));
     }
 
     private static void requireSeller(Seller seller) {

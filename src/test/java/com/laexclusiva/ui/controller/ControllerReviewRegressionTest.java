@@ -1,5 +1,6 @@
 package com.laexclusiva.ui.controller;
 
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.Customer;
@@ -64,6 +65,28 @@ class ControllerReviewRegressionTest {
             // Otro conjunto de pruebas ya inició el toolkit.
         }
         Platform.setImplicitExit(false);
+    }
+
+    @Test
+    void administratorCanEditCustomerContactFromSelectedRow() throws Exception {
+        runOnFx(() -> {
+            var service = new CustomerService(new CustomerRepository());
+            service.registerCustomer("CLIENTE-QA", "Cliente", "300 123", "Calle 1");
+            FXMLLoader loader = load("customers_view.fxml");
+            CustomerController controller = loader.getController();
+            controller.configure(service, adminSession());
+            controller.showCustomers(service.getAllCustomers());
+            table(loader, "customersTable").getSelectionModel().selectFirst();
+            ((Button) loader.getNamespace().get("editCustomerButton")).fire();
+            assertTrue(text(loader, "idField").isDisabled());
+            text(loader, "nameField").setText("Cliente actualizado");
+            text(loader, "phoneField").setText("+300 124");
+            ((Button) loader.getNamespace().get("registerCustomerButton")).fire();
+            assertEquals("Cliente actualizado", service.getCustomerById("CLIENTE-QA").getName());
+            assertEquals("300124", service.getCustomerById("CLIENTE-QA").getPhone());
+            assertEquals("Cliente actualizado.", label(loader, "messageLabel").getText());
+            return null;
+        });
     }
 
     @Test
@@ -164,17 +187,17 @@ class ControllerReviewRegressionTest {
             Seller seller = services.sellers().registerSeller("Vendedor cartera visible", "3000000241", "Dirección QA");
             String targetId = "CUS-PORTFOLIO-VISIBLE";
             String otherId = "CUS-PORTFOLIO-OTHER";
-            services.customers().registerCustomer(targetId, "Cliente cartera objetivo", "3000000242", "Dirección QA");
-            services.customers().registerCustomer(otherId, "Cliente cartera alterno", "3000000243", "Dirección QA");
+            services.customers().registerCustomer(targetId, "Cliente cartera objetivo", "3000000242", "Dirección QA", new BigDecimal("10000000"));
+            services.customers().registerCustomer(otherId, "Cliente cartera alterno", "3000000243", "Dirección QA", new BigDecimal("10000000"));
             BeerProduct product = services.products().findById("COSTENITA_175");
             services.inventory().addStock(product.getId(), 0, 4, "Fixture JavaFX de cartera");
             BigDecimal initialPayment = new BigDecimal("1000.00");
-            Sale targetSale = services.sales().registerSale(List.of(
+            Sale targetSale = IDENTITY.authorization().execute(adminSession(), com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(List.of(
                     new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(), targetId,
-                    initialPayment, "ui-portfolio-target-sale");
-            Sale otherSale = services.sales().registerSale(List.of(
+                    initialPayment, "ui-portfolio-target-sale"));
+            Sale otherSale = IDENTITY.authorization().execute(adminSession(), com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(List.of(
                     new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(), otherId,
-                    initialPayment, "ui-portfolio-other-sale");
+                    initialPayment, "ui-portfolio-other-sale"));
             assertEquals(0, targetSale.calculateTotal().compareTo(new BigDecimal("2500.00")));
             assertEquals(0, targetSale.calculateBalance().compareTo(new BigDecimal("1500.00")));
 
@@ -296,7 +319,7 @@ class ControllerReviewRegressionTest {
             Seller seller = services.sellers().registerSeller("Vendedor de stock", "3000000211", "Calle 11");
             String customerId = "CUS-STOCK-RETRY";
             services.customers().registerCustomer(customerId,
-                    "Cliente de stock", "3000000212", "Dirección 11");
+                    "Cliente de stock", "3000000212", "Dirección 11", new BigDecimal("10000000"));
             Customer customer = services.customers().getCustomerById(customerId);
             BeerProduct product = services.products().listAll().get(0);
             services.inventory().addStock(product.getId(), 0, 1, "Fixture de stock insuficiente");
@@ -650,15 +673,20 @@ class ControllerReviewRegressionTest {
         private LostResponseOncePaymentWorkflow(SalesWorkflow delegate) { this.delegate = delegate; }
 
         @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key, PaymentMethod method) {
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment, key, method);
+        }
+
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                                            BigDecimal initialPayment) {
             return delegate.registerSale(lines, sellerId, customerId, initialPayment);
         }
 
-        @Override public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey, PaymentMethod method) {
             attemptCount++;
             keys.add(idempotencyKey);
             BigDecimal paidBefore = delegate.findById(saleId).calculateTotalPaid();
-            Sale result = delegate.registerPayment(saleId, amount, idempotencyKey);
+            Sale result = delegate.registerPayment(saleId, amount, idempotencyKey, method);
             if (result.calculateTotalPaid().compareTo(paidBefore) > 0) writeCount++;
             if (attemptCount == 1) throw new IllegalStateException("respuesta perdida tras confirmar el abono");
             return result;
@@ -699,11 +727,16 @@ class ControllerReviewRegressionTest {
         private IdempotentWorkflow(Sale sale) { this.sale = sale; }
 
         @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key, PaymentMethod method) {
+            return registerSale(lines, sellerId, customerId, initialPayment);
+        }
+
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                                            BigDecimal initialPayment) {
             throw new UnsupportedOperationException();
         }
 
-        @Override public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey, PaymentMethod method) {
             paymentAttempts++;
             keys.add(idempotencyKey);
             BigDecimal prior = paymentKeys.get(idempotencyKey);
@@ -746,12 +779,12 @@ class ControllerReviewRegressionTest {
             return delegate.registerSale(lines, sellerId, customerId, initialPayment);
         }
         @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
-                                           BigDecimal initialPayment, String key) {
+                                           BigDecimal initialPayment, String key, PaymentMethod method) {
             saleRegistrations++;
-            return delegate.registerSale(lines, sellerId, customerId, initialPayment, key);
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment, key, method);
         }
-        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
-            return delegate.registerPayment(saleId, amount, key);
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key, PaymentMethod method) {
+            return delegate.registerPayment(saleId, amount, key, method);
         }
         @Override public Sale findById(String saleId) { return delegate.findById(saleId); }
         @Override public List<Sale> listAll() {
@@ -780,21 +813,21 @@ class ControllerReviewRegressionTest {
             return delegate.registerSale(lines, sellerId, customerId, initialPayment);
         }
         @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
-                                           BigDecimal initialPayment, String key) {
+                                           BigDecimal initialPayment, String key, PaymentMethod method) {
             keys.add(key);
             if (throwStockOnNextSale) {
                 throwStockOnNextSale = false;
                 throw new InsufficientStockException("P-UNCERTAIN", 2, 1);
             }
-            Sale saved = delegate.registerSale(lines, sellerId, customerId, initialPayment, key);
+            Sale saved = delegate.registerSale(lines, sellerId, customerId, initialPayment, key, method);
             if (throwAfterNextSale) {
                 throwAfterNextSale = false;
                 throw new IllegalStateException("Respuesta perdida después del commit.");
             }
             return saved;
         }
-        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
-            return delegate.registerPayment(saleId, amount, key);
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key, PaymentMethod method) {
+            return delegate.registerPayment(saleId, amount, key, method);
         }
         @Override public Sale findById(String saleId) { return delegate.findById(saleId); }
         @Override public List<Sale> listAll() { return delegate.listAll(); }
@@ -820,16 +853,16 @@ class ControllerReviewRegressionTest {
             return delegate.registerSale(lines, sellerId, customerId, initialPayment);
         }
         @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
-                                           BigDecimal initialPayment, String key) {
+                                           BigDecimal initialPayment, String key, PaymentMethod method) {
             keys.add(key);
             if (rejectFirst) {
                 rejectFirst = false;
                 throw new InsufficientStockException(productId, 2, 1);
             }
-            return delegate.registerSale(lines, sellerId, customerId, initialPayment, key);
+            return delegate.registerSale(lines, sellerId, customerId, initialPayment, key, method);
         }
-        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
-            return delegate.registerPayment(saleId, amount, key);
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key, PaymentMethod method) {
+            return delegate.registerPayment(saleId, amount, key, method);
         }
         @Override public Sale findById(String saleId) { return delegate.findById(saleId); }
         @Override public List<Sale> listAll() { return delegate.listAll(); }
@@ -843,11 +876,16 @@ class ControllerReviewRegressionTest {
         private int saleRegistrations;
         private int paymentAttempts;
         @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key, PaymentMethod method) {
+            return registerSale(lines, sellerId, customerId, initialPayment);
+        }
+
+        @Override public Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                                            BigDecimal initialPayment) {
             saleRegistrations++;
             throw new AssertionError("La escritura no autorizada alcanzó SalesWorkflow.registerSale.");
         }
-        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) {
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key, PaymentMethod method) {
             paymentAttempts++;
             throw new AssertionError("La escritura no autorizada alcanzó SalesWorkflow.registerPayment.");
         }

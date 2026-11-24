@@ -27,6 +27,7 @@ import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.fxml.FXML;
 import javafx.scene.control.ComboBox;
+import com.laexclusiva.model.PaymentMethod;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -41,6 +42,7 @@ public class SalesController {
     @FXML private ComboBox<Seller> sellerCombo;
     @FXML private ComboBox<Customer> customerCombo;
     @FXML private TextField initialPaymentField;
+    @FXML private ComboBox<PaymentMethod> initialPaymentMethodCombo;
     @FXML private TableView<CartLine> cartTable;
     @FXML private TableColumn<CartLine, String> cartProductColumn;
     @FXML private TableColumn<CartLine, String> cartPresentationColumn;
@@ -81,6 +83,8 @@ public class SalesController {
         presentationCombo.setValue(SalePresentation.UNIT);
         quantityField.setText("1");
         initialPaymentField.setText("0");
+        initialPaymentMethodCombo.getItems().setAll(PaymentMethod.values());
+        initialPaymentMethodCombo.setValue(PaymentMethod.EFECTIVO);
         refreshSaleOperationKeyLabel();
         productCombo.setConverter(converter(BeerProduct::toString));
         sellerCombo.setConverter(converter(Seller::getName));
@@ -135,11 +139,11 @@ public class SalesController {
         boolean canViewSellers = authorizationService.hasPermission(session, Permission.VIEW_SELLERS);
         if (canViewSellers) {
             sellerCombo.getItems().setAll(authorizationService.execute(session, Permission.VIEW_SELLERS,
-                    sellers::getAllSellers));
+                    sellers::getActiveSellers));
             sellerCombo.setDisable(false);
         } else if (principal.sellerId() != null) {
             authorizationService.execute(session, Permission.REGISTER_SALE,
-                    () -> sellers.getSellerById(principal.sellerId())).ifPresent(seller -> {
+                    () -> sellers.getSellerById(principal.sellerId())).filter(Seller::isActive).ifPresent(seller -> {
                 sellerCombo.getItems().setAll(seller);
                 sellerCombo.setValue(seller);
             });
@@ -209,17 +213,19 @@ public class SalesController {
             }
             Customer customer = customerCombo.getValue();
             BigDecimal initialPayment = new BigDecimal(initialPaymentField.getText().trim());
+            PaymentMethod method = initialPaymentMethodCombo.getValue();
             List<StockRequest> requests = cartTable.getItems().stream().map(CartLine::request).toList();
             submittedFingerprint = SaleRequestFingerprint.calculate(requests, seller.getId(),
-                    customer == null ? null : customer.getId(), initialPayment);
+                    customer == null ? null : customer.getId(), initialPayment)
+                    + (initialPayment.signum() > 0 ? ":" + method : "");
             if (uncertainSaleFingerprint != null && !uncertainSaleFingerprint.equals(submittedFingerprint)) {
                 throw new IllegalArgumentException("Hay un intento anterior de resultado incierto. Restaure el mismo "
-                        + "carrito, cliente, vendedor y pago inicial para reintentar con la referencia visible.");
+                        + "carrito, cliente, vendedor, pago inicial y medio para reintentar con la referencia visible.");
             }
             submitted = true;
             saved = authorizationService.execute(session, Permission.REGISTER_SALE, () ->
                     sales.registerSale(requests, seller.getId(),
-                            customer == null ? null : customer.getId(), initialPayment, saleOperationKey));
+                            customer == null ? null : customer.getId(), initialPayment, saleOperationKey, method));
         } catch (IllegalArgumentException | SecurityException rejected) {
             messageLabel.setText("Venta no registrada: " + safeMessage(rejected) + " El carrito se conserva.");
             return;
@@ -318,8 +324,9 @@ public class SalesController {
     }
 
     private boolean isAuthorizedSeller(Seller seller) {
+        if (sellers.getSellerById(seller.getId()).filter(Seller::isActive).isEmpty()) return false;
         var principal = authorizationService.currentPrincipal(session);
-        if (principal.role() == UserRole.ADMINISTRATOR) return true;
+        if (principal.role().hasPermission(Permission.REGISTER_SALE_FOR_OTHERS)) return true;
         return principal.sellerId() != null && principal.sellerId().equals(seller.getId())
                 && authorizationService.execute(session, Permission.REGISTER_SALE,
                     () -> sellers.getSellerById(principal.sellerId())).isPresent();

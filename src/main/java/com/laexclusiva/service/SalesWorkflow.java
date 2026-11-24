@@ -1,6 +1,7 @@
 package com.laexclusiva.service;
 
 import com.laexclusiva.model.Sale;
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.StockRequest;
 import java.math.BigDecimal;
 import java.util.List;
@@ -35,8 +36,11 @@ public interface SalesWorkflow {
      */
     default Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
                               BigDecimal initialPayment, String idempotencyKey) {
-        return registerSale(lines, sellerId, customerId, initialPayment);
+        return registerSale(lines, sellerId, customerId, initialPayment, idempotencyKey, PaymentMethod.OTRO);
     }
+
+    Sale registerSale(List<StockRequest> lines, String sellerId, String customerId,
+                      BigDecimal initialPayment, String idempotencyKey, PaymentMethod paymentMethod);
 
     /**
      * Registra un abono identificado para que los reintentos no lo apliquen dos veces.
@@ -49,7 +53,11 @@ public interface SalesWorkflow {
      * @throws IllegalArgumentException si la venta no existe, la clave se reutiliza con otro importe
      *                                  o el abono supera el saldo
      */
-    Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey);
+    default Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey) {
+        return registerPayment(saleId, amount, idempotencyKey, PaymentMethod.OTRO);
+    }
+
+    Sale registerPayment(String saleId, BigDecimal amount, String idempotencyKey, PaymentMethod paymentMethod);
 
     /**
      * Busca una venta por su identificador.

@@ -13,9 +13,11 @@ public class Seller {
     private String name;
     private String phone;
     private String address;
+    private final boolean active;
 
     public Seller(String name, String phone, String address) {
         PersonValidator.validatePersonData(name, phone, address);
+        this.active = true;
         this.id = "SEL-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         this.name = name.trim();
         this.phone = phone.trim();
@@ -23,6 +25,11 @@ public class Seller {
     }
 
     public Seller(String id, String name, String phone, String address) {
+        this(id, name, phone, address, true);
+    }
+
+    public Seller(String id, String name, String phone, String address, boolean active) {
+        this.active = active;
         if (id == null || id.trim().isEmpty()) {
             throw new IllegalArgumentException("El ID del vendedor no puede estar vacío.");
         }
@@ -39,6 +46,8 @@ public class Seller {
         this.phone = phone.trim();
         this.address = address.trim();
     }
+
+    public boolean isActive() { return active; }
 
     public String getId() {
         return id;

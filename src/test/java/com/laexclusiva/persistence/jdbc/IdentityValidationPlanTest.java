@@ -77,7 +77,20 @@ class IdentityValidationPlanTest {
         String runner = asset("run-java.sh");
         assertTrue(runner.contains("cp -a /seed-repository/. /root/.m2/repository/"));
         assertTrue(runner.contains("mvn -o"));
-        assertTrue(lab.contains("60, \"failures\": 0, \"errors\": 0, \"skipped\": 0"));
+        assertTrue(lab.contains("executed == expected_suites"));
+    }
+
+    @Test
+    void customerPrRunsBothJdbcSuitesAndAppliesItsMigrationsInOrder() throws Exception {
+        String runner = asset("run-java.sh");
+        assertTrue(runner.contains("CustomerCrudPostgresIntegrationTest,CustomerDuplicatePostgresIntegrationTest"));
+        String lab = asset("actions-lab.py");
+        assertTrue(lab.contains("\"feature/jesus-customers-crud\": \"pr29-customers\""));
+        String sql = asset("application.psql");
+        int phone = sql.indexOf("\\ir ../../migrations/V110");
+        int credit = sql.indexOf("\\ir ../../migrations/V111");
+        int actors = sql.indexOf("\\ir ../../migrations/V112");
+        assertTrue(phone >= 0 && phone < credit && credit < actors);
     }
 
     @Test

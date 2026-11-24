@@ -12,11 +12,13 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
+import org.postgresql.util.PSQLException;
+import com.laexclusiva.model.CustomerDeletionBlockedException;
 
 /** Adaptador JDBC del repositorio de clientes que conserva sus identificadores históricos. */
 public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface {
 
-    private static final String CUSTOMER_COLUMNS = "id, name, phone, address, balance";
+    private static final String CUSTOMER_COLUMNS = "id, name, phone, address, balance, credit_limit";
 
     private final JdbcConnectionProvider connectionProvider;
 
@@ -45,18 +47,20 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
         requireCustomer(customer);
         BigDecimal balance = requireBalance(customer.getBalance());
         connectionProvider.withConnection(connection -> {
-            String sql = "INSERT INTO customer (id, name, phone, address, balance) VALUES (?, ?, ?, ?, ?)";
+            String sql = "INSERT INTO customer (id, name, phone, address, balance, credit_limit) VALUES (?, ?, ?, ?, ?, ?)";
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, customer.getId());
                 statement.setString(2, customer.getName());
                 statement.setString(3, customer.getPhone());
                 statement.setString(4, customer.getAddress());
                 statement.setBigDecimal(5, balance);
+                statement.setBigDecimal(6, customer.getCreditLimit());
                 try {
                     if (statement.executeUpdate() != 1) {
                         throw new SQLException("No se insertó exactamente un cliente.");
                     }
                 } catch (SQLException failure) {
+                    rejectDuplicatePhone(failure);
                     if ("23505".equals(failure.getSQLState())) {
                         throw new IllegalArgumentException(
                                 "Ya existe un cliente con el ID: " + customer.getId(), failure);
@@ -127,13 +131,19 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
      */
     @Override
     public List<Customer> findAll() {
+        return readCustomers(null);
+    }
+
+    private List<Customer> readCustomers(String nameKey) {
         return connectionProvider.withConnection(connection -> {
             String sql = "SELECT " + CUSTOMER_COLUMNS + " FROM customer ORDER BY id";
             List<Customer> customers = new ArrayList<>();
             try (PreparedStatement statement = connection.prepareStatement(sql);
                  ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
-                    customers.add(mapCustomer(resultSet));
+                    if (nameKey == null || nameKey.equals(Customer.comparableName(resultSet.getString("name")))) {
+                        customers.add(mapCustomer(resultSet));
+                    }
                 }
             }
             return customers;
@@ -154,7 +164,7 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
         }
         return connectionProvider.withConnection(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT 1 FROM customer WHERE id = ?")) {
+                    "SELECT 1 FROM customer WHERE btrim(regexp_replace(id, '[[:space:]]+', ' ', 'g')) = ?")) {
                 statement.setString(1, id);
                 try (ResultSet resultSet = statement.executeQuery()) {
                     return resultSet.next();
@@ -164,7 +174,7 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
     }
 
     /**
-     * Actualiza solo los datos personales si el saldo persistido sigue coincidiendo con el snapshot.
+     * Actualiza el contacto y el cupo si el saldo persistido sigue coincidiendo con el snapshot.
      * El saldo se usa como condición de concurrencia y nunca aparece en la cláusula {@code SET}.
      *
      * @param customer snapshot cuyos datos personales se actualizarán
@@ -177,14 +187,21 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
         requireCustomer(customer);
         BigDecimal balance = requireBalance(customer.getBalance());
         connectionProvider.withConnection(connection -> {
-            String sql = "UPDATE customer SET name = ?, phone = ?, address = ? WHERE id = ? AND balance = ?";
+            String sql = "UPDATE customer SET name = ?, phone = ?, address = ?, credit_limit = ? WHERE id = ? AND balance = ?";
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, customer.getName());
                 statement.setString(2, customer.getPhone());
                 statement.setString(3, customer.getAddress());
-                statement.setString(4, customer.getId());
-                statement.setBigDecimal(5, balance);
-                int updated = statement.executeUpdate();
+                statement.setBigDecimal(4, customer.getCreditLimit());
+                statement.setString(5, customer.getId());
+                statement.setBigDecimal(6, balance);
+                int updated;
+                try {
+                    updated = statement.executeUpdate();
+                } catch (SQLException failure) {
+                    rejectDuplicatePhone(failure);
+                    throw failure;
+                }
                 if (updated == 0) {
                     if (!customerExists(connection, customer.getId())) {
                         throw new IllegalArgumentException(
@@ -202,6 +219,59 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
         });
     }
 
+    /** Consulta nombres usando la misma comparación Unicode que el modo memoria. */
+    @Override
+    public List<Customer> findSimilarNames(String name) {
+        String key = Customer.comparableName(name);
+        return key.isEmpty() ? List.of() : readCustomers(key);
+    }
+
+    /** Busca el teléfono canónico con ayuda del índice único. */
+    @Override
+    public boolean existsByPhone(String phone, String excludedId) {
+        return connectionProvider.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT 1 FROM customer WHERE phone = ? AND id IS DISTINCT FROM ?")) {
+                statement.setString(1, phone);
+                statement.setString(2, excludedId);
+                try (ResultSet rows = statement.executeQuery()) {
+                    return rows.next();
+                }
+            }
+        });
+    }
+
+    /** Deja que PostgreSQL compruebe las referencias incluso ante inserciones concurrentes. */
+    @Override
+    public void deleteById(String id) {
+        requireId(id);
+        connectionProvider.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "DELETE FROM customer WHERE id = ? AND balance = 0")) {
+                statement.setString(1, id);
+                try {
+                    if (statement.executeUpdate() == 1) return null;
+                } catch (SQLException failure) {
+                    // PostgreSQL 18 puede distinguir RESTRICT de la infracción general de FK.
+                    if ("23503".equals(failure.getSQLState()) || "23001".equals(failure.getSQLState())) {
+                        throw new CustomerDeletionBlockedException();
+                    }
+                    throw failure;
+                }
+            }
+            if (customerExists(connection, id)) throw new CustomerDeletionBlockedException();
+            throw new IllegalArgumentException("El cliente no existe.");
+        });
+    }
+
+    private static void rejectDuplicatePhone(SQLException failure) {
+        if ("23505".equals(failure.getSQLState()) && failure instanceof PSQLException postgres
+                && postgres.getServerErrorMessage() != null
+                && "uq_customer_phone".equals(postgres.getServerErrorMessage().getConstraint())) {
+            throw new IllegalArgumentException("Ya existe un cliente registrado con ese teléfono.");
+        }
+    }
+
     private static boolean customerExists(java.sql.Connection connection, String id) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT 1 FROM customer WHERE id = ?")) {
@@ -213,9 +283,9 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
     }
 
     private static Customer mapCustomer(ResultSet resultSet) throws SQLException {
-        return new Customer(resultSet.getString("id"), resultSet.getString("name"),
+        return Customer.reconstitute(resultSet.getString("id"), resultSet.getString("name"),
                 resultSet.getString("phone"), resultSet.getString("address"),
-                resultSet.getBigDecimal("balance"));
+                resultSet.getBigDecimal("balance"), resultSet.getBigDecimal("credit_limit"));
     }
 
     private static void requireCustomer(Customer customer) {

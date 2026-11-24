@@ -79,7 +79,7 @@ class JdbcSalesWorkflowTest {
     void creditSaleAndIdempotentPaymentPreserveGeneralDebtSeparately() {
         world.stock.put("P1", 5);
         world.customers.put("C-1", new Customer("C-1", "Cliente", "3000000001", "Dirección",
-                new BigDecimal("100.00")));
+                new BigDecimal("100.00"), new BigDecimal("10000000")));
 
         Sale sale = workflow.registerSale(List.of(new StockRequest("P1", SalePresentation.UNIT, 1)),
                 "SEL-1", "C-1", new BigDecimal("20.00"));
@@ -124,7 +124,7 @@ class JdbcSalesWorkflowTest {
     void saleFailureAfterBalanceAndMovementWritesRollsBackWholeUnit() {
         world.stock.put("P1", 2);
         world.customers.put("C-1", new Customer("C-1", "Cliente", "3000000001", "Dirección",
-                new BigDecimal("40.00")));
+                new BigDecimal("40.00"), new BigDecimal("10000000")));
         world.failSaleSave = true;
 
         assertThrows(IllegalStateException.class,
@@ -313,7 +313,7 @@ class JdbcSalesWorkflowTest {
             return customer;
         }
         private static Customer withBalance(Customer c, BigDecimal balance) {
-            return new Customer(c.getId(), c.getName(), c.getPhone(), c.getAddress(), balance);
+            return new Customer(c.getId(), c.getName(), c.getPhone(), c.getAddress(), balance, c.getCreditLimit());
         }
     }
 

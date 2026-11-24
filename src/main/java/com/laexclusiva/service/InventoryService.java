@@ -89,7 +89,7 @@ public class InventoryService {
             transactionBoundary.inTransaction(() -> {
                 stockAdjuster.increaseStock(productId, units);
                 movementRepository.save(new StockMovement(productId, MovementType.ENTRY, units,
-                        reason, LocalDateTime.now()));
+                        reason, LocalDateTime.now(), null, null, AuthorizationService.operationUserId()));
             });
             return;
         }
@@ -103,7 +103,7 @@ public class InventoryService {
         item.add(units);
         inventoryRepository.save(item);
         movementRepository.save(new StockMovement(productId, MovementType.ENTRY, units,
-                reason, LocalDateTime.now()));
+                reason, LocalDateTime.now(), null, null, AuthorizationService.operationUserId()));
     }
 
     // ------------------------------------------------------------------ SALIDAS
@@ -156,7 +156,7 @@ public class InventoryService {
                 item.remove(entry.getValue());
                 inventoryRepository.save(item);
                 StockMovement movement = new StockMovement(entry.getKey(), MovementType.EXIT,
-                        entry.getValue(), reason, LocalDateTime.now());
+                        entry.getValue(), reason, LocalDateTime.now(), null, null, AuthorizationService.operationUserId());
                 // Guardarlo en el recibo antes de llamar a save permite quitarlo si el
                 // repositorio alcanza a persistir y después arroja una excepción.
                 receipt.createdMovements.add(movement);

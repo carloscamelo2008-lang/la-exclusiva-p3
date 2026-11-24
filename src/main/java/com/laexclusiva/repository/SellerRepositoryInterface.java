@@ -8,4 +8,8 @@ public interface SellerRepositoryInterface {
     void save(Seller seller);
     Optional<Seller> findById(String id);
     List<Seller> findAll();
+
+    default void setActive(String id, boolean active) {
+        throw new UnsupportedOperationException("El repositorio no admite cambiar el estado del vendedor.");
+    }
 }

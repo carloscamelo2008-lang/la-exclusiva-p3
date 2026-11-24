@@ -1,5 +1,6 @@
 package com.laexclusiva.ui.controller;
 
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
@@ -138,6 +139,7 @@ class FinancialControllersTest {
             FXMLLoader loader = load("cash_view.fxml");
             ((CashController) loader.getController()).configure(cash, adminSession());
             assertTrue(label(loader, "invoicedSalesLabel").getText().contains("100"));
+            assertEquals("Recaudos por ventas: $ 40,00", label(loader, "saleReceiptsLabel").getText());
             assertFalse(((TableView<?>) loader.getNamespace().get("movementsTable")).getItems().isEmpty());
             cash.failNextSummary = true;
 
@@ -145,7 +147,33 @@ class FinancialControllersTest {
 
             assertTrue(((TableView<?>) loader.getNamespace().get("movementsTable")).getItems().isEmpty());
             assertUnavailableLabels(loader);
+            assertEquals("Recaudos por ventas: no disponible", label(loader, "saleReceiptsLabel").getText());
             assertTrue(label(loader, "messageLabel").getText().contains("No se pudo consultar caja"));
+            return null;
+        });
+    }
+
+    @Test
+    void cashShowsRecordedPaymentMethodsAndIdentifiesHistoricalRows() throws Exception {
+        runOnFx(() -> {
+            ControlledCashWorkflow cash = new ControlledCashWorkflow();
+            cash.records.add(existingCashMovement());
+            for (PaymentMethod method : PaymentMethod.values()) {
+                cash.records.add(new CashMovement(cash.records.size() + 1L, CashDirection.INCOME,
+                        CashCategory.OTHER_INCOME, BigDecimal.ONE, LocalDate.now().atTime(9, 0),
+                        "Ingreso ficticio", "key-" + method, "MANUAL", "source-" + method, null, method));
+            }
+            FXMLLoader loader = load("cash_view.fxml");
+            assertEquals("Recaudos por ventas: $ 0,00", label(loader, "saleReceiptsLabel").getText());
+            ((CashController) loader.getController()).configure(cash, adminSession());
+            var table = table(loader, "movementsTable");
+            var column = table.getColumns().stream()
+                    .filter(candidate -> "Medio de pago".equals(candidate.getText()))
+                    .findFirst().orElseThrow();
+            assertFalse(column.isEditable());
+            assertEquals(List.of("Sin registrar", "EFECTIVO", "TRANSFERENCIA", "TARJETA", "OTRO"),
+                    java.util.stream.IntStream.range(0, table.getItems().size())
+                            .mapToObj(column::getCellData).toList());
             return null;
         });
     }
@@ -245,7 +273,7 @@ class FinancialControllersTest {
         runOnFx(() -> {
             ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
             String customerId = "CUS-FINANCE-UI";
-            services.customers().registerCustomer(customerId, "Cliente ficticio", "3000000101", "Dirección de prueba");
+            services.customers().registerCustomer(customerId, "Cliente ficticio", "3000000101", "Dirección de prueba", new BigDecimal("10000000"));
             services.customers().addDebtToCustomer(customerId, new BigDecimal("30.00"));
             var seller = services.sellers().registerSeller("Vendedor ficticio", "3000000102", "Dirección de prueba");
             BeerProduct product = new BeerProduct("P-FINANCE-UI", "Producto ficticio", 330, 24,
@@ -255,9 +283,12 @@ class FinancialControllersTest {
             product.definePrice(SalePresentation.FULL_BASKET, new BigDecimal("900.00"));
             services.products().register(product);
             services.inventory().addStock(product.getId(), 0, 2, "Fixture visual ficticio");
-            var sale = services.sales().registerSale(List.of(
+            var identityFixture = new com.laexclusiva.testutil.IdentityTestFixture();
+            var testAuthorization = identityFixture.authorization();
+            var testAdmin = identityFixture.issue(com.laexclusiva.model.UserRole.ADMINISTRATOR).session();
+            var sale = testAuthorization.execute(testAdmin, com.laexclusiva.model.Permission.REGISTER_SALE, () -> services.sales().registerSale(List.of(
                     new StockRequest(product.getId(), SalePresentation.UNIT, 1)), seller.getId(),
-                    customerId, BigDecimal.ZERO);
+                    customerId, BigDecimal.ZERO));
 
             FXMLLoader loader = load("portfolio_view.fxml");
             PortfolioController controller = loader.getController();
@@ -274,6 +305,7 @@ class FinancialControllersTest {
             text(loader, "generalDebtAmountField").setText("15.00");
             text(loader, "generalDebtCategoryField").setText("Abono ficticio");
             text(loader, "generalDebtDescriptionField").setText("Abono solo a deuda general");
+            selectGeneralPaymentMethod(loader, PaymentMethod.TRANSFERENCIA);
             generalDebt.throwAfterNextPayment = true;
             button(loader, "payGeneralDebtButton").fire();
             String uncertainKey = label(loader, "generalDebtOperationKeyLabel").getText();
@@ -286,6 +318,10 @@ class FinancialControllersTest {
             assertEquals(uncertainKey, label(loader, "generalDebtOperationKeyLabel").getText());
 
             text(loader, "generalDebtAmountField").setText("15.00");
+            selectGeneralPaymentMethod(loader, PaymentMethod.EFECTIVO);
+            button(loader, "payGeneralDebtButton").fire();
+            assertEquals(1, generalDebt.paymentKeys.size());
+            selectGeneralPaymentMethod(loader, PaymentMethod.TRANSFERENCIA);
             button(loader, "payGeneralDebtButton").fire();
 
             assertEquals(0, services.sales().findById(sale.getId()).calculateTotalPaid().compareTo(BigDecimal.ZERO));
@@ -355,6 +391,7 @@ class FinancialControllersTest {
             text(loader, "generalDebtAmountField").setText("20.00");
             text(loader, "generalDebtCategoryField").setText("Abono ficticio");
             text(loader, "generalDebtDescriptionField").setText("Pago con fallo de consulta");
+            selectGeneralPaymentMethod(loader, PaymentMethod.TRANSFERENCIA);
 
             button(loader, "payGeneralDebtButton").fire();
 
@@ -523,6 +560,11 @@ class FinancialControllersTest {
         @Override public boolean supportsDurableIdempotency() { return true; }
     }
 
+    @SuppressWarnings("unchecked")
+    private static void selectGeneralPaymentMethod(FXMLLoader loader, PaymentMethod method) {
+        ((ComboBox<PaymentMethod>) loader.getNamespace().get("generalDebtPaymentMethodCombo")).setValue(method);
+    }
+
     private static final class UncertainGeneralDebtWorkflow implements CustomerGeneralDebtWorkflow {
         private final CustomerGeneralDebtWorkflow delegate;
         private final java.util.ArrayList<String> paymentKeys = new java.util.ArrayList<>();
@@ -538,10 +580,10 @@ class FinancialControllersTest {
             return delegate.registerDebt(customerId, amount, category, description, idempotencyKey);
         }
         @Override public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
-                                                             String description, String idempotencyKey) {
+                                                             String description, String idempotencyKey, PaymentMethod method) {
             paymentKeys.add(idempotencyKey);
             GeneralDebtMovement result = delegate.registerPayment(customerId, amount, category, description,
-                    idempotencyKey);
+                    idempotencyKey, method);
             if (throwAfterNextPayment) {
                 throwAfterNextPayment = false;
                 throw new IllegalStateException("Respuesta perdida después de guardar.");
@@ -583,10 +625,10 @@ class FinancialControllersTest {
         }
 
         @Override public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
-                                                             String description, String idempotencyKey) {
+                                                             String description, String idempotencyKey, PaymentMethod method) {
             paymentWrites++;
             GeneralDebtMovement confirmed = delegate.registerPayment(customerId, amount, category, description,
-                    idempotencyKey);
+                    idempotencyKey, method);
             failNextBalance = true;
             return confirmed;
         }

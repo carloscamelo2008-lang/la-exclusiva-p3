@@ -555,7 +555,7 @@ class SaleRepositoryJdbcTest {
                 String customerId = (String) parameters.get(1);
                 return customers.containsKey(customerId) ? List.of(row("id", customerId)) : List.of();
             }
-            if (sql.startsWith("select amount, occurred_at from sale_payment where sale_id = ?")) {
+            if (sql.startsWith("select amount, occurred_at, received_by_user_id from sale_payment where sale_id = ?")) {
                 return payments.stream().filter(payment -> payment.get("sale_id").equals(parameters.get(1))
                                 && java.util.Objects.equals(payment.get("idempotency_key"), parameters.get(2)))
                         .map(payment -> row("amount", payment.get("amount"),
@@ -617,7 +617,7 @@ class SaleRepositoryJdbcTest {
             if (customer != null) {
                 row.putAll(row("customer_id", customer.get("id"), "customer_name", customer.get("name"),
                         "customer_phone", customer.get("phone"), "customer_address", customer.get("address"),
-                        "customer_balance", customer.get("balance")));
+                        "customer_balance", customer.get("balance"), "customer_credit_limit", BigDecimal.ZERO));
             }
             return row;
         }

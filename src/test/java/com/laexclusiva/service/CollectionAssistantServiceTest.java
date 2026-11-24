@@ -1,5 +1,6 @@
 package com.laexclusiva.service;
 
+import com.laexclusiva.model.PaymentMethod;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -605,7 +606,8 @@ class CollectionAssistantServiceTest {
         }
 
         private void customer(String id, String balance, List<Sale> customerSales) {
-            customerRepository.save(new Customer(id, "Cliente " + id, "3000000000", "Dirección ficticia",
+            customerRepository.save(new Customer(id, "Cliente " + id,
+                    Integer.toString(300_000_001 + customerRepository.findAll().size()), "Dirección ficticia",
                     new BigDecimal(balance)));
             sales.addAll(customerSales);
         }
@@ -618,9 +620,14 @@ class CollectionAssistantServiceTest {
     private static final class FakeSalesWorkflow implements SalesWorkflow {
         private final List<Sale> sales;
         private FakeSalesWorkflow(List<Sale> sales) { this.sales = sales; }
+        @Override public Sale registerSale(List<com.laexclusiva.model.StockRequest> lines, String sellerId, String customerId,
+                                           BigDecimal initialPayment, String key, PaymentMethod method) {
+            return registerSale(lines, sellerId, customerId, initialPayment);
+        }
+
         @Override public Sale registerSale(List<com.laexclusiva.model.StockRequest> lines, String sellerId,
                 String customerId, BigDecimal initialPayment) { throw new UnsupportedOperationException(); }
-        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key) { throw new UnsupportedOperationException(); }
+        @Override public Sale registerPayment(String saleId, BigDecimal amount, String key, PaymentMethod method) { throw new UnsupportedOperationException(); }
         @Override public Sale findById(String saleId) { return sales.stream().filter(value -> value.getId().equals(saleId)).findFirst().orElseThrow(); }
         @Override public List<Sale> listAll() { return List.copyOf(sales); }
         @Override public BigDecimal outstandingSalesDebt(String customerId) {
@@ -635,7 +642,7 @@ class CollectionAssistantServiceTest {
         private FakeGeneralDebtWorkflow(List<GeneralDebtMovement> movements) { this.movements = movements; }
         @Override public com.laexclusiva.model.CustomerDebtBreakdown findBalance(String customerId) { throw new UnsupportedOperationException(); }
         @Override public GeneralDebtMovement registerDebt(String customerId, BigDecimal amount, String category, String description, String key) { throw new UnsupportedOperationException(); }
-        @Override public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category, String description, String key) { throw new UnsupportedOperationException(); }
+        @Override public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category, String description, String key, PaymentMethod method) { throw new UnsupportedOperationException(); }
         @Override public List<GeneralDebtMovement> listMovements(String customerId, LocalDate from, LocalDate through, String category) {
             return movements.stream().filter(value -> customerId == null || value.customerId().equals(customerId))
                     .filter(value -> from == null || !value.occurredAt().toLocalDate().isBefore(from))

@@ -36,6 +36,12 @@ public class SellerRepository implements SellerRepositoryInterface {
     }
 
     @Override
+    public void setActive(String id, boolean active) {
+        Seller current = findById(id).orElseThrow(() -> new IllegalArgumentException("El vendedor no existe."));
+        update(new Seller(id, current.getName(), current.getPhone(), current.getAddress(), active));
+    }
+
+    @Override
     public Optional<Seller> findById(String id) {
         return Optional.ofNullable(sellers.get(id));
     }

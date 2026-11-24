@@ -49,7 +49,7 @@ class SaleServiceTest {
         saleRepository = new FailingSaleRepository();
         sales = new SaleService(saleRepository, products, inventory, customers, sellers);
         seller = sellers.registerSeller("Vendedora", "3001234567", "Calle 1");
-        customers.registerCustomer("C001", "Cliente", "3007654321", "Calle 2");
+        customers.registerCustomer("C001", "Cliente", "3007654321", "Calle 2", new BigDecimal("10000000"));
     }
 
     @Test
@@ -77,6 +77,23 @@ class SaleServiceTest {
         assertEquals(0, inventory.availableUnits("COSTENITA_175"));
         assertEquals(0, inventory.availableUnits("POKER_750"));
         assertEquals(7, inventory.availableUnits("POKER_250"));
+    }
+
+    @Test
+    void rejectsCreditAboveAggregateLimitBeforeAnyWrite() {
+        inventory.addStock("POKER_250", 0, 3, "Inicial");
+        customers.addDebtToCustomer("C001", new BigDecimal("1000"));
+        customers.updateCustomer("C001", "Cliente", "3007654321", "Calle 2", new BigDecimal("3000"));
+        var lines = List.of(request("POKER_250", SalePresentation.UNIT, 1));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> sales.registerSale(lines, seller.getId(), "C001", BigDecimal.ZERO));
+        assertEquals(3, inventory.availableUnits("POKER_250"));
+        assertTrue(sales.listAll().isEmpty());
+        assertEquals(new BigDecimal("1000"), customers.getCustomerById("C001").getBalance());
+
+        sales.registerSale(lines, seller.getId(), "C001", new BigDecimal("500"));
+        assertEquals(new BigDecimal("3000"), customers.getCustomerById("C001").getBalance());
     }
 
     @Test

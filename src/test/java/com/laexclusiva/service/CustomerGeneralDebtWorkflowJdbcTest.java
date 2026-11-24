@@ -7,6 +7,7 @@ import com.laexclusiva.model.CashMovement;
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.GeneralDebtMovement;
 import com.laexclusiva.model.GeneralDebtMovementType;
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.persistence.jdbc.TransactionBoundary;
 import com.laexclusiva.repository.CashMovementRepository;
 import com.laexclusiva.repository.CustomerBalanceAdjuster;
@@ -55,9 +56,11 @@ class CustomerGeneralDebtWorkflowJdbcTest {
     void paymentChangesOnlyGeneralDebtAndRetryDoesNotDuplicateHistoryOrCash() {
         assertEquals(new BigDecimal("30.00"), workflow.findBalance("C-1").generalDebt());
         GeneralDebtMovement payment = workflow.registerPayment("C-1", new BigDecimal("20.00"),
-                "Pago general", "Pago de prueba", "general-pay-1");
+                "Pago general", "Pago de prueba", "general-pay-1", PaymentMethod.TRANSFERENCIA);
         GeneralDebtMovement replay = workflow.registerPayment("C-1", new BigDecimal("20.00"),
-                "Pago general", "Pago de prueba", "general-pay-1");
+                "Pago general", "Pago de prueba", "general-pay-1", PaymentMethod.TRANSFERENCIA);
+        assertThrows(IllegalArgumentException.class, () -> workflow.registerPayment("C-1", new BigDecimal("20.00"),
+                "Pago general", "Pago de prueba", "general-pay-1", PaymentMethod.EFECTIVO));
 
         assertEquals(payment, replay);
         assertEquals(new BigDecimal("80.00"), customers.findById("C-1").getBalance());
@@ -65,6 +68,7 @@ class CustomerGeneralDebtWorkflowJdbcTest {
         assertEquals(new BigDecimal("10.00"), workflow.findBalance("C-1").generalDebt());
         assertEquals(1, ledger.rows.size());
         assertEquals(1, cash.rows.size());
+        assertEquals(PaymentMethod.TRANSFERENCIA, cash.rows.get(0).paymentMethod());
         assertEquals(GeneralDebtMovementType.PAYMENT, ledger.rows.get(0).type());
         assertThrows(IllegalArgumentException.class, () -> workflow.registerPayment("C-1",
                 new BigDecimal("21.00"), "Pago general", "Pago distinto", "general-pay-1"));

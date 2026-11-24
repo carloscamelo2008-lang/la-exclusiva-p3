@@ -7,6 +7,7 @@ import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.CustomerDebtBreakdown;
 import com.laexclusiva.model.GeneralDebtMovement;
 import com.laexclusiva.model.GeneralDebtMovementType;
+import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.persistence.jdbc.TransactionBoundary;
 import com.laexclusiva.repository.CashMovementRepository;
 import com.laexclusiva.repository.CustomerBalanceAdjuster;
@@ -70,25 +71,29 @@ public final class CustomerGeneralDebtWorkflowJdbc implements CustomerGeneralDeb
     public GeneralDebtMovement registerDebt(String customerId, BigDecimal amount, String category,
                                             String description, String idempotencyKey) {
         return register(GeneralDebtMovementType.DEBT_INCREASE, customerId, amount,
-                category, description, idempotencyKey);
+                category, description, idempotencyKey, null);
     }
 
     @Override
     public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
-                                               String description, String idempotencyKey) {
+                                               String description, String idempotencyKey, PaymentMethod paymentMethod) {
+        if (paymentMethod == null) throw new IllegalArgumentException("El medio de pago es obligatorio.");
         return register(GeneralDebtMovementType.PAYMENT, customerId, amount,
-                category, description, idempotencyKey);
+                category, description, idempotencyKey, paymentMethod);
     }
 
     private GeneralDebtMovement register(GeneralDebtMovementType type, String customerId, BigDecimal amount,
-                                         String category, String description, String key) {
+                                         String category, String description, String key, PaymentMethod paymentMethod) {
         String id = requireCustomerId(customerId);
         BigDecimal normalizedAmount = requireMoney(amount);
         String normalizedCategory = requireText(category, "La categoría es obligatoria.", 80);
         String normalizedDescription = requireText(description, "La descripción es obligatoria.", 2000);
         requireKey(key);
-        String fingerprint = FinancialRequestFingerprint.calculate(type.name(), id,
+        String baseFingerprint = FinancialRequestFingerprint.calculate(type.name(), id,
                 normalizedAmount.toPlainString(), normalizedCategory, normalizedDescription);
+        // OTRO conserva la huella histórica de abonos cuyo recibo no tenía medio.
+        String fingerprint = paymentMethod == null || paymentMethod == PaymentMethod.OTRO
+                ? baseFingerprint : FinancialRequestFingerprint.calculate(baseFingerprint, paymentMethod.name());
         return transactions.inTransaction(() -> {
             Customer lockedCustomer = lockCustomer(id);
             CustomerGeneralDebtMovementRepository.RequestRecord existing =
@@ -104,7 +109,8 @@ public final class CustomerGeneralDebtWorkflowJdbc implements CustomerGeneralDeb
             }
 
             GeneralDebtMovement proposed = new GeneralDebtMovement(0, id, type, normalizedAmount,
-                    LocalDateTime.now(clock), normalizedCategory, normalizedDescription, key);
+                    LocalDateTime.now(clock), normalizedCategory, normalizedDescription, key,
+                    type == GeneralDebtMovementType.PAYMENT ? AuthorizationService.operationUserId() : null);
             CustomerGeneralDebtMovementRepository.SaveResult saved = movements.saveOnce(proposed, fingerprint);
             if (!saved.inserted()) return saved.movement();
 
@@ -112,21 +118,18 @@ public final class CustomerGeneralDebtWorkflowJdbc implements CustomerGeneralDeb
                 balances.increaseBalance(id, normalizedAmount);
             } else {
                 balances.decreaseBalance(id, normalizedAmount);
-                recordCashReceipt(saved.movement());
+                recordCashReceipt(saved.movement(), paymentMethod);
             }
             return saved.movement();
         });
     }
 
-    private void recordCashReceipt(GeneralDebtMovement movement) {
+    private void recordCashReceipt(GeneralDebtMovement movement, PaymentMethod paymentMethod) {
         String key = "GENERAL-DEBT-PAYMENT:" + movement.idempotencyKey();
         CashMovement entry = new CashMovement(0, CashDirection.INCOME, CashCategory.GENERAL_DEBT_PAYMENT,
                 movement.amount(), movement.occurredAt(), movement.description(), key,
-                "GENERAL_DEBT_PAYMENT", movement.idempotencyKey());
-        String fingerprint = FinancialRequestFingerprint.calculate(entry.direction().name(),
-                entry.category().name(), entry.amount().toPlainString(), entry.occurredAt().toString(),
-                entry.description(), entry.sourceType(), entry.sourceReference());
-        if (!cash.saveOnce(entry, fingerprint).inserted()) {
+                "GENERAL_DEBT_PAYMENT", movement.idempotencyKey(), movement.receivedByUserId(), paymentMethod);
+        if (!cash.saveOnce(entry, CashWorkflowJdbc.cashFingerprint(entry)).inserted()) {
             throw new IllegalStateException("El pago general ya tiene un movimiento de caja; revise la integridad.");
         }
     }

@@ -4,20 +4,21 @@ import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.CustomerDebtBreakdown;
 import com.laexclusiva.model.GeneralDebtMovement;
 import com.laexclusiva.model.GeneralDebtMovementType;
+import com.laexclusiva.model.PaymentMethod;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Implementación demostrativa de deuda general cuya bitácora dura mientras se ejecuta la aplicación. */
 public final class InMemoryCustomerGeneralDebtWorkflow implements CustomerGeneralDebtWorkflow {
     private final CustomerService customers;
     private final SalesWorkflow sales;
     private final Map<String, StoredRequest> requests = new HashMap<>();
-    private final List<GeneralDebtMovement> movements = new ArrayList<>();
+    private final List<GeneralDebtMovement> movements = new CopyOnWriteArrayList<>();
     private long nextId = 1;
 
     /** Compone la lógica de deuda general existente con la consulta de cartera en memoria. */
@@ -38,18 +39,19 @@ public final class InMemoryCustomerGeneralDebtWorkflow implements CustomerGenera
     @Override
     public GeneralDebtMovement registerDebt(String customerId, BigDecimal amount, String category,
                                             String description, String key) {
-        return register(GeneralDebtMovementType.DEBT_INCREASE, customerId, amount, category, description, key);
+        return register(GeneralDebtMovementType.DEBT_INCREASE, customerId, amount, category, description, key, null);
     }
 
     @Override
     public GeneralDebtMovement registerPayment(String customerId, BigDecimal amount, String category,
-                                               String description, String key) {
-        return register(GeneralDebtMovementType.PAYMENT, customerId, amount, category, description, key);
+                                               String description, String key, PaymentMethod paymentMethod) {
+        if (paymentMethod == null) throw new IllegalArgumentException("El medio de pago es obligatorio.");
+        return register(GeneralDebtMovementType.PAYMENT, customerId, amount, category, description, key, paymentMethod);
     }
 
     private synchronized GeneralDebtMovement register(GeneralDebtMovementType type, String customerId,
                                                        BigDecimal amount, String category,
-                                                       String description, String key) {
+                                                       String description, String key, PaymentMethod paymentMethod) {
         String id = requireCustomerId(customerId);
         if (amount == null || amount.signum() <= 0 || category == null || category.isBlank()
                 || description == null || description.isBlank() || key == null || key.isBlank()) {
@@ -59,7 +61,7 @@ public final class InMemoryCustomerGeneralDebtWorkflow implements CustomerGenera
                 amount.stripTrailingZeros().toPlainString(), category.trim(), description.trim());
         StoredRequest old = requests.get(key);
         if (old != null) {
-            if (!old.fingerprint().equals(fingerprint)) {
+            if (!old.fingerprint().equals(fingerprint) || old.movement().paymentMethod() != paymentMethod) {
                 throw new IllegalArgumentException("La clave financiera ya se usó con datos diferentes.");
             }
             return old.movement();
@@ -74,14 +76,17 @@ public final class InMemoryCustomerGeneralDebtWorkflow implements CustomerGenera
         if (type == GeneralDebtMovementType.DEBT_INCREASE) customers.addDebtToCustomer(id, amount);
         else customers.applyPaymentToCustomer(id, amount);
         GeneralDebtMovement movement = new GeneralDebtMovement(nextId++, id, type, amount,
-                LocalDateTime.now(), category.trim(), description.trim(), key);
+                LocalDateTime.now(), category.trim(), description.trim(), key,
+                type == GeneralDebtMovementType.PAYMENT ? AuthorizationService.operationUserId() : null,
+                paymentMethod);
         movements.add(movement);
         requests.put(key, new StoredRequest(fingerprint, movement));
         return movement;
     }
 
     @Override
-    public synchronized List<GeneralDebtMovement> listMovements(String customerId, LocalDate from,
+    // El guard de clientes consulta la bitacora con el repositorio bloqueado.
+    public List<GeneralDebtMovement> listMovements(String customerId, LocalDate from,
                                                                 LocalDate through, String category) {
         if (from != null && through != null && from.isAfter(through)) {
             throw new IllegalArgumentException("La fecha inicial no puede ser posterior a la final.");

@@ -21,11 +21,15 @@ AUTHORIZED_BRANCHES = {
     "feature/identity-app-integration": "pr24",
     "feature/purchases-app-integration": "purchases",
     "feature/smart-reminders-security": "collections",
+    "feature/jesus-customers-crud": "pr29-customers",
 }
 event = ENV.get("GITHUB_EVENT_NAME")
 branch = ENV.get("GITHUB_HEAD_REF") if event == "pull_request" else ENV.get("GITHUB_REF_NAME")
 expected_authorization = AUTHORIZED_BRANCHES.get(branch)
-if (ENV.get("GITHUB_ACTIONS") != "true" or not expected_authorization
+if (event not in {"pull_request", "push", "workflow_dispatch"}
+        or ENV.get("GITHUB_ACTIONS") != "true"
+        or ENV.get("GITHUB_REPOSITORY") != "carloscamelo2008-lang/la-exclusiva-p3"
+        or not expected_authorization
         or ENV.get("IDENTITY_LAB_AUTHORIZED") != expected_authorization):
     raise SystemExit("Solo el job efímero expresamente autorizado puede ejecutar este laboratorio.")
 if event == "pull_request":
@@ -33,7 +37,8 @@ if event == "pull_request":
     payload = json.loads(event_file.read_text(encoding="utf-8"))
     head = payload["pull_request"]["head"]
     if (head["repo"]["full_name"] != ENV["GITHUB_REPOSITORY"]
-            or head["ref"] != branch or head["sha"] != ENV["LAB_SOURCE_HEAD"]):
+            or head["ref"] != branch or head["sha"] != ENV["LAB_SOURCE_HEAD"]
+            or (expected_authorization == "pr29-customers" and payload["number"] != 29)):
         raise SystemExit("La referencia de origen debe ser el HEAD actual de un PR del mismo repositorio.")
 if ENV.get("DOCKER_HOST") or ENV.get("DOCKER_CONTEXT"):
     raise SystemExit("No se permiten endpoints Docker alternativos.")
@@ -144,6 +149,12 @@ def psql(files=(), query=None, check=True):
 def java_tests(cycle):
     scenario = "application" if cycle == "application" else "incomplete" if cycle == "incomplete" else "identity"
     ENV["LAB_SCENARIO"] = scenario
+    ENV["LAB_SOURCE_BRANCH"] = branch
+    runner = (LAB / "run-java.sh").read_text(encoding="utf-8")
+    selectors = re.search(rf"^  {scenario}\)\n\s+mvn -o[^\n]*\n\s+'-Dtest=([^']+)'",
+                          runner, re.MULTILINE)
+    assert selectors, f"No se encontraron las suites del escenario {scenario}"
+    expected_suites = set(selectors[1].split(","))
     compose("--profile", "java", "create", "--no-recreate", "java")
     java = compose("--profile", "java", "ps", "-aq", "java").stdout.strip()
     save(cycle + "-java-isolation.json", json.dumps(inspect_container(java, java=True), indent=2))
@@ -152,21 +163,21 @@ def java_tests(cycle):
     code = int(run(["docker", "inspect", "--format", "{{.State.ExitCode}}", java]).stdout)
     suites = list((EVIDENCE / "surefire-reports").glob("TEST-*.xml"))
     totals = {name: 0 for name in ("tests", "failures", "errors", "skipped")}
+    executed = set()
     for file in suites:
         file.write_text(clean_text(file.read_text()), encoding="utf-8")
         suite = ET.parse(file).getroot()
+        executed.add(suite.attrib["name"].rsplit(".", 1)[-1])
+        assert int(suite.attrib["tests"]) > 0, file.name
         for key in totals:
             totals[key] += int(suite.attrib[key])
-    expected = {
-        "identity": (4, {"tests": 26, "failures": 0, "errors": 0, "skipped": 0}),
-        "application": (16, {"tests": 60, "failures": 0, "errors": 0, "skipped": 0}),
-        "incomplete": (1, {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}),
-    }[scenario]
-    assert (len(suites), totals) == expected, {"suites": len(suites), "totals": totals}
+    assert executed == expected_suites and len(suites) == len(expected_suites), {
+        "missing": sorted(expected_suites - executed), "unexpected": sorted(executed - expected_suites)}
+    assert all(totals[key] == 0 for key in ("failures", "errors", "skipped")), totals
     assert code == 0 and "BUILD SUCCESS" in output.stdout
     (EVIDENCE / "surefire-reports").rename(EVIDENCE / (cycle + "-surefire"))
     print(cycle + " Java 17: " + json.dumps(totals), flush=True)
-    report["cycles"].append({"cycle": cycle, "java": totals, "scenario": scenario})
+    report["cycles"].append({"cycle": cycle, "java": totals, "suites": len(suites), "scenario": scenario})
 
 
 def snapshot():
@@ -235,7 +246,13 @@ def main():
                        "V102__cash_ledger.sql", "V103__enforce_sale_request_identity_coherence.sql",
                        "V104__user_security_version.sql", "V105__unique_active_user_seller.sql",
                        "V106__user_account_instance_identity.sql", "V107__customer_collection_preferences.sql",
-                       "V108__administrative_audit.sql", "V109__reminder_review_and_delivery_reconciliation.sql")
+                       "V108__administrative_audit.sql", "V109__reminder_review_and_delivery_reconciliation.sql",
+                       "V110__customer_phone_uniqueness.sql", "V111__customer_credit_limit.sql",
+                       "V112__audit_actors_and_payment_methods.sql")
+    application_sql = (LAB / "application.psql").read_text(encoding="utf-8")
+    applied = tuple(re.findall(r"^\\ir ../../migrations/(V[^\s]+\.sql)$", application_sql, re.MULTILINE))
+    assert applied == migration_names, "La secuencia SQL no coincide con las migraciones esperadas."
+    report["application_migration_order"] = list(applied)
     for name in migration_names:
         report["migrations"][name] = hashlib.sha256((ROOT / "database/migrations" / name).read_bytes()).hexdigest()
     for cycle in ("first", "repeat"):
@@ -294,4 +311,6 @@ finally:
         if "--cleanup" not in sys.argv:
             save("summary.json", json.dumps(report, indent=2))
             if report["completed"] and report.get("destroyed"):
-                print("Laboratorio completado y destruido: ciclos identidad (26 pruebas x 2), aplicación (60 pruebas PostgreSQL) y esquema incompleto (1 prueba); recuperación aprobada.", flush=True)
+                application = next(c for c in report["cycles"] if c["scenario"] == "application")
+                print(f"Aplicacion: {application['suites']} suites y {application['java']['tests']} pruebas PostgreSQL.", flush=True)
+                print("Laboratorio completado y destruido; recuperación aprobada.", flush=True)

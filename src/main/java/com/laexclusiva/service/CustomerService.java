@@ -20,6 +20,13 @@ public class CustomerService {
     }
 
     public void registerCustomer(String id, String name, String phone, String address) {
+        registerCustomer(id, name, phone, address, BigDecimal.ZERO);
+    }
+
+    public void registerCustomer(String id, String name, String phone, String address, BigDecimal creditLimit) {
+        id = Customer.normalizeText(id);
+        name = Customer.normalizeText(name);
+        address = Customer.normalizeText(address);
         if (id == null || id.trim().isEmpty()) {
             throw new IllegalArgumentException("El ID no puede ser nulo ni vacío.");
         }
@@ -36,7 +43,50 @@ public class CustomerService {
             throw new IllegalArgumentException("Ya existe un cliente registrado con el ID: " + id);
         }
 
-        customerRepository.save(new Customer(id, name, phone, address, BigDecimal.ZERO));
+        Customer customer = new Customer(id, name, phone, address, BigDecimal.ZERO, creditLimit);
+        requireAvailablePhone(customer.getPhone(), null);
+        customerRepository.save(customer);
+    }
+
+    /** Actualiza los datos de contacto conservando la identidad y el saldo del cliente. */
+    public void updateCustomer(String id, String name, String phone, String address) {
+        synchronized (customerRepository) {
+            Customer current = loadCustomer(id);
+            updateContact(current, name, phone, address, current.getCreditLimit());
+        }
+    }
+
+    /** Actualiza los datos personales y el cupo sin modificar el saldo. */
+    public void updateCustomer(String id, String name, String phone, String address, BigDecimal creditLimit) {
+        synchronized (customerRepository) {
+            updateContact(loadCustomer(id), name, phone, address, creditLimit);
+        }
+    }
+
+    private void updateContact(Customer current, String name, String phone, String address, BigDecimal creditLimit) {
+        Customer updated = Customer.reconstitute(current.getId(), Customer.normalizeText(name), phone,
+                Customer.normalizeText(address), current.getBalance(), creditLimit);
+        requireAvailablePhone(updated.getPhone(), current.getId());
+        customerRepository.update(updated);
+    }
+
+    /** Elimina un cliente existente cuando el repositorio confirma que no tiene referencias ni saldo. */
+    public void deleteCustomer(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("El ID del cliente es obligatorio.");
+        }
+        customerRepository.deleteById(loadCustomer(id).getId());
+    }
+
+    /** Devuelve coincidencias consultivas de nombre para confirmar un alta. */
+    public List<Customer> findSimilarNames(String name) {
+        return customerRepository.findSimilarNames(name);
+    }
+
+    private void requireAvailablePhone(String phone, String excludedId) {
+        if (customerRepository.existsByPhone(phone, excludedId)) {
+            throw new IllegalArgumentException("Ya existe un cliente registrado con ese teléfono.");
+        }
     }
 
     /** Devuelve un snapshot: modificarlo no cambia el cliente almacenado. */
@@ -140,6 +190,9 @@ public class CustomerService {
             throw new IllegalArgumentException("El ID no puede ser nulo ni vacío.");
         }
         Customer customer = customerRepository.findById(id);
+        if (customer == null && !id.equals(Customer.normalizeText(id))) {
+            customer = customerRepository.findById(Customer.normalizeText(id));
+        }
         if (customer == null) {
             throw new IllegalArgumentException("No se encontró el cliente con ID: " + id);
         }
@@ -160,8 +213,8 @@ public class CustomerService {
     }
 
     private static Customer withBalance(Customer customer, BigDecimal balance) {
-        return new Customer(customer.getId(), customer.getName(), customer.getPhone(),
-                customer.getAddress(), balance);
+        return Customer.reconstitute(customer.getId(), customer.getName(), customer.getPhone(),
+                customer.getAddress(), balance, customer.getCreditLimit());
     }
 
     private void requireAllocatedSaleDebtIsCovered(String customerId, Customer customer) {

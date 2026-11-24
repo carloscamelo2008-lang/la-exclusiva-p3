@@ -18,6 +18,11 @@ public interface IdempotentSalePaymentAppender extends SalePaymentAppender {
      */
     AppendResult appendPaymentOnce(String saleId, BigDecimal amount, String idempotencyKey);
 
+    /** Anexa un abono conservando la identidad del receptor cuando el adaptador lo admite. */
+    default AppendResult appendPaymentOnce(String saleId, BigDecimal amount, String idempotencyKey, Long receiverId) {
+        return appendPaymentOnce(saleId, amount, idempotencyKey);
+    }
+
     /** {@inheritDoc} Conserva el contrato anterior devolviendo el valor del intento idempotente. */
     @Override
     default SalePayment appendPayment(String saleId, BigDecimal amount, String idempotencyKey) {

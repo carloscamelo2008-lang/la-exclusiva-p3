@@ -8,12 +8,28 @@ public class Customer {
     private String phone;
     private String address;
     private BigDecimal saldo;
+    private final BigDecimal creditLimit;
 
     public Customer(String id, String name, String phone, String address) {
         this(id, name, phone, address, BigDecimal.ZERO);
     }
 
     public Customer(String id, String name, String phone, String address, BigDecimal saldo) {
+        this(id, name, phone, address, saldo, BigDecimal.ZERO);
+    }
+
+    public Customer(String id, String name, String phone, String address, BigDecimal saldo, BigDecimal creditLimit) {
+        this(normalizeText(id), name, phone, address, saldo, creditLimit, true);
+    }
+
+    /** Reconstruye un cliente sin cambiar la clave primaria de filas históricas. */
+    public static Customer reconstitute(String id, String name, String phone, String address,
+                                        BigDecimal balance, BigDecimal creditLimit) {
+        return new Customer(id, name, phone, address, balance, creditLimit, false);
+    }
+
+    private Customer(String id, String name, String phone, String address, BigDecimal saldo,
+                     BigDecimal creditLimit, boolean normalizeContact) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("El ID del cliente es obligatorio y no puede estar vacío.");
         }
@@ -30,15 +46,50 @@ public class Customer {
             throw new IllegalArgumentException("El saldo inicial no puede ser nulo ni negativo.");
         }
         this.id = id;
-        this.name = name;
-        this.phone = phone;
-        this.address = address;
+        this.name = normalizeContact ? normalizeText(name) : name;
+        this.phone = normalizePhone(phone);
+        this.address = normalizeContact ? normalizeText(address) : address;
         this.saldo = saldo;
+        if (creditLimit == null || creditLimit.signum() < 0 || creditLimit.stripTrailingZeros().scale() > 2
+                || creditLimit.compareTo(new BigDecimal("99999999999999999.99")) > 0) {
+            throw new IllegalArgumentException("El cupo de crédito debe ser un importe no negativo de hasta dos decimales.");
+        }
+        this.creditLimit = creditLimit;
+    }
+
+    /** Elimina espacios exteriores y reduce los grupos interiores a un espacio. */
+    public static String normalizeText(String value) {
+        return value == null ? null : value.replaceAll("\\s+", " ").trim();
+    }
+
+    /** Clave de comparación para advertir coincidencias de nombre. */
+    public static String comparableName(String name) {
+        if (name == null) return "";
+        return java.text.Normalizer.normalize(normalizeText(name), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    public BigDecimal getCreditLimit() { return creditLimit; }
+
+    /** Valida la exposición total del cliente antes de registrar una venta a crédito. */
+    public void requireAvailableCredit(BigDecimal newDebt) {
+        if (newDebt.signum() > 0 && saldo.add(newDebt).compareTo(creditLimit) > 0) {
+            throw new IllegalArgumentException("La venta supera el cupo de crédito disponible del cliente.");
+        }
+    }
+
+    /** Normaliza un teléfono a dígitos ASCII, conservando ceros iniciales. */
+    public static String normalizePhone(String phone) {
+        String compact = phone == null ? "" : phone.replaceAll("\\s", "");
+        if (!compact.matches("\\+?[0-9]{1,50}")) {
+            throw new IllegalArgumentException("El teléfono debe contener únicamente dígitos, con un + inicial opcional.");
+        }
+        return compact.startsWith("+") ? compact.substring(1) : compact;
     }
 
     /** Devuelve una copia independiente del cliente. */
     public Customer copy() {
-        return new Customer(id, name, phone, address, saldo);
+        return reconstitute(id, name, phone, address, saldo, creditLimit);
     }
 
     public String getId() { return id; }
