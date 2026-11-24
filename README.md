@@ -68,6 +68,7 @@ El contrato del tablero y las reglas de estados de cuenta, consentimiento y corr
 
 ## Documentación
 
+- [Empaquetado de escritorio para Windows](docs/windows-packaging.md)
 - [Guía de PostgreSQL y JDBC](database/README.md)
 - [Contrato de integración JDBC](database/jdbc-integration-contract.md)
 - [Asistente de cartera, recordatorios y auditoría](docs/collection-reminders-security.md)
