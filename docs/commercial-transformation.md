@@ -12,7 +12,7 @@
 - El catálogo permite elegir una fotografía PNG/JPEG, valida tipo, decodificación, tamaño y dimensiones, la guarda por SHA-256 fuera de PostgreSQL y persiste solo una referencia. V114 añade la columna opcional con restricción SQL. La vista previa está disponible en inventario y ventas y muestra un estado alternativo cuando falta el archivo.
 - El grupo de envase retornable permite escoger una opción existente o escribir una nueva.
 
-La aplicación no carga ni importa datos reales del negocio. V113 y V114 se añadieron al repositorio, pero **no se aplicaron a ninguna base de datos en esta intervención**.
+La aplicación no carga ni importa datos reales del negocio. En la verificación inicial registrada debajo, V113 y V114 solo estaban en el repositorio y no se aplicaron a ninguna base; la validación complementaria posterior, fechada 2026-11-28, describe por separado su ejecución dentro de un clúster temporal aislado.
 
 ## Alcance aún pendiente antes de afirmar que el sistema es comercialmente completo
 
@@ -24,7 +24,7 @@ La aplicación no carga ni importa datos reales del negocio. V113 y V114 se aña
 6. **Fotografías reales:** las seis fotografías originales suministradas por Carlos se inspeccionaron y se copiaron sin transformación a `docs/assets/catalogo-productos/`, con manifiesto, dimensiones y SHA-256. Son recursos de entrega para Daniel; no están en `src/main/resources`, no se incorporan automáticamente al runtime y todavía no se guardaron referencias en productos ni en una base. El contrato existente permite que una persona autorizada importe una foto mediante `ProductImageStore`, guarde la referencia por el servicio del catálogo y la resuelva desde `%USERPROFILE%\La Exclusiva\Productos` (o `LAEXCLUSIVA_PRODUCT_IMAGES_DIR`); respaldar esa carpeta junto con PostgreSQL. El manifiesto registra que el producto visual “Águila Original 250 ml” corresponde por volumen al ID actual `AGUILITA_250`, cuyo nombre en `InitialCatalog` es “Aguilita”; Carlos debe confirmar esa equivalencia antes de asignar la imagen.
 7. **Datos auténticos, configuración y despliegue:** faltan el catálogo validado, cantidades/precios, clientes, proveedores, usuarios/vendedores y la configuración de la base del negocio. No se conectó a una base de negocio ni se preparó un instalador. El procedimiento de respaldo/restauración se documentó en `database/README.md`, pero no se ejecutó ni ensayó.
 
-## Validación de esta intervención
+## Validación inicial de la transformación (Registro 45)
 
 - Microsoft JDK 17.0.18 y Maven 3.10.0.
 - La batería dirigida de almacén de imágenes, controladores JavaFX/FXML, plan de laboratorio y repositorio JDBC terminó `BUILD SUCCESS`: **33 contabilizadas, 30 aprobadas y 3 integraciones PostgreSQL omitidas**, con 0 fallos y 0 errores. Las 3 omisiones corresponden a `ProductRepositoryJdbcPostgresIntegrationTest`, porque no se configuró `LAEXCLUSIVA_TEST_DB_URL`. La ejecución final completa incluye además la regresión de vista previa en ventas.
