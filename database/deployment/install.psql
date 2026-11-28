@@ -1,0 +1,70 @@
+-- database/deployment/install.psql
+-- Instalador comercial limpio para La Exclusiva (PostgreSQL local)
+-- No incluye fixtures ni datos de demostracion.
+
+\set ON_ERROR_STOP on
+SET client_min_messages TO WARNING;
+SET search_path TO public;
+
+BEGIN;
+
+DO $empty$
+BEGIN
+    IF EXISTS (
+        SELECT FROM pg_catalog.pg_class
+        WHERE relnamespace = 'public'::regnamespace
+          AND relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+    ) THEN
+        RAISE EXCEPTION 'El instalador comercial requiere una base con el esquema public vacío';
+    END IF;
+END;
+$empty$;
+
+CREATE TABLE public.schema_migration (
+    version VARCHAR(32) PRIMARY KEY,
+    script_name VARCHAR(255) NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    applied_by TEXT NOT NULL DEFAULT CURRENT_USER
+);
+
+COMMIT;
+
+-- Ejecucion en el orden verificado del esquema comercial
+\ir ../migrations/V001__initial_schema.sql
+\ir ../migrations/V004__purchase_orders.sql
+\ir ../migrations/V002__payment_idempotency.sql
+\ir ../migrations/V100__sale_creation_idempotency.sql
+\ir ../migrations/V101__general_debt_ledger.sql
+\ir ../migrations/V102__cash_ledger.sql
+\ir ../migrations/V103__enforce_sale_request_identity_coherence.sql
+\ir ../migrations/V104__user_security_version.sql
+\ir ../migrations/V105__unique_active_user_seller.sql
+\ir ../migrations/V106__user_account_instance_identity.sql
+\ir ../migrations/V107__customer_collection_preferences.sql
+\ir ../migrations/V108__administrative_audit.sql
+\ir ../migrations/V109__reminder_review_and_delivery_reconciliation.sql
+\ir ../migrations/V110__customer_phone_uniqueness.sql
+\ir ../migrations/V111__customer_credit_limit.sql
+\ir ../migrations/V112__audit_actors_and_payment_methods.sql
+
+BEGIN;
+
+INSERT INTO public.schema_migration (version, script_name) VALUES
+    ('V001', 'V001__initial_schema.sql'),
+    ('V004', 'V004__purchase_orders.sql'),
+    ('V002', 'V002__payment_idempotency.sql'),
+    ('V100', 'V100__sale_creation_idempotency.sql'),
+    ('V101', 'V101__general_debt_ledger.sql'),
+    ('V102', 'V102__cash_ledger.sql'),
+    ('V103', 'V103__enforce_sale_request_identity_coherence.sql'),
+    ('V104', 'V104__user_security_version.sql'),
+    ('V105', 'V105__unique_active_user_seller.sql'),
+    ('V106', 'V106__user_account_instance_identity.sql'),
+    ('V107', 'V107__customer_collection_preferences.sql'),
+    ('V108', 'V108__administrative_audit.sql'),
+    ('V109', 'V109__reminder_review_and_delivery_reconciliation.sql'),
+    ('V110', 'V110__customer_phone_uniqueness.sql'),
+    ('V111', 'V111__customer_credit_limit.sql'),
+    ('V112', 'V112__audit_actors_and_payment_methods.sql');
+
+COMMIT;

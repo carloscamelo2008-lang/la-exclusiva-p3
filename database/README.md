@@ -32,6 +32,55 @@ Para las pruebas automatizadas, define `LAEXCLUSIVA_TEST_DB_URL` con la base ais
 
 ## Migraciones
 
+### Instalación comercial y rol aplicativo
+
+En una base local nueva, con el esquema `public` vacío, confirma el servidor, puerto,
+base y rol instalador. Desde la raíz del repositorio ejecuta:
+
+```powershell
+psql -X -h localhost -p 5432 -U rol_instalador -d la_exclusiva -f database/deployment/install.psql
+```
+
+El instalador aplica las 16 migraciones en orden y registra el conjunto en
+`public.schema_migration`. Consulta [el procedimiento de respaldo y actualización](migrations/README.md)
+antes de intervenir una base existente.
+
+Como administrador PostgreSQL, crea un rol de inicio de sesión dedicado, sin
+superusuario, creación de bases, creación de roles ni membresía en el rol dueño.
+Asigna la contraseña interactivamente con `\password la_exclusiva_app` en `psql` y
+proporciónala al proceso de aplicación mediante un almacén privado. El rol
+instalador conserva la propiedad y el DDL. Este ejemplo usa la base `la_exclusiva`
+y debe ejecutarse conectado a ella:
+
+```sql
+CREATE ROLE la_exclusiva_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+GRANT CONNECT ON DATABASE la_exclusiva TO la_exclusiva_app;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO la_exclusiva_app;
+
+GRANT SELECT ON public.schema_migration TO la_exclusiva_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+    public.user_account, public.customer, public.beer_product, public.inventory_item,
+    public.stock_movement, public.sale, public.sale_line, public.sale_payment,
+    public.customer_general_debt_movement, public.cash_movement,
+    public.purchase_order, public.goods_receipt TO la_exclusiva_app;
+GRANT SELECT, INSERT, UPDATE ON public.seller, public.product_price, public.supplier,
+    public.purchase_order_line, public.customer_collection_profile,
+    public.customer_collection_reminder TO la_exclusiva_app;
+GRANT SELECT, INSERT ON public.goods_receipt_line, public.customer_collection_follow_up,
+    public.administrative_audit_event TO la_exclusiva_app;
+```
+
+Comprueba los privilegios efectivos, incluidos los heredados de `PUBLIC` o de
+otras membresías. El ejemplo concede los cuatro permisos del contrato del
+verificador en las doce tablas operativas y limita las concesiones en las demás
+a las operaciones de sus repositorios. Revisa cada migración posterior para
+conceder únicamente el acceso adicional que requiera.
+
+`PostgresStartupVerifier.verify()` valida la conexión, las tablas y columnas
+requeridas, el registro V112 o posterior y los permisos del usuario efectivo.
+Este PR entrega el verificador JDBC para su integración posterior en el arranque.
+
 Las migraciones son SQL versionado, no se ejecutan automáticamente al iniciar la aplicación. El conjunto actual del repositorio incluye `V001`, `V002`, `V004` y `V100`–`V112`; los saltos de numeración son intencionales. La ruta aplicada por el laboratorio se declara en `database/validation/identity/application.psql`; los requisitos de cada versión están en sus encabezados y en el [contrato JDBC](jdbc-integration-contract.md). Antes de aplicar una migración, verifica manualmente el servidor, el nombre de base y el estado de esquema. No repitas una versión ya aplicada. Para pruebas que puedan insertar o limpiar fixtures, utiliza exclusivamente una base ficticia y aislada `la_exclusiva_test` o el laboratorio efímero de CI.
 
 Las migraciones V107 y V108 agregan respectivamente preferencias/seguimiento de cobranza y auditoría administrativa. V109 añade identidad única del intento, propietario de instancia, evidencia cerrada del proveedor y estado de conciliación. También convierte los avisos históricos `SENDING` y `FAILED/PROVIDER_FAILED` a un estado incierto para evitar reenvíos posiblemente duplicados. Dependen de las tablas de cliente e identidad existentes. No alteran el historial de clientes, ventas ni pagos. No se ejecutaron migraciones locales como parte de esa implementación.
