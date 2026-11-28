@@ -77,7 +77,7 @@ class CollectionDashboardVisualTest {
         onFx(()->{FXMLLoader loader=new FXMLLoader(getClass().getResource("/com/laexclusiva/ui/fxml/collections_view.fxml"));Parent root=loader.load();
             ((CollectionsController)loader.getController()).configure(s.collectionAssistant(),s.administrativeAudit(),s.customers().getAllCustomers(),admin,s.authorization());
             new Scene(root,560,600);root.applyCss();root.layout();
-            for(String id:new String[]{"customerCombo","emailField","channelCombo","commitmentDatePicker","noteField"}){
+            for(String id:new String[]{"customerCombo","channelCombo","commitmentDatePicker","noteField"}){
                 Node field=(Node)loader.getNamespace().get(id);assertTrue(field.localToScene(field.getBoundsInLocal()).getMaxX()<=561,id);assertFalse(field.getAccessibleText().isBlank());
             }
             assertFalse(((TableView<?>)loader.getNamespace().get("auditTable")).getItems().isEmpty());snapshot(root,"collections-form-560");return null;});

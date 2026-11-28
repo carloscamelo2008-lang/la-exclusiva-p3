@@ -63,9 +63,12 @@ class ApplicationServicesTest {
     }
 
     @Test
-    void refusesRealSmtpFromNonDurableMemoryMode() {
-        assertThrows(IllegalArgumentException.class, () -> ApplicationServices.create(
-                ApplicationServices.MEMORY_MODE, Map.of("LAEXCLUSIVA_SMTP_ENABLED", "true")));
+    void refusesCommercialEmailDeliveryInEveryPersistenceMode() {
+        var configuration = Map.of("LAEXCLUSIVA_SMTP_ENABLED", "true");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> ApplicationServices.create(
+                ApplicationServices.MEMORY_MODE, configuration)).getMessage().contains("deshabilitado"));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> ApplicationServices.create(
+                ApplicationServices.POSTGRES_MODE, configuration)).getMessage().contains("deshabilitado"));
     }
 
     @Test

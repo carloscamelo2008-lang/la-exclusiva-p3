@@ -4,6 +4,7 @@ import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SalePayment;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.awt.Color;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -50,8 +51,13 @@ public final class AccountStatementPdfGenerator {
                         stream.setLeading(LEADING);
                         stream.newLineAtOffset(LEFT, TOP);
                     }
-                    if (line.startsWith("Estado de cuenta") && document.getNumberOfPages() == 1) stream.setFont(bold, 14);
-                    else stream.setFont(regular, 10);
+                    if (line.startsWith("Estado de cuenta") && document.getNumberOfPages() == 1) {
+                        stream.setFont(bold, 14);
+                        stream.setNonStrokingColor(new Color(31, 78, 121));
+                    } else {
+                        stream.setFont(regular, 10);
+                        stream.setNonStrokingColor(Color.BLACK);
+                    }
                     stream.showText(line);
                     stream.newLine();
                     linesOnPage++;
