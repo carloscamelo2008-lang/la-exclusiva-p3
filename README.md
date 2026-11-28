@@ -1,6 +1,6 @@
 # La Exclusiva P3
 
-Aplicación de escritorio para gestionar catálogo, inventario, compras, ventas, cartera y caja del negocio La Exclusiva. El cliente JavaFX usa Java 17; PostgreSQL/JDBC es opcional y el modo predeterminado conserva almacenamiento en memoria.
+Aplicación de escritorio para gestionar catálogo, inventario, compras, ventas, cartera y caja del negocio La Exclusiva. El cliente JavaFX usa Java 17 y requiere PostgreSQL local para la operación comercial normal. El almacenamiento en memoria se selecciona explícitamente solo para pruebas o recorridos controlados.
 
 ## Funciones disponibles
 
@@ -35,9 +35,9 @@ El punto de entrada predeterminado inicia JavaFX:
 mvn exec:java
 ```
 
-Por defecto, `LAEXCLUSIVA_PERSISTENCE_MODE` es `memory`, así que los datos de esa ejecución no sobreviven al cierre. En el primer arranque sin cuentas, el modo normal aprovisiona un administrador usando `LAEXCLUSIVA_INITIAL_ADMIN_USERNAME` (opcional, por defecto `admin`) y `LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD`. La contraseña debe cumplir la política configurada. En PostgreSQL el bootstrap solo ocurre si el repositorio persistente no contiene usuarios; no crea una cuenta alternativa en memoria ante errores de base o esquema.
+El arranque comercial selecciona PostgreSQL por defecto; configure `LAEXCLUSIVA_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` antes de abrir la aplicación. `LAEXCLUSIVA_PERSISTENCE_MODE=memory` solo tiene efecto cuando se elige explícitamente. Si PostgreSQL, sus credenciales o el esquema requerido no están disponibles, la aplicación muestra un error seguro y no cambia a memoria. En el primer arranque de una base vacía, el administrador inicial se aprovisiona con `LAEXCLUSIVA_INITIAL_ADMIN_USERNAME` (opcional, por defecto `admin`) y `LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD`, que debe cumplir la política. El alta no reemplaza usuarios existentes.
 
-El modo demo solo está disponible en memoria:
+El aprovisionamiento `--demo` de cuentas solo se admite al seleccionar memoria explícitamente; crea dos usuarios ficticios y no persiste sus cambios:
 
 ```powershell
 $env:LAEXCLUSIVA_DEMO_ADMIN_PASSWORD = 'contraseña temporal'

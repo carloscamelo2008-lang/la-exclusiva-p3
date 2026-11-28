@@ -2,8 +2,9 @@
 
 ## Composición de la aplicación
 
-`ApplicationServices.fromEnvironment()` selecciona `memory` o `postgres` usando
-`LAEXCLUSIVA_PERSISTENCE_MODE`. En memoria crea una sola composición
+`ApplicationServices.fromEnvironment()` selecciona PostgreSQL por defecto;
+`memory` requiere `LAEXCLUSIVA_PERSISTENCE_MODE=memory` y se reserva para pruebas
+o recorridos controlados. En memoria crea una sola composición
 `IdentityServices`: repositorio de usuarios, `AuthenticationService`, validador,
 `AuthorizationService` y `UserManagementService`. App y los controladores JavaFX
 reciben esas mismas instancias; no hay un segundo repositorio de identidad.

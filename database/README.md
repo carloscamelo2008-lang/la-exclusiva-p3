@@ -1,12 +1,12 @@
 # PostgreSQL y JDBC
 
-La aplicación puede usar PostgreSQL mediante JDBC en modo explícito. JavaFX y el modo `memory` siguen disponibles sin conexión a la base. Las conexiones productivas y de pruebas usan variables distintas para reducir el riesgo de apuntar a una base equivocada.
+La operación comercial usa PostgreSQL mediante JDBC y falla cerrada si faltan configuración, conexión o esquema. El modo `memory` se reserva para pruebas y recorridos controlados explícitamente; nunca se elige por omisión. Las conexiones productivas y de pruebas usan variables distintas para reducir el riesgo de apuntar a una base equivocada.
 
 ## Configuración
 
 | Variable | Uso |
 |---|---|
-| `LAEXCLUSIVA_PERSISTENCE_MODE` | `memory` (predeterminado) o `postgres` para la aplicación |
+| `LAEXCLUSIVA_PERSISTENCE_MODE` | `postgres` (predeterminado); `memory` únicamente por selección explícita |
 | `LAEXCLUSIVA_DB_URL` | URL de la base a la que se conectará la aplicación |
 | `LAEXCLUSIVA_TEST_DB_URL` | URL exclusiva para pruebas de integración; valida el nombre `la_exclusiva_test` |
 | `LAEXCLUSIVA_DB_USER` | Usuario PostgreSQL |

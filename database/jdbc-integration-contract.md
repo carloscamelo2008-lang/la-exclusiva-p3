@@ -318,7 +318,8 @@ Ejecutar V001 una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea 
 ## Integración JavaFX y unidad de trabajo completa (2026-11-17)
 
 La rama `feature/full-jdbc-integration` añade una composición seleccionable mediante
-`LAEXCLUSIVA_PERSISTENCE_MODE=memory|postgres`; si falta la variable conserva `memory`. La
+`LAEXCLUSIVA_PERSISTENCE_MODE=memory|postgres`; si falta la variable selecciona `postgres`. El modo
+`memory` requiere selección explícita y se reserva para pruebas o recorridos controlados. La
 composición PostgreSQL crea un `JdbcConnectionProvider` y un `JdbcTransactionManager` compartidos
 por repositorios y ajustadores, sin abrir conexiones durante el arranque.
 

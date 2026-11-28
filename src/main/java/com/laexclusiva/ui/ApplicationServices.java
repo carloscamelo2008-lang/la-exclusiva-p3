@@ -110,16 +110,29 @@ public final class ApplicationServices {
     }
 
     /**
-     * Selecciona la composición mediante {@value #MODE_ENV}; memoria es el modo predeterminado.
+     * Selecciona la composición mediante {@value #MODE_ENV}; PostgreSQL es el modo predeterminado
+     * para impedir que una ejecución comercial use almacenamiento volátil por omisión.
      * Las credenciales JDBC se leen solo desde el entorno del proceso.
      *
      * @return servicios compuestos para el modo configurado
      */
     public static ApplicationServices fromEnvironment() {
-        return create(System.getenv().getOrDefault(MODE_ENV, MEMORY_MODE), System.getenv());
+        return fromEnvironment(System.getenv());
     }
 
-    /** Variante inyectable para probar la selección de modo sin leer ni registrar secretos. */
+    /**
+     * Selecciona PostgreSQL cuando el entorno no declara un modo; memoria exige selección explícita.
+     * Esta variante permite verificar el arranque sin alterar el entorno del proceso.
+     *
+     * @param environment variables de proceso disponibles
+     * @return composición coherente con el modo seleccionado
+     * @throws IllegalArgumentException si falta la configuración PostgreSQL o el modo no es válido
+     */
+    public static ApplicationServices fromEnvironment(Map<String, String> environment) {
+        if (environment == null) throw new IllegalArgumentException("El entorno de configuración es obligatorio.");
+        return create(environment.getOrDefault(MODE_ENV, POSTGRES_MODE), environment);
+    }
+
     /**
      * Construye la composición sin registrar credenciales ni abrir conexiones durante el arranque.
      *

@@ -51,6 +51,18 @@ class ApplicationServicesTest {
     }
 
     @Test
+    void environmentSelectionRequiresPostgresUnlessMemoryWasExplicitlyChosen() {
+        assertThrows(IllegalArgumentException.class, () -> ApplicationServices.fromEnvironment(Map.of()));
+        assertFalse(ApplicationServices.fromEnvironment(Map.of(
+                ApplicationServices.MODE_ENV, ApplicationServices.MEMORY_MODE)).postgresMode());
+    }
+
+    @Test
+    void applicationAccessDoesNotCreateAnImplicitMemoryComposition() {
+        assertThrows(IllegalStateException.class, () -> new App().getUserRepository());
+    }
+
+    @Test
     void refusesRealSmtpFromNonDurableMemoryMode() {
         assertThrows(IllegalArgumentException.class, () -> ApplicationServices.create(
                 ApplicationServices.MEMORY_MODE, Map.of("LAEXCLUSIVA_SMTP_ENABLED", "true")));

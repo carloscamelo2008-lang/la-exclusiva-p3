@@ -29,11 +29,10 @@ public final class Main {
             return;
         }
 
-        String persistenceMode = System.getenv().getOrDefault(ApplicationServices.MODE_ENV,
-                ApplicationServices.MEMORY_MODE).trim();
+        String persistenceMode = System.getenv().get(ApplicationServices.MODE_ENV);
         if (!ApplicationServices.MEMORY_MODE.equalsIgnoreCase(persistenceMode)) {
-            System.err.println("El modo --console solo admite LAEXCLUSIVA_PERSISTENCE_MODE=memory; "
-                    + "no se cambiará a almacenamiento en memoria automáticamente.");
+            System.err.println("El modo --console solo admite LAEXCLUSIVA_PERSISTENCE_MODE=memory explícito; "
+                    + "no se seleccionará almacenamiento volátil automáticamente.");
             return;
         }
 
