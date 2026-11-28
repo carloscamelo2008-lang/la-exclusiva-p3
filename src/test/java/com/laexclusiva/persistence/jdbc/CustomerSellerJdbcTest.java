@@ -312,18 +312,18 @@ class CustomerSellerJdbcTest {
                 String id = (String) values.get(1);
                 if (customers.containsKey(id)) throw new SQLException("duplicate customer", "23505");
                 customers.put(id, new CustomerRow(id, (String) values.get(2), (String) values.get(3),
-                        (String) values.get(4), (BigDecimal) values.get(5), (BigDecimal) values.get(6)));
+                        (String) values.get(4), (BigDecimal) values.get(5)));
                 return 1;
             }
             if (sql.startsWith("update customer set name =")) {
                 lastCustomerUpdateSql = sql;
-                String id = (String) values.get(5);
+                String id = (String) values.get(4);
                 CustomerRow current = customers.get(id);
                 if (current == null) return 0;
-                BigDecimal expectedBalance = (BigDecimal) values.get(6);
+                BigDecimal expectedBalance = (BigDecimal) values.get(5);
                 if (current.balance().compareTo(expectedBalance) != 0) return 0;
                 customers.put(id, new CustomerRow(id, (String) values.get(1), (String) values.get(2),
-                        (String) values.get(3), current.balance(), (BigDecimal) values.get(4)));
+                        (String) values.get(3), current.balance()));
                 return 1;
             }
             if (sql.startsWith("insert into seller ")) {
@@ -342,11 +342,11 @@ class CustomerSellerJdbcTest {
             if (sql.startsWith("update customer set balance = balance - ?")) {
                 lastAtomicDecreaseSql = sql;
             }
-            if (sql.startsWith("select id, name, phone, address, balance, credit_limit from customer where id = ?")) {
+            if (sql.startsWith("select id, name, phone, address, balance from customer where id = ?")) {
                 CustomerRow row = customers.get((String) values.get(1));
                 return row == null ? List.of() : List.of(row.asMap());
             }
-            if (sql.startsWith("select id, name, phone, address, balance, credit_limit from customer order by id")) {
+            if (sql.startsWith("select id, name, phone, address, balance from customer order by id")) {
                 return customers.values().stream().sorted((first, second) -> first.id().compareTo(second.id()))
                         .map(CustomerRow::asMap).toList();
             }
@@ -440,13 +440,13 @@ class CustomerSellerJdbcTest {
         }
     }
 
-    private record CustomerRow(String id, String name, String phone, String address, BigDecimal balance, BigDecimal creditLimit) {
+    private record CustomerRow(String id, String name, String phone, String address, BigDecimal balance) {
         private Map<String, Object> asMap() {
-            return Map.of("id", id, "name", name, "phone", phone, "address", address, "balance", balance, "credit_limit", creditLimit);
+            return Map.of("id", id, "name", name, "phone", phone, "address", address, "balance", balance);
         }
 
         private CustomerRow withBalance(BigDecimal newBalance) {
-            return new CustomerRow(id, name, phone, address, newBalance, creditLimit);
+            return new CustomerRow(id, name, phone, address, newBalance);
         }
     }
 

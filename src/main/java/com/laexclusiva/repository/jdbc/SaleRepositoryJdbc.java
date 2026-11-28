@@ -43,8 +43,7 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
             SELECT s.id AS sale_id, s.created_at, se.id AS seller_id, se.name AS seller_name,
                    se.phone AS seller_phone, se.address AS seller_address, se.active AS seller_active,
                    c.id AS customer_id, c.name AS customer_name, c.phone AS customer_phone,
-                   c.address AS customer_address, c.balance AS customer_balance,
-                   c.credit_limit AS customer_credit_limit
+                   c.address AS customer_address, c.balance AS customer_balance
             FROM sale s
             JOIN seller se ON se.id = s.seller_id
             LEFT JOIN customer c ON c.id = s.customer_id
@@ -479,8 +478,7 @@ public final class SaleRepositoryJdbc implements SaleRepository, IdempotentSaleP
             String customerId = resultSet.getString("customer_id");
             Customer customer = customerId == null ? null : Customer.reconstitute(customerId,
                     resultSet.getString("customer_name"), resultSet.getString("customer_phone"),
-                    resultSet.getString("customer_address"), resultSet.getBigDecimal("customer_balance"),
-                    resultSet.getBigDecimal("customer_credit_limit"));
+                    resultSet.getString("customer_address"), resultSet.getBigDecimal("customer_balance"));
             return new Header(resultSet.getString("sale_id"),
                     resultSet.getObject("created_at", LocalDateTime.class), seller, customer);
         } catch (IllegalArgumentException failure) {

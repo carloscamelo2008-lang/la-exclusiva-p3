@@ -617,7 +617,7 @@ class SaleRepositoryJdbcTest {
             if (customer != null) {
                 row.putAll(row("customer_id", customer.get("id"), "customer_name", customer.get("name"),
                         "customer_phone", customer.get("phone"), "customer_address", customer.get("address"),
-                        "customer_balance", customer.get("balance"), "customer_credit_limit", BigDecimal.ZERO));
+                        "customer_balance", customer.get("balance")));
             }
             return row;
         }

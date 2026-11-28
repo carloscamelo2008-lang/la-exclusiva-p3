@@ -143,27 +143,22 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
     }
 
     @Test
-    void creditLimitRejectsExcessBeforeWritingAndAcceptsExactAvailableCredit() {
+    void legacyCreditLimitDoesNotBlockNewSalesAndOutstandingDebtRemainsTracked() {
         var customer = customers.findById(customerId);
         customers.update(new Customer(customerId, customer.getName(), customer.getPhone(), customer.getAddress(),
-                customer.getBalance(), customer.getBalance()));
+                customer.getBalance(), new BigDecimal("50.00")));
         int beforeStock = inventories.findByProductId(productId).orElseThrow().totalUnits();
         int beforeMovements = movements.findByProductId(productId).size();
         var lines = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
         String key = UUID.randomUUID().toString();
 
-        assertThrows(IllegalArgumentException.class,
-                () -> workflow.registerSale(lines, sellerId, customerId, BigDecimal.ZERO, key));
-        assertEquals(beforeStock, inventories.findByProductId(productId).orElseThrow().totalUnits());
-        assertEquals(beforeMovements, movements.findByProductId(productId).size());
-        assertEquals(customer.getBalance(), customers.findById(customerId).getBalance());
+        Sale sale = workflow.registerSale(lines, sellerId, customerId, BigDecimal.ZERO, key);
 
-        BigDecimal financed = products.findById(productId).orElseThrow().priceFor(SalePresentation.UNIT);
-        BigDecimal limit = customer.getBalance().add(financed);
-        customers.update(new Customer(customerId, customer.getName(), customer.getPhone(), customer.getAddress(),
-                customer.getBalance(), limit));
-        workflow.registerSale(lines, sellerId, customerId, BigDecimal.ZERO, key);
-        assertEquals(0, limit.compareTo(customers.findById(customerId).getBalance()));
+        assertEquals(new BigDecimal("100.00"), sale.calculateBalance());
+        assertEquals(beforeStock - 1, inventories.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(beforeMovements + 1, movements.findByProductId(productId).size());
+        assertEquals(new BigDecimal("150.00"), customers.findById(customerId).getBalance());
+        assertEquals(new BigDecimal("100.00"), debtQuery.findOutstandingSalesDebt(customerId));
     }
 
     @Test
@@ -336,10 +331,7 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
     }
 
     @Test
-    void concurrentCreditSalesCannotExceedCustomerLimit() throws Exception {
-        var customer = customers.findById(customerId);
-        customers.update(new Customer(customerId, customer.getName(), customer.getPhone(), customer.getAddress(),
-                customer.getBalance(), new BigDecimal("150.00")));
+    void concurrentCreditSalesSerializeCustomerDebtWithoutCustomerLimit() throws Exception {
         var request = List.of(new StockRequest(productId, SalePresentation.UNIT, 1));
         var staged = new CountDownLatch(1);
         var lockAttempted = new CountDownLatch(1);
@@ -356,19 +348,19 @@ class JdbcSalesWorkflowPostgresIntegrationTest {
                 return sale;
             }));
             await(staged, "La primera venta no avanzó hasta el commit.");
-            Future<IllegalArgumentException> second = pool.submit(() -> assertThrows(IllegalArgumentException.class,
-                    () -> waitingWorkflow.registerSale(request, sellerId, customerId, BigDecimal.ZERO)));
+            Future<Sale> second = pool.submit(() ->
+                    waitingWorkflow.registerSale(request, sellerId, customerId, BigDecimal.ZERO));
 
             first.get(15, TimeUnit.SECONDS);
-            assertTrue(second.get(15, TimeUnit.SECONDS).getMessage().contains("cupo"));
+            second.get(15, TimeUnit.SECONDS);
         } finally {
             pool.shutdownNow();
             assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS));
         }
-        assertEquals(1, count("SELECT count(*) FROM sale WHERE customer_id = ?", customerId));
-        assertEquals(new BigDecimal("150.00"), customers.findById(customerId).getBalance());
-        assertEquals(new BigDecimal("100.00"), debtQuery.findOutstandingSalesDebt(customerId));
-        assertEquals(2, inventories.findByProductId(productId).orElseThrow().totalUnits());
+        assertEquals(2, count("SELECT count(*) FROM sale WHERE customer_id = ?", customerId));
+        assertEquals(new BigDecimal("250.00"), customers.findById(customerId).getBalance());
+        assertEquals(new BigDecimal("200.00"), debtQuery.findOutstandingSalesDebt(customerId));
+        assertEquals(1, inventories.findByProductId(productId).orElseThrow().totalUnits());
     }
 
     @Test

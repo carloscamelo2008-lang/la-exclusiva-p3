@@ -313,7 +313,7 @@ class JdbcSalesWorkflowTest {
             return customer;
         }
         private static Customer withBalance(Customer c, BigDecimal balance) {
-            return new Customer(c.getId(), c.getName(), c.getPhone(), c.getAddress(), balance, c.getCreditLimit());
+            return new Customer(c.getId(), c.getName(), c.getPhone(), c.getAddress(), balance);
         }
     }
 

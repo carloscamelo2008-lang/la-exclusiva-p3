@@ -26,6 +26,17 @@ class CustomerCrudPostgresIntegrationTest {
             }
         });
         assumeTrue(migrated, "V110 debe estar instalada previamente.");
+        boolean archivedCreditColumn = provider.withConnection(connection -> {
+            try (var query = connection.prepareStatement("""
+                    SELECT EXISTS (SELECT FROM information_schema.columns
+                                   WHERE table_schema='public' AND table_name='customer'
+                                     AND column_name='legacy_credit_limit')
+                    """); var rows = query.executeQuery()) {
+                assertTrue(rows.next());
+                return rows.getBoolean(1);
+            }
+        });
+        assumeTrue(archivedCreditColumn, "V113 debe conservar el cupo histórico fuera del modelo comercial.");
         var repository = new CustomerRepositoryJdbc(provider);
         var service = new CustomerService(repository);
         UUID uuid = UUID.randomUUID();
@@ -40,7 +51,10 @@ class CustomerCrudPostgresIntegrationTest {
             service.registerCustomer(second, "Beto", phone + "2", "Calle compartida");
             service.updateCustomer(first, "Ana María", phone + "1", "Calle compartida");
             assertEquals("Ana María", service.getCustomerById(first).getName());
-            assertEquals(new BigDecimal("5000.00"), service.getCustomerById(first).getCreditLimit());
+            assertEquals(BigDecimal.ZERO, service.getCustomerById(first).getBalance());
+            assertEquals(BigDecimal.ZERO, queryDecimal(provider,
+                    "SELECT legacy_credit_limit FROM customer WHERE id = ?", first),
+                    "El contrato legado no debe asignar cupos a altas nuevas.");
             assertEquals(service.getCustomerById(first).getAddress(), service.getCustomerById(second).getAddress());
 
             assertThrows(IllegalArgumentException.class, () ->
@@ -94,6 +108,18 @@ class CustomerCrudPostgresIntegrationTest {
                 for (int i = 0; i < args.length; i++) statement.setString(i + 1, args[i]);
                 statement.executeUpdate();
                 return null;
+            }
+        });
+    }
+
+    private static BigDecimal queryDecimal(JdbcConnectionProvider provider, String sql, String... args) {
+        return provider.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                for (int i = 0; i < args.length; i++) statement.setString(i + 1, args[i]);
+                try (var rows = statement.executeQuery()) {
+                    assertTrue(rows.next());
+                    return rows.getBigDecimal(1);
+                }
             }
         });
     }

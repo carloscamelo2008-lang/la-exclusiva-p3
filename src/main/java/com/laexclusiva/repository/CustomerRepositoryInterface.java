@@ -47,7 +47,7 @@ public interface CustomerRepositoryInterface {
      * Actualiza un cliente existente.
      *
      * <p>Las implementaciones en memoria reemplazan el snapshot completo. La implementación JDBC
-     * actualiza los datos personales y el cupo, y exige que el saldo persistido todavía coincida con el
+     * actualiza únicamente los datos personales y exige que el saldo persistido todavía coincida con el
      * saldo del snapshot; no modifica el saldo. Los ajustes financieros concurrentes deben usar
      * {@link CustomerBalanceAdjuster}.</p>
      *

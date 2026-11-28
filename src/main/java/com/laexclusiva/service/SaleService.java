@@ -125,7 +125,6 @@ public class SaleService {
             throw new IllegalStateException("Ya existe una venta con el ID " + sale.getId() + ".");
         }
         BigDecimal pendingBalance = sale.calculateBalance();
-        if (customer != null) customer.requireAvailableCredit(pendingBalance);
         CustomerService.SaleDebtSnapshot customerSnapshot = pendingBalance.signum() > 0
                 ? customerService.snapshotSaleDebtState(customer.getId()) : null;
         InventoryService.DiscountReceipt discount = null;

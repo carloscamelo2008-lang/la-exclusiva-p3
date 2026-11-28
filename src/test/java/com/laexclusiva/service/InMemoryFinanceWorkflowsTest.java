@@ -22,7 +22,7 @@ class InMemoryFinanceWorkflowsTest {
     @Test
     void generalDebtAndCashRemainSeparateAndAvailableInMemoryMode() {
         ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
-        services.customers().registerCustomer("C-MEM-1", "Cliente memoria", "3000000100", "Dirección ficticia", new BigDecimal("10000000"));
+        services.customers().registerCustomer("C-MEM-1", "Cliente memoria", "3000000100", "Dirección ficticia");
         Seller seller = services.sellers().registerSeller("Vendedor memoria", "3000000101", "Dirección ficticia");
         var product = services.products().listAll().get(0);
         BigDecimal saleTotal = product.priceFor(SalePresentation.UNIT);

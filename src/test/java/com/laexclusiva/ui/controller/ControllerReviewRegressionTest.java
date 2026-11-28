@@ -78,13 +78,37 @@ class ControllerReviewRegressionTest {
             controller.showCustomers(service.getAllCustomers());
             table(loader, "customersTable").getSelectionModel().selectFirst();
             ((Button) loader.getNamespace().get("editCustomerButton")).fire();
-            assertTrue(text(loader, "idField").isDisabled());
+            assertNull(loader.getNamespace().get("idField"), "El formulario ya no solicita IDs manuales.");
             text(loader, "nameField").setText("Cliente actualizado");
             text(loader, "phoneField").setText("+300 124");
             ((Button) loader.getNamespace().get("registerCustomerButton")).fire();
             assertEquals("Cliente actualizado", service.getCustomerById("CLIENTE-QA").getName());
             assertEquals("300124", service.getCustomerById("CLIENTE-QA").getPhone());
             assertEquals("Cliente actualizado.", label(loader, "messageLabel").getText());
+            return null;
+        });
+    }
+
+    @Test
+    void customerFormCreatesRecordWithGeneratedIdAndDisplaysIt() throws Exception {
+        runOnFx(() -> {
+            var service = new CustomerService(new CustomerRepository());
+            FXMLLoader loader = load("customers_view.fxml");
+            CustomerController controller = loader.getController();
+            controller.configure(service, adminSession());
+            controller.showCustomers(service.getAllCustomers());
+            text(loader, "nameField").setText("Cliente generado " + java.util.UUID.randomUUID());
+            text(loader, "phoneField").setText("3000000188");
+            text(loader, "addressField").setText("Dirección ficticia");
+
+            ((Button) loader.getNamespace().get("registerCustomerButton")).fire();
+
+            assertEquals(1, service.getAllCustomers().size());
+            Customer created = service.getAllCustomers().get(0);
+            assertTrue(created.getId().startsWith("CLI-"));
+            assertTrue(label(loader, "messageLabel").getText().contains(created.getId()));
+            assertNull(loader.getNamespace().get("idField"));
+            assertNull(loader.getNamespace().get("creditLimitField"));
             return null;
         });
     }

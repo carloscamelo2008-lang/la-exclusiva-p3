@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public class CustomerService {
     private final CustomerRepositoryInterface customerRepository;
@@ -19,11 +20,25 @@ public class CustomerService {
         this.customerRepository = customerRepository;
     }
 
-    public void registerCustomer(String id, String name, String phone, String address) {
-        registerCustomer(id, name, phone, address, BigDecimal.ZERO);
+    /**
+     * Registra un cliente con un identificador estable generado por el sistema.
+     * El ID no depende de datos personales y queda disponible para conservar referencias históricas.
+     *
+     * @param name nombre comercial
+     * @param phone teléfono normalizado y único
+     * @param address dirección de entrega/contacto
+     * @return copia del cliente registrado con su identificador definitivo
+     */
+    public Customer registerCustomer(String name, String phone, String address) {
+        String id;
+        do {
+            id = "CLI-" + UUID.randomUUID().toString().toUpperCase(java.util.Locale.ROOT);
+        } while (customerRepository.existsById(id));
+        registerCustomer(id, name, phone, address);
+        return getCustomerById(id);
     }
 
-    public void registerCustomer(String id, String name, String phone, String address, BigDecimal creditLimit) {
+    public void registerCustomer(String id, String name, String phone, String address) {
         id = Customer.normalizeText(id);
         name = Customer.normalizeText(name);
         address = Customer.normalizeText(address);
@@ -43,29 +58,39 @@ public class CustomerService {
             throw new IllegalArgumentException("Ya existe un cliente registrado con el ID: " + id);
         }
 
-        Customer customer = new Customer(id, name, phone, address, BigDecimal.ZERO, creditLimit);
+        Customer customer = new Customer(id, name, phone, address);
         requireAvailablePhone(customer.getPhone(), null);
         customerRepository.save(customer);
+    }
+
+    /**
+     * Puente temporal para consumidores antiguos; el cupo ya no forma parte de la regla comercial.
+     * Los valores persistidos de esquemas anteriores se conservan como datos históricos.
+     *
+     * @deprecated registrar clientes sin cupo mediante {@link #registerCustomer(String, String, String, String)}
+     */
+    @Deprecated
+    public void registerCustomer(String id, String name, String phone, String address, BigDecimal creditLimit) {
+        registerCustomer(id, name, phone, address);
     }
 
     /** Actualiza los datos de contacto conservando la identidad y el saldo del cliente. */
     public void updateCustomer(String id, String name, String phone, String address) {
         synchronized (customerRepository) {
             Customer current = loadCustomer(id);
-            updateContact(current, name, phone, address, current.getCreditLimit());
+            updateContact(current, name, phone, address);
         }
     }
 
-    /** Actualiza los datos personales y el cupo sin modificar el saldo. */
+    /** Puente temporal para firmas antiguas; la actualización personal no cambia cupos heredados. */
+    @Deprecated
     public void updateCustomer(String id, String name, String phone, String address, BigDecimal creditLimit) {
-        synchronized (customerRepository) {
-            updateContact(loadCustomer(id), name, phone, address, creditLimit);
-        }
+        updateCustomer(id, name, phone, address);
     }
 
-    private void updateContact(Customer current, String name, String phone, String address, BigDecimal creditLimit) {
+    private void updateContact(Customer current, String name, String phone, String address) {
         Customer updated = Customer.reconstitute(current.getId(), Customer.normalizeText(name), phone,
-                Customer.normalizeText(address), current.getBalance(), creditLimit);
+                Customer.normalizeText(address), current.getBalance());
         requireAvailablePhone(updated.getPhone(), current.getId());
         customerRepository.update(updated);
     }
@@ -214,7 +239,7 @@ public class CustomerService {
 
     private static Customer withBalance(Customer customer, BigDecimal balance) {
         return Customer.reconstitute(customer.getId(), customer.getName(), customer.getPhone(),
-                customer.getAddress(), balance, customer.getCreditLimit());
+                customer.getAddress(), balance);
     }
 
     private void requireAllocatedSaleDebtIsCovered(String customerId, Customer customer) {

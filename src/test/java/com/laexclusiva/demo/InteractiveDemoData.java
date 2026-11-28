@@ -53,7 +53,7 @@ public final class InteractiveDemoData {
             for (int i = 1; i <= count(config, "customer.count"); i++) {
                 String[] row = row(config, "customer." + i, 3);
                 String id = "CLI-%03d".formatted(i);
-                s.customers().registerCustomer(id, row[0], phone(row[1]), row[2], BigDecimal.valueOf(10_000_000));
+                s.customers().registerCustomer(id, row[0], phone(row[1]), row[2]);
                 customers.add(id);
             }
             // Observación real previa a compras, ventas y abonos; no se retocan sus fechas.
