@@ -42,19 +42,6 @@ public class App extends Application {
         return services().identity().authentication();
     }
 
-    public void initializeDemoAccounts(String adminPass, String workerPass) {
-        ApplicationServices selected = services();
-        if (selected.postgresMode()) {
-            throw new IllegalStateException("Las cuentas demo solo se pueden inicializar en modo memory.");
-        }
-        try {
-            selected.identity().bootstrapDemoAccounts(adminPass, workerPass);
-            compositionSelectedForStartup = true;
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            throw new IllegalStateException("Las contraseñas demo deben cumplir la política de contraseñas.");
-        }
-    }
-
     public void initializeInitialAdmin(String adminPass) {
         try {
             services().identity().bootstrapInitialAdministrator("admin", adminPass);
@@ -64,20 +51,12 @@ public class App extends Application {
         }
     }
 
-    public void processInitialization(Parameters params) {
+    public void processInitialization() {
         if (applicationServices == null) {
             applicationServices = ApplicationServices.fromEnvironment();
         }
-        boolean isDemo = params != null && params.getRaw().contains("--demo");
         ApplicationServices selected = applicationServices;
-        if (isDemo) {
-            if (selected.postgresMode()) {
-                throw new IllegalStateException("El modo --demo solo está disponible con LAEXCLUSIVA_PERSISTENCE_MODE=memory.");
-            }
-            String adminPass = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
-            String workerPass = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
-            initializeDemoAccounts(adminPass, workerPass);
-        } else if (selected.identity().users().findAll().isEmpty()) {
+        if (selected.identity().users().findAll().isEmpty()) {
             String initialAdminPass = System.getenv("LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD");
             String initialUsername = System.getenv().getOrDefault("LAEXCLUSIVA_INITIAL_ADMIN_USERNAME", "admin");
             try {
@@ -96,7 +75,7 @@ public class App extends Application {
                 applicationServices = ApplicationServices.fromEnvironment();
                 compositionSelectedForStartup = true;
             }
-            processInitialization(getParameters());
+            processInitialization();
             showLogin(primaryStage);
         } catch (RuntimeException startupFailure) {
             showStartupFailure(primaryStage, startupFailure);

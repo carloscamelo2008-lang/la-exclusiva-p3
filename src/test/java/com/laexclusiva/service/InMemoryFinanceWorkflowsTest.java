@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.CashDirection;
 import com.laexclusiva.model.CustomerDebtBreakdown;
+import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SalePresentation;
 import com.laexclusiva.model.Seller;
@@ -22,6 +23,7 @@ class InMemoryFinanceWorkflowsTest {
     @Test
     void generalDebtAndCashRemainSeparateAndAvailableInMemoryMode() {
         ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+        services.products().registerAll(InitialCatalog.create());
         services.customers().registerCustomer("C-MEM-1", "Cliente memoria", "3000000100", "Dirección ficticia");
         Seller seller = services.sellers().registerSeller("Vendedor memoria", "3000000101", "Dirección ficticia");
         var product = services.products().listAll().get(0);

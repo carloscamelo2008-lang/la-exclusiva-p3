@@ -75,6 +75,14 @@ public final class InteractiveDemoData {
                 product.definePrice(SalePresentation.FULL_BASKET, new BigDecimal(row[8]));
                 s.products().register(product);
             }
+            // El catálogo base que antes venía precargado ahora se declara explícitamente
+            // en este fixture; conserva las referencias históricas usadas por stock.count.
+            Set<String> configuredProductIds = new HashSet<>();
+            for (int i = 1; i <= count(config, "product.count"); i++) {
+                configuredProductIds.add(row(config, "product." + i, 9)[0]);
+            }
+            s.products().registerAll(InitialCatalog.create().stream()
+                    .filter(product -> !configuredProductIds.contains(product.getId())).toList());
             List<String> stockIds = new ArrayList<>();
             for (int i = 1; i <= count(config, "stock.count"); i++) {
                 String[] row = row(config, "stock." + i, 3); stockIds.add(row[0]);

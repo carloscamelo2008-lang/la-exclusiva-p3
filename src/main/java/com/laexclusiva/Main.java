@@ -1,6 +1,5 @@
 package com.laexclusiva;
 
-import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
@@ -44,7 +43,6 @@ public final class Main {
         SellerRepository sellerRepository = new SellerRepository();
         
         ProductService productService = new ProductService(productRepository);
-        productService.registerAll(InitialCatalog.create());
         
         InventoryService inventoryService = new InventoryService(productService, inventoryRepository, movementRepository);
         CustomerService customerService = new CustomerService(customerRepository);

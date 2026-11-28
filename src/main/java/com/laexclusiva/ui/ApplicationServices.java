@@ -1,7 +1,6 @@
 package com.laexclusiva.ui;
 
 import com.laexclusiva.model.CustomerCollectionReminder;
-import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.persistence.jdbc.DatabaseConfig;
 import com.laexclusiva.persistence.jdbc.InventoryRepositoryJdbc;
 import com.laexclusiva.persistence.jdbc.InventoryStockAdjusterJdbc;
@@ -175,7 +174,6 @@ public final class ApplicationServices {
                                 .anyMatch(reminder -> id.equals(reminder.customerId()))));
         CustomerService customers = new CustomerService(customerRepository);
         ProductService products = new ProductService(productRepository);
-        products.registerAll(InitialCatalog.create());
         InventoryService inventory = new InventoryService(products, inventoryRepository, movements);
         SaleService saleService = new SaleService(saleRepository, products, inventory, customers, sellers).requireAuthenticatedSales();
         SalesWorkflow sales = new InMemorySalesWorkflow(saleService, customers);

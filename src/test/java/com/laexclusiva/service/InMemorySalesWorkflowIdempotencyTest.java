@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.laexclusiva.model.BeerProduct;
+import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.model.CashCategory;
 import com.laexclusiva.model.PaymentMethod;
 import com.laexclusiva.model.Permission;
@@ -27,6 +28,7 @@ class InMemorySalesWorkflowIdempotencyTest {
     void tracesInitialAndInstallmentMethodsWithoutDuplicatingReceipts(PaymentMethod initialMethod,
                                                                       PaymentMethod installmentMethod) {
         var services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+        services.products().registerAll(InitialCatalog.create());
         var seller = services.sellers().registerSeller("Vendedor", "3000000001", "Dirección");
         var product = services.products().listAll().get(0);
         BigDecimal total = product.priceFor(SalePresentation.UNIT);
@@ -86,6 +88,7 @@ class InMemorySalesWorkflowIdempotencyTest {
     @Test
     void saleRetryWithSameKeyDoesNotRepeatInMemoryEffects() {
         ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+        services.products().registerAll(InitialCatalog.create());
         Seller seller = services.sellers().registerSeller("Vendedor ficticio", "3000000001", "Dirección ficticia");
         BeerProduct product = services.products().listAll().get(0);
         services.inventory().addStock(product.getId(), 0, 2, "Fixture unitario");

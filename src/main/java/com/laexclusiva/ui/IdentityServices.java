@@ -119,39 +119,6 @@ public final class IdentityServices {
         });
     }
 
-    /**
-     * Crea las cuentas demo solo en un repositorio vacío y valida ambas contraseñas antes de escribir.
-     * Si la segunda inserción falla, compensa únicamente la primera cuenta creada por esta llamada.
-     *
-     * @param adminPassword contraseña de la cuenta administradora demo
-     * @param workerPassword contraseña de la cuenta trabajadora demo
-     * @return {@code true} si se crearon ambas cuentas; {@code false} si el repositorio no estaba vacío
-     */
-    public boolean bootstrapDemoAccounts(String adminPassword, String workerPassword) {
-        return administrationBoundary.execute(() -> {
-            if (!users.findAll().isEmpty()) return false;
-            PasswordPolicy.validate(adminPassword);
-            PasswordPolicy.validate(workerPassword);
-            UserAccount admin = new UserAccount(null, "admin", PasswordHasher.hash(adminPassword),
-                    UserRole.ADMINISTRATOR, null);
-            users.save(admin);
-            try {
-                users.save(new UserAccount(null, "worker", PasswordHasher.hash(workerPassword),
-                        UserRole.WORKER, null));
-                return true;
-            } catch (RuntimeException | Error failure) {
-                if (admin.getId() != null) {
-                    try {
-                        users.delete(admin.getId().toString());
-                    } catch (RuntimeException | Error rollbackFailure) {
-                        failure.addSuppressed(rollbackFailure);
-                    }
-                }
-                throw failure;
-            }
-        });
-    }
-
     private static void validateBootstrapUsername(String username) {
         if (username == null || username.isBlank() || username.length() > 100
                 || username.indexOf('\0') >= 0) {

@@ -5,6 +5,7 @@ import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.InsufficientStockException;
+import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SaleLine;
 import com.laexclusiva.model.SalePayment;
@@ -207,7 +208,7 @@ class ControllerReviewRegressionTest {
     @Test
     void selectedCustomerPartialSaleIsVisibleAndPaymentRetryAfterLostResponseIsIdempotent() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor cartera visible", "3000000241", "Dirección QA");
             String targetId = "CUS-PORTFOLIO-VISIBLE";
             String otherId = "CUS-PORTFOLIO-OTHER";
@@ -301,7 +302,7 @@ class ControllerReviewRegressionTest {
     @Test
     void confirmedSaleWithHistoryRefreshFailureKeepsTruthfulMessageAndDoesNotRepeatSale() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor venta", "3000000201", "Calle 1");
             BeerProduct product = services.products().listAll().get(0);
             services.inventory().addStock(product.getId(), 0, 2, "Fixture de regresión UI");
@@ -339,7 +340,7 @@ class ControllerReviewRegressionTest {
     @Test
     void insufficientStockKeepsCartAllowsCorrectionAndUsesANewOperationKey() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor de stock", "3000000211", "Calle 11");
             String customerId = "CUS-STOCK-RETRY";
             services.customers().registerCustomer(customerId,
@@ -397,7 +398,7 @@ class ControllerReviewRegressionTest {
     @Test
     void stockRejectionOnRetryDoesNotReleaseAnEarlierUncertainSaleKey() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor incierto", "3000000213", "Calle 13");
             BeerProduct product = services.products().listAll().get(0);
             services.inventory().addStock(product.getId(), 0, 1, "Fixture de respuesta incierta");
@@ -437,7 +438,7 @@ class ControllerReviewRegressionTest {
     @Test
     void uncertainSaleKeepsVisibleKeyAndRequiresTheSamePayloadForRetry() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor de reintento", "3000000202", "Calle 2");
             BeerProduct product = services.products().listAll().get(0);
             services.inventory().addStock(product.getId(), 0, 2, "Fixture de idempotencia JavaFX");
@@ -527,7 +528,7 @@ class ControllerReviewRegressionTest {
     @Test
     void workerCannotRegisterSaleUnderAnotherSellerEvenIfSelectionIsChangedProgrammatically() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller assigned = services.sellers().registerSeller("Asignado", "3000000202", "Calle 2");
             Seller other = services.sellers().registerSeller("Otro", "3000000203", "Calle 3");
             BeerProduct product = services.products().listAll().get(0);
@@ -555,6 +556,12 @@ class ControllerReviewRegressionTest {
 
     private static Customer customer(String id, String balance) {
         return new Customer(id, "Cliente de prueba", "3000000000", "Dirección de prueba", new BigDecimal(balance));
+    }
+
+    private static ApplicationServices memoryServicesWithCatalog() {
+        ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+        services.products().registerAll(InitialCatalog.create());
+        return services;
     }
 
     private static FailingCustomerService customerService(Customer customer) {
