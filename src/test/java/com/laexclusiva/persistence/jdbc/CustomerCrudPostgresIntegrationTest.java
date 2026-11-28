@@ -51,9 +51,10 @@ class CustomerCrudPostgresIntegrationTest {
             service.registerCustomer(second, "Beto", phone + "2", "Calle compartida");
             service.updateCustomer(first, "Ana María", phone + "1", "Calle compartida");
             assertEquals("Ana María", service.getCustomerById(first).getName());
-            assertEquals(BigDecimal.ZERO, service.getCustomerById(first).getBalance());
-            assertEquals(BigDecimal.ZERO, queryDecimal(provider,
-                    "SELECT legacy_credit_limit FROM customer WHERE id = ?", first),
+            assertEquals(0, service.getCustomerById(first).getBalance().compareTo(BigDecimal.ZERO),
+                    "El saldo inicial debe ser numéricamente cero, sin depender de la escala JDBC.");
+            assertEquals(0, queryDecimal(provider,
+                    "SELECT legacy_credit_limit FROM customer WHERE id = ?", first).compareTo(BigDecimal.ZERO),
                     "El contrato legado no debe asignar cupos a altas nuevas.");
             assertEquals(service.getCustomerById(first).getAddress(), service.getCustomerById(second).getAddress());
 
