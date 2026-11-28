@@ -65,7 +65,7 @@ La carpeta de origen también incluía un ZIP con esos seis nombres; se inspecci
 - Con Microsoft JDK 17.0.18 y Maven 3.10.0, `mvn -e clean verify` terminó en **BUILD FAILURE**: **918 pruebas, 873 aprobadas, 3 fallidas, 10 con error y 32 omitidas**. Surefire muestra 36 pruebas de integración PostgreSQL ejecutadas: 23 aprobadas, 3 fallidas y 10 con error. Las 32 omitidas son integraciones optativas que requieren autorización/configuración específica; no se cuentan como aprobadas. No se generó un artefacto nuevo porque la fase de pruebas detuvo la verificación.
 - Las suites automatizadas `ProductImageStoreTest` (2/2) e `InventoryControllerReviewRegressionTest` (5/5) pasaron. Esto no acredita una revisión visual manual ni que estas seis fotos ya se vean en la aplicación.
 
-### Hallazgos que requieren coordinación
+### Hallazgos del primer `clean verify` (antes de corregir)
 
 1. **Regresión de lectura JDBC:** `ProductRepositoryJdbc.readProduct(ResultSet)` lee `image_filename`, pero `InventoryRepositoryJdbc.INVENTORY_SELECT` no proyecta esa columna. PostgreSQL reportó `The column name image_filename was not found in this ResultSet`. Esto causa errores en lecturas de inventario y movimientos y bloquea escenarios de operaciones financieras/ventas que consultan existencias. La corrección técnica probable es incluir `p.image_filename` en esa proyección y añadir una regresión PostgreSQL para dicho lector. No se modificó el DAO compartido porque su revisión debe coordinarse con Jesús; el defecto debe resolverse antes de afirmar que inventario/ventas PostgreSQL están validados.
 2. **Aserción de escala monetaria:** `CustomerCrudPostgresIntegrationTest.editsAndDeletesWithPhoneAndReferenceConstraints` compara `BigDecimal.ZERO` con el valor SQL `0.00` mediante igualdad sensible a escala. Los valores numéricos son equivalentes; la regresión observada está en la aserción del test. El ajuste propuesto es comparar numéricamente (`compareTo`) o usar una expectativa de escala compatible. No se alteró el contrato financiero.
@@ -86,3 +86,36 @@ Los siete commits originales permanecen intactos en `feature/commercial-transfor
 | `04fd4c6` | Bitácora y documentación del estado | Solo documentación; conservar el registro histórico. |
 
 No se ejecutó un recorrido manual de escritorio. El inicio visual en JavaFX, la asignación real de las imágenes, la comprobación de permisos desde una sesión abierta y la actualización visual posterior a una carga quedan pendientes; las pruebas FXML no sustituyen esas comprobaciones.
+
+## Cierre de regresiones PostgreSQL (2026-11-28)
+
+### Causas raíz y correcciones
+
+El análisis de los reportes Surefire de la primera corrida encontró 13 resultados adversos:
+
+1. **Diez resultados** (errores de lectura y una aserción de tipo de excepción derivada) venían de `InventoryRepositoryJdbc.INVENTORY_SELECT`, que no devolvía `p.image_filename` aunque el mapper compartido `ProductRepositoryJdbc.readProduct` lo exige. Eso afectó lecturas de inventario y, en cascada, rollback financiero y ventas JDBC.
+2. **Dos resultados** (un error de lectura y una aserción de tipo de excepción derivada) tenían la misma causa raíz en `StockMovementRepositoryJdbc.MOVEMENT_SELECT`, otra consulta que reconstruía el producto con el mapper compartido sin proyectar `image_filename`.
+3. **Un fallo de aserción** comparaba `BigDecimal.ZERO` con `0.00` mediante igualdad sensible a escala. No indicaba diferencia de valor monetario.
+
+Se aplicó la corrección mínima en ambas consultas, sin cambiar el mapper, la semántica del inventario ni la lógica financiera. Se añadió una regresión PostgreSQL para `findByProductId`, `findAll` y `findByProductIdForUpdate` que conserva la referencia de imagen; el historial de movimientos ahora comprueba también la referencia reconstruida. En `CustomerCrudPostgresIntegrationTest` el saldo y el cupo legado se comparan numéricamente con `compareTo`.
+
+La ampliación de las integraciones optativas reveló dos defectos exclusivos de fixtures de prueba: la limpieza JavaFX intentaba borrar las cuentas QA antes de quitar sus eventos de auditoría con FK `RESTRICT`, y el teléfono ficticio contenía letras hexadecimales. La limpieza ahora elimina eventos únicamente de esos usuarios QA antes de borrar las cuentas, y el fixture genera un teléfono solo con dígitos. No se modificó lógica productiva JavaFX ni diseño/FXML.
+
+### Verificación final
+
+- Se creó un clúster PostgreSQL 18.6 nuevo y temporal en `127.0.0.1:55432`, con `la_exclusiva_test`, propietario de laboratorio y nombre de clúster verificado. `application.psql` aplicó V001, V004, V002 y V100–V114 en ese clúster; las validaciones V113/V114 pasaron. No se usó el servicio existente en 5432 ni se conectó a `la_exclusiva` o a una base comercial.
+- Con Microsoft JDK 17.0.18 y Maven 3.10.0, `mvn -e clean verify` terminó **BUILD SUCCESS**: **919 pruebas, 898 aprobadas, 0 fallidas, 0 errores y 21 omitidas**. Se generó `target/la-exclusiva-p3-1.0-SNAPSHOT.jar`.
+- Surefire registra 68 casos de prueba en suites PostgreSQL: **47 se ejecutaron y aprobaron; 21 se omitieron**. Las omisiones pertenecen a `AccountInstance` (3), `ActiveSellerConcurrency` (6) y `UserSecurityVersion` (11), cuyas barreras exigen el puerto 5432 ocupado por el servicio local, y `IncompleteIdentitySchema` (1), que requiere una base separada con esquema deliberadamente incompleto. No se contaron como aprobadas.
+- La batería dirigida de los siete escenarios de integración relevantes (`CustomerCrud`, finanzas, composición `IdentityApplication`, inventario, ventas JDBC, movimientos e identidad JavaFX) terminó **25/25**, sin fallos, errores ni omisiones.
+- Una consulta final de solo lectura confirmó que `user_account`, `administrative_audit_event`, `customer`, `seller`, `beer_product`, `supplier`, `sale` y `stock_movement` quedaron en cero en el laboratorio. No se limpió ninguna tabla en otra base. El clúster efímero se detuvo al terminar; sus archivos temporales permanecen en `%LOCALAPPDATA%\Temp`.
+- Persisten advertencias no bloqueantes del modelo efectivo OpenJFX y de carga JavaFX desde un módulo sin nombre. Los stack traces de pruebas que simulan fallos de interfaz son esperados; Surefire las contabilizó como aprobadas.
+
+### Commits correctivos
+
+- `6aa0512` — añade la referencia de imagen a la proyección JDBC de inventario y cubre las tres lecturas.
+- `f733cbb` — añade la referencia de imagen al historial JDBC de movimientos y a su regresión PostgreSQL.
+- `2515b4f` — compara importes monetarios por valor numérico en la prueba CRUD de clientes.
+- `544a5ba` — corrige el fixture y el orden de limpieza acotada de la integración JavaFX/PostgreSQL.
+- La actualización de este informe y de la bitácora va en un commit documental separado.
+
+Los nueve commits que existían antes de las correcciones siguen conservados. Las consultas JDBC corregidas deben recibir revisión de Jesús por su contrato de datos compartido. Daniel conserva pendiente integrar visualmente las seis fotos; no se tocó su diseño ni se asignaron imágenes a productos en la base.
