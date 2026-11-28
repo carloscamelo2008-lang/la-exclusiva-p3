@@ -248,7 +248,8 @@ def main():
                        "V106__user_account_instance_identity.sql", "V107__customer_collection_preferences.sql",
                        "V108__administrative_audit.sql", "V109__reminder_review_and_delivery_reconciliation.sql",
                        "V110__customer_phone_uniqueness.sql", "V111__customer_credit_limit.sql",
-                       "V112__audit_actors_and_payment_methods.sql")
+                       "V112__audit_actors_and_payment_methods.sql", "V113__retire_customer_credit_limit.sql",
+                       "V114__product_image_reference.sql")
     application_sql = (LAB / "application.psql").read_text(encoding="utf-8")
     applied = tuple(re.findall(r"^\\ir ../../migrations/(V[^\s]+\.sql)$", application_sql, re.MULTILINE))
     assert applied == migration_names, "La secuencia SQL no coincide con las migraciones esperadas."

@@ -18,6 +18,7 @@ erDiagram
         integer units_per_basket
         varchar(32) container_type
         varchar(100) container_group "nullable"
+        varchar(68) image_filename "nullable; referencia local"
     }
     PRODUCT_PRICE {
         varchar(64) product_id PK,FK

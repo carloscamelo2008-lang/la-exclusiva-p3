@@ -14,6 +14,7 @@ Tipos PostgreSQL orientativos. `VARCHAR(n)` requiere que el equipo apruebe lími
 | `units_per_basket` | `INTEGER` | NOT NULL, `> 0` y par |
 | `container_type` | `VARCHAR(32)` | NOT NULL; `RETURNABLE_EXCLUSIVE`, `RETURNABLE_SHARED`, `NON_RETURNABLE_CAN` |
 | `container_group` | `VARCHAR(100)` | NULL salvo envase compartido, donde se requiere valor no vacío |
+| `image_filename` | `VARCHAR(68)` | NULL o SHA-256 hexadecimal con extensión `.png`/`.jpg`; referencia al almacén local, introducida por V114 |
 
 ### `product_price`
 

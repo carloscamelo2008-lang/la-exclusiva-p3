@@ -587,3 +587,14 @@ dashboard, estado de cuenta y límites conocidos está en
 `CustomerCollectionPostgresIntegrationTest` solo se activa en el laboratorio efímero de GitHub
 Actions. Una omisión Surefire local sin las propiedades/URL de prueba no acredita validación
 PostgreSQL. Las pruebas no envían correos reales y no se deben ejecutar contra una base compartida.
+
+## Cambios comerciales locales en revisión (V113/V114)
+
+La rama `feature/commercial-transformation` elimina el cupo como regla para ventas nuevas y
+conserva el valor previo mediante `V113`, que renombra `customer.credit_limit` a
+`customer.legacy_credit_limit`. `V114` agrega `beer_product.image_filename`, nullable y limitado por
+CHECK a un nombre SHA-256 con extensión PNG/JPG. Las imágenes se validan y guardan fuera de
+PostgreSQL bajo `LAEXCLUSIVA_PRODUCT_IMAGES_DIR`; JDBC solo persiste el nombre relativo. El código
+que lee/inserta productos requiere V114, pero ninguna migración se ejecuta al arrancar. Estas
+migraciones aún requieren revisión y prueba en PostgreSQL efímero antes de su aplicación en una
+base comercial.
