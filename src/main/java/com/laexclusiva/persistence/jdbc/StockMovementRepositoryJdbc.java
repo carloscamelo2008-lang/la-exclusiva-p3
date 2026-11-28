@@ -19,7 +19,7 @@ public final class StockMovementRepositoryJdbc implements StockMovementRepositor
     private static final String MOVEMENT_SELECT = """
             SELECT m.id AS movement_id, m.movement_type, m.units, m.reason, m.occurred_at, m.actor_user_id,
                    p.id, p.name, p.volume_ml, p.units_per_basket, p.container_type,
-                   p.container_group, pp.presentation_code, pp.price
+                   p.container_group, p.image_filename, pp.presentation_code, pp.price
             FROM stock_movement m
             JOIN beer_product p ON p.id = m.product_id
             LEFT JOIN product_price pp ON pp.product_id = p.id
