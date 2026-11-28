@@ -1,6 +1,6 @@
 # La Exclusiva P3
 
-Aplicación de escritorio para gestionar catálogo, inventario, compras, ventas, cartera y caja del negocio La Exclusiva. El cliente JavaFX usa Java 17; PostgreSQL/JDBC es opcional y el modo predeterminado conserva almacenamiento en memoria.
+Aplicación de escritorio para gestionar catálogo, inventario, compras, ventas, cartera y caja del negocio La Exclusiva. El cliente JavaFX usa Java 17 y requiere PostgreSQL para la operación comercial normal. El almacenamiento en memoria se selecciona explícitamente para pruebas o recorridos controlados sin persistencia; no es el arranque comercial.
 
 ## Funciones disponibles
 
@@ -11,7 +11,9 @@ Aplicación de escritorio para gestionar catálogo, inventario, compras, ventas,
 - Asistente explicable de cartera con seguimiento, recomendaciones, estados de cuenta PDF y avisos semanales sujetos a revisión administrativa.
 - Auditoría básica de cambios administrativos y de intentos de envío de estados de cuenta.
 
-El asistente de cartera usa reglas y datos registrados; no es un modelo de aprendizaje automático ni una predicción sobre las personas. `purchase_order` corresponde a compras a proveedores. La aplicación todavía no modela pedidos a domicilio de clientes ni seguimiento de entregas.
+El asistente de cartera usa reglas y datos registrados; no es un modelo de aprendizaje automático ni una predicción sobre las personas. Las nuevas altas de clientes reciben un ID `CLI-<UUID>`; el límite de crédito se retiró de la regla comercial y V113 archiva sus valores históricos. El fiado se controla por saldo de cada venta. La identificación documental aún requiere definición de tipo, obligatoriedad y validación con el negocio. `purchase_order` corresponde a compras a proveedores. La aplicación todavía no modela pedidos a domicilio de clientes ni seguimiento de entregas.
+
+El estado y los límites de la transformación comercial están en [docs/commercial-transformation.md](docs/commercial-transformation.md). No se considera terminada la operación comercial mientras falten los contratos de actor de venta, obligaciones generales individualizadas, cuentas por pagar y los datos reales que debe validar Carlos.
 
 ## Requisitos y verificación
 
@@ -35,27 +37,21 @@ El punto de entrada predeterminado inicia JavaFX:
 mvn exec:java
 ```
 
-Por defecto, `LAEXCLUSIVA_PERSISTENCE_MODE` es `memory`, así que los datos de esa ejecución no sobreviven al cierre. En el primer arranque sin cuentas, el modo normal aprovisiona un administrador usando `LAEXCLUSIVA_INITIAL_ADMIN_USERNAME` (opcional, por defecto `admin`) y `LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD`. La contraseña debe cumplir la política configurada. En PostgreSQL el bootstrap solo ocurre si el repositorio persistente no contiene usuarios; no crea una cuenta alternativa en memoria ante errores de base o esquema.
+El arranque comercial selecciona PostgreSQL por defecto; configure `LAEXCLUSIVA_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` antes de abrir la aplicación. `LAEXCLUSIVA_PERSISTENCE_MODE=memory` solo tiene efecto cuando se elige explícitamente. Si PostgreSQL, sus credenciales o el esquema requerido no están disponibles, la aplicación muestra un error seguro y no cambia a memoria. En el primer arranque de una base vacía, el administrador inicial se aprovisiona con `LAEXCLUSIVA_INITIAL_ADMIN_USERNAME` (opcional, por defecto `admin`) y `LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD`, que debe cumplir la política. El alta no reemplaza usuarios existentes.
 
-El modo demo solo está disponible en memoria:
+Las fotografías opcionales se almacenan fuera de PostgreSQL en `%USERPROFILE%\La Exclusiva\Productos` (`LAEXCLUSIVA_PRODUCT_IMAGES_DIR`). Los informes PDF se guardan en `%USERPROFILE%\La Exclusiva\Reportes` (`LAEXCLUSIVA_REPORTS_DIR`). Ambas carpetas deben incluirse en el respaldo; el arranque no aplica V113/V114.
 
-```powershell
-$env:LAEXCLUSIVA_DEMO_ADMIN_PASSWORD = 'contraseña temporal'
-$env:LAEXCLUSIVA_DEMO_WORKER_PASSWORD = 'otra contraseña temporal'
-mvn exec:java "-Dexec.args=--demo"
-```
-
-No guardes contraseñas reales en el repositorio ni en la línea de comandos compartida. Usa variables privadas del proceso y evita capturar sus valores en registros.
+La aplicación comercial no ofrece un modo demo, no precarga productos ni crea cuentas ficticias. El modo `memory` queda disponible como composición explícita para pruebas automatizadas o recorridos controlados; los fixtures de catálogo y usuarios están bajo `src/test` y no se incorporan al JAR comercial. PostgreSQL sigue siendo el modo predeterminado y requiere configuración válida.
 
 ## Seleccionar PostgreSQL
 
-La aplicación utiliza PostgreSQL únicamente cuando se configura `LAEXCLUSIVA_PERSISTENCE_MODE=postgres` junto con `LAEXCLUSIVA_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD`. La configuración inválida o un esquema incompleto debe fallar de forma segura; no se cambia automáticamente a memoria.
+La aplicación utiliza PostgreSQL por defecto; puede fijarse también con `LAEXCLUSIVA_PERSISTENCE_MODE=postgres`, junto con `LAEXCLUSIVA_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD`. La configuración inválida o un esquema incompleto debe fallar de forma segura; no se cambia automáticamente a memoria. Seleccionar `memory` es una opción de pruebas y no proporciona persistencia comercial.
 
 Las migraciones no se ejecutan automáticamente. Antes de aplicar una migración, verifica el destino y su versión; nunca uses la base de desarrollo o producción para pruebas. La guía de entorno y el contrato están en [database/README.md](database/README.md) y [database/jdbc-integration-contract.md](database/jdbc-integration-contract.md).
 
 ## Asistente de cartera y privacidad
 
-El contrato del tablero y las reglas de estados de cuenta, consentimiento y correo están documentados en [docs/collection-reminders-security.md](docs/collection-reminders-security.md). La simulación de correo está activa por defecto. Un envío SMTP real requiere configuración explícita, consentimiento vigente, revisión individual, horario/días autorizados y confirmación administrativa de las instrucciones de pago. El estado de cuenta es informativo, no es factura electrónica DIAN ni confirma que un pago haya sido recibido.
+El contrato del tablero y las reglas de seguimiento, estados de cuenta y auditoría están documentados en [docs/collection-reminders-security.md](docs/collection-reminders-security.md). El envío de correo real no está habilitado en la ruta de producción; los datos históricos de avisos permanecen auditables. El estado de cuenta es informativo, no es factura electrónica DIAN ni confirma que un pago haya sido recibido.
 
 ## Organización
 
@@ -73,5 +69,6 @@ El contrato del tablero y las reglas de estados de cuenta, consentimiento y corr
 - [Asistente de cartera, recordatorios y auditoría](docs/collection-reminders-security.md)
 - [Bitácoras de uso de IA](docs/ai-usage/README.md)
 - [Integración JavaFX de compras](docs/purchases-javafx-integration.md)
+- [Estado de transformación comercial](docs/commercial-transformation.md)
 
 Los cambios se proponen mediante Pull Requests a `develop`; no se integra directamente a `main`.

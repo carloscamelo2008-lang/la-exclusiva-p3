@@ -2,34 +2,50 @@ package com.laexclusiva.model;
 
 import java.math.BigDecimal;
 
+/** Cliente persistente cuya deuda agregada se compone de obligaciones y ventas registradas. */
 public class Customer {
     private String id;
     private String name;
     private String phone;
     private String address;
     private BigDecimal saldo;
-    private final BigDecimal creditLimit;
 
     public Customer(String id, String name, String phone, String address) {
         this(id, name, phone, address, BigDecimal.ZERO);
     }
 
     public Customer(String id, String name, String phone, String address, BigDecimal saldo) {
-        this(id, name, phone, address, saldo, BigDecimal.ZERO);
+        this(normalizeText(id), name, phone, address, saldo, true);
     }
 
+    /**
+     * Compatibilidad con consumidores anteriores a V113; el cupo recibido se ignora y no limita ventas.
+     *
+     * @deprecated use {@link #Customer(String, String, String, String, BigDecimal)}
+     */
+    @Deprecated
     public Customer(String id, String name, String phone, String address, BigDecimal saldo, BigDecimal creditLimit) {
-        this(normalizeText(id), name, phone, address, saldo, creditLimit, true);
+        this(id, name, phone, address, saldo);
     }
 
     /** Reconstruye un cliente sin cambiar la clave primaria de filas históricas. */
+    public static Customer reconstitute(String id, String name, String phone, String address, BigDecimal balance) {
+        return new Customer(id, name, phone, address, balance, false);
+    }
+
+    /**
+     * Compatibilidad con filas del esquema anterior; conserva la identidad y omite el cupo heredado.
+     *
+     * @deprecated el valor histórico se conserva en PostgreSQL, fuera del modelo comercial
+     */
+    @Deprecated
     public static Customer reconstitute(String id, String name, String phone, String address,
                                         BigDecimal balance, BigDecimal creditLimit) {
-        return new Customer(id, name, phone, address, balance, creditLimit, false);
+        return reconstitute(id, name, phone, address, balance);
     }
 
     private Customer(String id, String name, String phone, String address, BigDecimal saldo,
-                     BigDecimal creditLimit, boolean normalizeContact) {
+                     boolean normalizeContact) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("El ID del cliente es obligatorio y no puede estar vacío.");
         }
@@ -50,11 +66,6 @@ public class Customer {
         this.phone = normalizePhone(phone);
         this.address = normalizeContact ? normalizeText(address) : address;
         this.saldo = saldo;
-        if (creditLimit == null || creditLimit.signum() < 0 || creditLimit.stripTrailingZeros().scale() > 2
-                || creditLimit.compareTo(new BigDecimal("99999999999999999.99")) > 0) {
-            throw new IllegalArgumentException("El cupo de crédito debe ser un importe no negativo de hasta dos decimales.");
-        }
-        this.creditLimit = creditLimit;
     }
 
     /** Elimina espacios exteriores y reduce los grupos interiores a un espacio. */
@@ -69,15 +80,6 @@ public class Customer {
                 .replaceAll("\\p{M}+", "").toLowerCase(java.util.Locale.ROOT);
     }
 
-    public BigDecimal getCreditLimit() { return creditLimit; }
-
-    /** Valida la exposición total del cliente antes de registrar una venta a crédito. */
-    public void requireAvailableCredit(BigDecimal newDebt) {
-        if (newDebt.signum() > 0 && saldo.add(newDebt).compareTo(creditLimit) > 0) {
-            throw new IllegalArgumentException("La venta supera el cupo de crédito disponible del cliente.");
-        }
-    }
-
     /** Normaliza un teléfono a dígitos ASCII, conservando ceros iniciales. */
     public static String normalizePhone(String phone) {
         String compact = phone == null ? "" : phone.replaceAll("\\s", "");
@@ -89,7 +91,7 @@ public class Customer {
 
     /** Devuelve una copia independiente del cliente. */
     public Customer copy() {
-        return reconstitute(id, name, phone, address, saldo, creditLimit);
+        return reconstitute(id, name, phone, address, saldo);
     }
 
     public String getId() { return id; }

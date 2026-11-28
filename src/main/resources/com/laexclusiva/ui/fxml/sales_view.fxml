@@ -11,6 +11,7 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.image.ImageView?>
 
 <ScrollPane fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.laexclusiva.ui.controller.SalesController" stylesheets="@../css/theme.css" styleClass="workspace"><content>
@@ -19,6 +20,8 @@
     <Label text="Registrar venta" style="-fx-font-size: 21px; -fx-font-weight: bold;" />
     <FlowPane hgap="8.0" vgap="8">
         <ComboBox fx:id="productCombo" promptText="Producto" prefWidth="240.0" />
+        <ImageView fx:id="productImagePreview" fitWidth="110" fitHeight="82" preserveRatio="true" />
+        <Label fx:id="productImageStatus" text="Sin fotografía" />
         <ComboBox fx:id="presentationCombo" promptText="Presentación" prefWidth="150.0" />
         <VBox spacing="3"><Label text="Cantidad" labelFor="${quantityField}"/><TextField fx:id="quantityField" promptText="Cantidad" accessibleText="Cantidad de la presentación elegida" prefWidth="100.0" /></VBox>
         <Button fx:id="addLineButton" text="Agregar línea" onAction="#handleAddLine" />

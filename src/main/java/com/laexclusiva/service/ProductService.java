@@ -60,6 +60,21 @@ public class ProductService {
     }
 
     /**
+     * Actualiza la referencia relativa de fotografía de una referencia de catálogo.
+     *
+     * @param productId ID estable del producto
+     * @param imageFilename nombre content-addressed validado, o {@code null} para retirar la foto
+     * @return snapshot actualizado del producto
+     * @throws IllegalArgumentException si el producto o la referencia no son válidos
+     */
+    public BeerProduct updateImageFilename(String productId, String imageFilename) {
+        BeerProduct product = findById(productId);
+        product.setImageFilename(imageFilename);
+        repository.updateImageFilename(productId, imageFilename);
+        return findById(productId);
+    }
+
+    /**
      * Precio de una presentación del producto, en COP, como BigDecimal.
      *
      * @throws IllegalArgumentException si el producto no existe o la presentación es nula

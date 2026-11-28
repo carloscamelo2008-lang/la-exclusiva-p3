@@ -318,7 +318,8 @@ Ejecutar V001 una sola vez desde pgAdmin Query Tool sobre una base vacía. Crea 
 ## Integración JavaFX y unidad de trabajo completa (2026-11-17)
 
 La rama `feature/full-jdbc-integration` añade una composición seleccionable mediante
-`LAEXCLUSIVA_PERSISTENCE_MODE=memory|postgres`; si falta la variable conserva `memory`. La
+`LAEXCLUSIVA_PERSISTENCE_MODE=memory|postgres`; si falta la variable selecciona `postgres`. El modo
+`memory` requiere selección explícita y se reserva para pruebas o recorridos controlados. La
 composición PostgreSQL crea un `JdbcConnectionProvider` y un `JdbcTransactionManager` compartidos
 por repositorios y ajustadores, sin abrir conexiones durante el arranque.
 
@@ -339,16 +340,17 @@ obsoletos sustituyan existencias. Ese endurecimiento se revisa como parte del PR
 
 Las pantallas JavaFX consultan productos, existencias, movimientos, clientes y vendedores; permiten
 registrar productos y sus tres precios, entradas de inventario, ventas por unidad/media canasta/
-canasta, pagos iniciales y abonos a ventas específicas. El modo en memoria conserva su catálogo y
-servicios anteriores. PostgreSQL se activa solo con configuración explícita.
+canasta, pagos iniciales y abonos a ventas específicas. La composición memory está vacía y solo se
+selecciona explícitamente para pruebas; el arranque comercial predeterminado usa PostgreSQL.
 
 Límites que requieren revisión antes de habilitarlo al equipo:
 
 - El login y las cuentas siguen en `InMemoryUserRepository`; no se conectó `user_account` ni se
   cambió el flujo de Daniel. Cuentas y asignación de vendedor no son persistentes.
 - La pantalla de ventas respeta `VIEW_SALES` y `VIEW_SELLERS`: un trabajador solo ve su propio
-  historial y solo puede usar su vendedor asignado. Si la cuenta no tiene `sellerId`, el selector
-  queda vacío; el usuario demo que crea `App` actualmente no tiene asignación y requiere revisión.
+  historial y solo puede usar su vendedor asignado. No se crean cuentas demo; el administrador
+  inicial se aprovisiona solo en una base vacía mediante las variables de configuración descritas
+  en README, y las cuentas QA pertenecen a fixtures de pruebas.
 - El formulario de catálogo usa `MANAGE_PRODUCTS` y la entrada de existencias usa
   `MANAGE_INVENTORY_ENTRIES`; son permisos separados.
 - `CustomerService` se utiliza para alta y consulta; sus operaciones de deuda general siguen
@@ -586,3 +588,36 @@ dashboard, estado de cuenta y límites conocidos está en
 `CustomerCollectionPostgresIntegrationTest` solo se activa en el laboratorio efímero de GitHub
 Actions. Una omisión Surefire local sin las propiedades/URL de prueba no acredita validación
 PostgreSQL. Las pruebas no envían correos reales y no se deben ejecutar contra una base compartida.
+
+## Cambios comerciales locales en revisión (V113/V114)
+
+La rama `feature/commercial-transformation` elimina el cupo como regla para ventas nuevas y
+conserva el valor previo mediante `V113`, que renombra `customer.credit_limit` a
+`customer.legacy_credit_limit`. `V114` agrega `beer_product.image_filename`, nullable y limitado por
+CHECK a un nombre SHA-256 con extensión PNG/JPG. Las imágenes se validan y guardan fuera de
+PostgreSQL bajo `LAEXCLUSIVA_PRODUCT_IMAGES_DIR`; JDBC solo persiste el nombre relativo. El código
+que lee/inserta productos requiere V114, pero ninguna migración se ejecuta al arrancar. El laboratorio
+efímero con PostgreSQL 18.6 verificó ambas migraciones; esto no autoriza aplicarlas a bases existentes.
+
+### Compatibilidad requerida en el instalador/verificador de PR #30
+
+El instalador y el verificador de PR #30 todavía terminan en V112 y esperan
+`customer.credit_limit`. La secuencia de este cambio continúa con V113 y V114; no es compatible con
+ese verificador hasta que Jesús actualice su contrato:
+
+1. Añadir V113 y V114 una sola vez, en ese orden y después de V112, al manifiesto/lista del instalador
+   y a cualquier esquema aislado que valide el estado final. No modificar ni duplicar V111/V112.
+2. Tras V113, dejar de exigir `customer.credit_limit`: la columna se renombra a
+   `customer.legacy_credit_limit`. Si el verificador comprueba conservación de cupos históricos,
+   debe leer el valor desde `legacy_credit_limit`; el campo ya no autoriza ventas nuevas.
+3. Tras V114, exigir `beer_product.image_filename` nullable y la restricción
+   `ck_beer_product_image_filename`. Las filas previas sin imagen deben seguir siendo válidas.
+4. En el laboratorio, crear antes de V113 un cliente con cupo histórico no nulo; confirmar después
+   que el valor se conserva en `legacy_credit_limit` y que `credit_limit` ya no existe. Para V114,
+   comprobar que una imagen nula y una referencia SHA-256 permitida son válidas, y que una ruta o
+   extensión no admitida se rechaza por la restricción SQL.
+5. Ejecutar el instalador y el verificador de PR #30 en el mismo laboratorio desechable contra el
+   esquema V114; no aplicar estas versiones ni usar consultas de validación sobre una base comercial.
+
+Esta integración aún requiere que Jesús adapte y ejecute sus propios scripts; esta rama no modifica
+su PR ni afirma que su instalador actual ya sea compatible.

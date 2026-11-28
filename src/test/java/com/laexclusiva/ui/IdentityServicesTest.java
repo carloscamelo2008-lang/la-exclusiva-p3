@@ -87,14 +87,4 @@ class IdentityServicesTest {
                         "blocked", "Valid-Worker-Blocked-2026", UserRole.ADMINISTRATOR, true)));
     }
 
-    @Test
-    void demoBootstrapDoesNotDuplicateOrResetExistingAccounts() {
-        IdentityServices services = IdentityServices.inMemory();
-        assertTrue(services.bootstrapDemoAccounts("Admin-Demo-Only-2026", "Worker-Demo-Only-2026"));
-        var adminHash = services.users().findByUsername("admin").orElseThrow().getPasswordHash();
-
-        assertFalse(services.bootstrapDemoAccounts("Another-Admin-Only-2026", "Another-Worker-Only-2026"));
-        assertEquals(2, services.users().findAll().size());
-        assertEquals(adminHash, services.users().findByUsername("admin").orElseThrow().getPasswordHash());
-    }
 }

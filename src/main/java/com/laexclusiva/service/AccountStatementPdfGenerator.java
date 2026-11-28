@@ -4,6 +4,7 @@ import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SalePayment;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.awt.Color;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -50,8 +51,13 @@ public final class AccountStatementPdfGenerator {
                         stream.setLeading(LEADING);
                         stream.newLineAtOffset(LEFT, TOP);
                     }
-                    if (line.startsWith("Estado de cuenta") && document.getNumberOfPages() == 1) stream.setFont(bold, 14);
-                    else stream.setFont(regular, 10);
+                    if (line.startsWith("Estado de cuenta") && document.getNumberOfPages() == 1) {
+                        stream.setFont(bold, 14);
+                        stream.setNonStrokingColor(new Color(31, 78, 121));
+                    } else {
+                        stream.setFont(regular, 10);
+                        stream.setNonStrokingColor(Color.BLACK);
+                    }
                     stream.showText(line);
                     stream.newLine();
                     linesOnPage++;
@@ -95,7 +101,7 @@ public final class AccountStatementPdfGenerator {
         result.add("Compromiso de pago: " + (data.commitmentDate() == null ? "No registrado" : data.commitmentDate()));
         result.add("Instrucciones: confirme con administracion el medio y titular antes de pagar.");
         if (data.paymentKey() != null) result.add("Llave de pago configurada: " + data.paymentKey());
-        result.add("El pago requiere confirmacion administrativa; el correo no registra una deuda como pagada.");
+        result.add("Los pagos incluidos constan como registrados hasta la fecha de generación; verifique cualquier pago posterior en el sistema.");
         return result;
     }
 

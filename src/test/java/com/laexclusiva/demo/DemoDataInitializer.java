@@ -110,7 +110,7 @@ public class DemoDataInitializer {
 
         // Bloque 4: cliente y perfiles de vendedor ficticios, por sus servicios.
         customerService.registerCustomer(DEMO_CUSTOMER_ID, "Cliente de demostración",
-                DEMO_PHONE, DEMO_ADDRESS, BigDecimal.valueOf(1_000_000));
+                DEMO_PHONE, DEMO_ADDRESS);
         Seller admin = sellerService.registerSeller("Administrador de demostración",
                 DEMO_PHONE, DEMO_ADDRESS);
         Seller worker = sellerService.registerSeller("Trabajador de demostración",

@@ -56,7 +56,7 @@ class ConsoleMenuTest {
         sellers = new SellerService(new SellerRepository());
         sales = new SaleService(new InMemorySaleRepository(), products, inventory, customers, sellers);
         seller = sellers.registerSeller("Vendedor de prueba", "3001234567", "Dirección de prueba");
-        customers.registerCustomer("C001", "Cliente de prueba", "3007654321", "Dirección de prueba", new BigDecimal("10000000"));
+        customers.registerCustomer("C001", "Cliente de prueba", "3007654321", "Dirección de prueba");
     }
 
     @Test

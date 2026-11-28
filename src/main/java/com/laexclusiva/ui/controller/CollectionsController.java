@@ -11,29 +11,23 @@ import com.laexclusiva.model.CustomerCollectionReminder;
 import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.service.AdministrativeAuditService;
+import com.laexclusiva.service.AccountStatementReportStore;
 import com.laexclusiva.service.CollectionAssistantService;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.fxml.FXML;
-import javafx.scene.control.Alert;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
-import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
-import javafx.stage.FileChooser;
 import javafx.util.StringConverter;
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.text.PDFTextStripper;
 
 /** Presenta recomendaciones y herramientas de cobranza con permisos validados por los servicios. */
 public final class CollectionsController {
@@ -49,7 +43,6 @@ public final class CollectionsController {
     @FXML private TableColumn<CollectionRecommendation, String> ageColumn;
     @FXML private TableColumn<CollectionRecommendation, String> explanationColumn;
     @FXML private ComboBox<Customer> customerCombo;
-    @FXML private TextField emailField;
     @FXML private ComboBox<CollectionChannel> channelCombo;
     @FXML private CheckBox consentCheck;
     @FXML private CheckBox remindersCheck;
@@ -74,9 +67,15 @@ public final class CollectionsController {
     @FXML private javafx.scene.layout.VBox administrationPane;
 
     private CollectionAssistantService assistant;
+    private AccountStatementReportStore reportStore = AccountStatementReportStore.fromEnvironment();
     private AdministrativeAuditService audit;
     private UserSession session;
     private com.laexclusiva.service.AuthorizationService authorization;
+
+    void setReportStore(AccountStatementReportStore reportStore) {
+        if (reportStore == null) throw new IllegalArgumentException("La carpeta de reportes es obligatoria.");
+        this.reportStore = reportStore;
+    }
 
     @FXML
     private void initialize() {
@@ -93,14 +92,15 @@ public final class CollectionsController {
             case BALANCE_CHANGED -> "Saldo actualizado";
             case NOTE_ADDED -> "Nota de seguimiento";
             case REMINDER_PREPARED -> "Aviso preparado";
-            case REMINDER_SENT -> "Aviso aceptado";
-            case REMINDER_FAILED -> "Aviso rechazado";
-            case REMINDER_UNCERTAIN -> "Requiere conciliación";
+            case REMINDER_SENT -> "Resultado de aviso histórico";
+            case REMINDER_FAILED -> "Aviso histórico rechazado";
+            case REMINDER_UNCERTAIN -> "Aviso histórico por conciliar";
         }));
         historyNoteColumn.setCellValueFactory(cell -> text(cell.getValue().note() == null ? "" : cell.getValue().note()));
         reminderCustomerColumn.setCellValueFactory(cell -> text(cell.getValue().customerId()));
         reminderChannelColumn.setCellValueFactory(cell -> text(switch (cell.getValue().channel()) {
-            case NONE -> "Sin autorización"; case EMAIL -> "Correo electrónico"; case PHONE -> "Teléfono (manual)";
+            case NONE -> "Sin seguimiento"; case EMAIL -> "Correo histórico (no operativo)";
+            case PHONE -> "Teléfono (manual)";
         }));
         reminderStatusColumn.setCellValueFactory(cell -> text(reminderStatusLabel(cell.getValue().status())));
         reminderBalanceColumn.setCellValueFactory(cell -> text(cell.getValue().balanceSnapshot().toPlainString()));
@@ -112,7 +112,7 @@ public final class CollectionsController {
             case USER_CREATED -> "Usuario creado"; case ROLE_CHANGED -> "Rol actualizado";
             case ACCOUNT_ACTIVATED -> "Cuenta activada"; case ACCOUNT_DEACTIVATED -> "Cuenta desactivada";
             case PASSWORD_RESET -> "Contraseña restablecida"; case SELLER_ASSIGNMENT_CHANGED -> "Vendedor asignado";
-            case STATEMENT_SEND_ATTEMPT -> "Intento de aviso";
+            case STATEMENT_SEND_ATTEMPT -> "Intento de aviso histórico";
         }));
         auditTargetColumn.setCellValueFactory(cell -> text((cell.getValue().targetType() == AdministrativeAuditEvent.TargetType.USER ? "Usuario" : "Cliente") + ": "
                 + cell.getValue().targetReference()));
@@ -125,12 +125,12 @@ public final class CollectionsController {
             }
             @Override public Customer fromString(String value) { return null; }
         });
-        channelCombo.getItems().setAll(CollectionChannel.values());
+        channelCombo.getItems().setAll(CollectionChannel.NONE, CollectionChannel.PHONE);
         channelCombo.setConverter(new StringConverter<>() {
             @Override public String toString(CollectionChannel channel) {
                 return channel == null ? "" : switch (channel) {
                     case NONE -> "Sin autorización";
-                    case EMAIL -> "Correo electrónico";
+                    case EMAIL -> "Correo histórico (no operativo)";
                     case PHONE -> "Teléfono (manual)";
                 };
             }
@@ -165,7 +165,7 @@ public final class CollectionsController {
         }
     }
 
-    @FXML private void handleRefresh() { refreshDashboard(); }
+    @FXML private void handleRefresh() { refreshDashboard(true); }
 
     @FXML
     private void handleCustomerSelected() {
@@ -173,14 +173,16 @@ public final class CollectionsController {
         try {
             Customer selected = customerCombo.getValue();
             CollectionProfile profile = assistant.profile(session, selected.getId());
-            emailField.setText(profile.email() == null ? "" : profile.email());
-            channelCombo.setValue(profile.authorizedChannel());
-            consentCheck.setSelected(profile.collectionConsent());
-            remindersCheck.setSelected(profile.remindersEnabled());
+            boolean oldEmailProfile = profile.authorizedChannel() == CollectionChannel.EMAIL;
+            channelCombo.setValue(oldEmailProfile ? CollectionChannel.NONE : profile.authorizedChannel());
+            consentCheck.setSelected(!oldEmailProfile && profile.collectionConsent());
+            remindersCheck.setSelected(!oldEmailProfile && profile.remindersEnabled());
             commitmentDatePicker.setValue(profile.commitmentDate());
             noteField.clear();
             historyTable.getItems().setAll(assistant.history(session, selected.getId()));
-            messageLabel.setText("Preferencias cargadas. El teléfono se consulta del registro del cliente.");
+            messageLabel.setText(oldEmailProfile
+                    ? "El perfil de correo histórico se conserva, pero no está disponible para nuevos envíos. Confirme cualquier autorización telefónica antes de guardarla."
+                    : "Seguimiento cargado. El teléfono se consulta del registro del cliente; no se envían correos.");
         } catch (RuntimeException failure) {
             showSafeFailure("No se pudo consultar el perfil de cobranza.", failure);
         }
@@ -192,18 +194,17 @@ public final class CollectionsController {
         Customer customer = customerCombo.getValue();
         if (customer == null) { messageLabel.setText("Seleccione un cliente."); return; }
         try {
-            CollectionProfile saved = assistant.saveProfile(session, customer.getId(), emailField.getText(),
+            CollectionProfile saved = assistant.saveProfile(session, customer.getId(), null,
                     channelCombo.getValue(), consentCheck.isSelected(), remindersCheck.isSelected(),
                     commitmentDatePicker.getValue(), noteField.getText());
             consentCheck.setSelected(saved.collectionConsent());
             remindersCheck.setSelected(saved.remindersEnabled());
             channelCombo.setValue(saved.authorizedChannel());
-            emailField.setText(saved.email() == null ? "" : saved.email());
             noteField.clear();
             historyTable.getItems().setAll(assistant.history(session, customer.getId()));
             messageLabel.setText(saved.collectionConsent()
-                    ? "Preferencias y seguimiento guardados con autorización registrada."
-                    : "Preferencias guardadas; los recordatorios quedan desactivados.");
+                    ? "Seguimiento interno guardado con autorización registrada; no se enviará correo."
+                    : "Seguimiento guardado; los recordatorios quedan desactivados.");
             refreshDashboard();
         } catch (IllegalArgumentException invalid) {
             messageLabel.setText(UiErrorMessages.safeMessage(invalid));
@@ -219,17 +220,25 @@ public final class CollectionsController {
         if (customerId == null) return;
         try {
             byte[] pdf = assistant.statementPdf(session, customerId);
-            FileChooser chooser = new FileChooser();
-            chooser.setTitle("Guardar estado de cuenta comercial");
-            chooser.setInitialFileName("Estado de cuenta - La Exclusiva.pdf");
-            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Documento PDF", "*.pdf"));
-            java.io.File file = chooser.showSaveDialog(recommendationsTable.getScene().getWindow());
-            if (file != null) {
-                Files.write(file.toPath(), pdf);
-                messageLabel.setText("Estado de cuenta generado. No es una factura electrónica DIAN.");
-            }
+            java.nio.file.Path file = reportStore.save(customerId, LocalDate.now(), pdf);
+            messageLabel.setText("Estado de cuenta guardado en " + file
+                    + ". Documento informativo; no es factura electrónica DIAN.");
         } catch (RuntimeException | IOException failure) {
             showSafeFailure("No se pudo generar el estado de cuenta.", failure);
+        }
+    }
+
+    @FXML
+    private void handleOpenReportFolder() {
+        if (!hasPermission(Permission.VIEW_PORTFOLIO)) {
+            messageLabel.setText("No tiene permiso para consultar Cartera.");
+            return;
+        }
+        try {
+            reportStore.openDirectory();
+            messageLabel.setText("Carpeta de reportes: " + reportStore.directory());
+        } catch (RuntimeException | IOException failure) {
+            showSafeFailure("No se pudo abrir la carpeta de reportes: " + reportStore.directory(), failure);
         }
     }
 
@@ -238,8 +247,8 @@ public final class CollectionsController {
         try {
             CollectionAssistantService.PreparationResult result = assistant.prepareWeeklyReminders(session);
             remindersTable.getItems().setAll(assistant.listReminders(session, null));
-            messageLabel.setText("Avisos nuevos para revisión: " + result.created()
-                    + ". Los correos requieren selección y confirmación individual.");
+            messageLabel.setText("Seguimientos internos nuevos: " + result.created()
+                    + ". Este tablero no envía correos.");
             refreshDashboard();
         } catch (RuntimeException failure) {
             showSafeFailure("No se pudieron preparar los recordatorios.", failure);
@@ -250,51 +259,11 @@ public final class CollectionsController {
     @FXML private void handleRefreshAudit() { refreshAudit(); }
 
     @FXML
-    private void handlePreviewAndSend() {
-        if (!isAdministrator()) { messageLabel.setText("Solo administración puede revisar envíos."); return; }
-        CustomerCollectionReminder reminder = remindersTable.getSelectionModel().getSelectedItem();
-        if (reminder == null) { messageLabel.setText("Seleccione un aviso."); return; }
-        try {
-            CollectionAssistantService.EmailPreview preview = assistant.previewReminder(session, reminder.id());
-            String body;
-            try (var document = Loader.loadPDF(preview.pdf())) {
-                body = new PDFTextStripper().getText(document);
-            }
-            TextArea previewText = new TextArea("Para: " + preview.recipient() + "\nAsunto: " + preview.subject()
-                    + "\n\n" + preview.text() + "\n\n--- Estado de cuenta adjunto ---\n" + body);
-            previewText.setEditable(false);
-            previewText.setWrapText(true);
-            previewText.setPrefColumnCount(72);
-            previewText.setPrefRowCount(24);
-            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-            confirm.setTitle("Revisar correo y estado de cuenta");
-            confirm.setHeaderText("Revise destinatario, instrucciones y saldo antes de continuar.");
-            confirm.getDialogPane().setContent(previewText);
-            ButtonType send = new ButtonType("Enviar correo");
-            ButtonType cancel = new ButtonType("Cancelar");
-            confirm.getButtonTypes().setAll(send, cancel);
-            if (confirm.showAndWait().orElse(cancel) != send) {
-                assistant.cancelReminderPreview(session, reminder.id(), preview.previewToken());
-                return;
-            }
-            CollectionAssistantService.DeliveryResult result = deliverConfirmedPreview(reminder.id(), preview.previewToken());
-            messageLabel.setText(result.message());
-            refreshReminders();
-            refreshAudit();
-            refreshDashboard();
-        } catch (RuntimeException | IOException failure) {
-            showSafeFailure("No se pudo preparar o entregar el aviso.", failure);
-        }
-    }
-
-    /** Consume la revisión mostrada y delega la confirmación final al servicio protegido. */
-    CollectionAssistantService.DeliveryResult deliverConfirmedPreview(long reminderId, String previewToken) {
-        if (!isAdministrator()) throw new SecurityException("Solo administración puede confirmar envíos.");
-        String confirmation = assistant.confirmReminder(session, reminderId, previewToken);
-        return assistant.sendReminder(session, reminderId, confirmation);
-    }
-
     private void refreshDashboard() {
+        refreshDashboard(false);
+    }
+
+    private void refreshDashboard(boolean confirmSuccessfulRefresh) {
         try {
             CollectionDashboard dashboard = assistant.dashboard(session);
             recommendationsTable.getItems().setAll(dashboard.recommendations());
@@ -302,7 +271,7 @@ public final class CollectionsController {
                     + " | Deudas 30+ días: " + dashboard.agedDebts()
                     + " | Próximos 3 días: " + dashboard.upcomingCommitments()
                     + " | Avisos pendientes de revisión: " + dashboard.statementsPendingReview());
-            if (messageLabel != null && messageLabel.getText().isBlank()) messageLabel.setText("Tablero actualizado.");
+            if (confirmSuccessfulRefresh) messageLabel.setText("Tablero actualizado.");
         } catch (RuntimeException failure) {
             recommendationsTable.getItems().clear();
             metricsLabel.setText("Indicadores no disponibles.");

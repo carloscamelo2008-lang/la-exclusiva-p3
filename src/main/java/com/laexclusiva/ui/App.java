@@ -10,12 +10,28 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.Map;
+import javafx.scene.control.Alert;
 
+/** Punto de entrada JavaFX que selecciona una única composición de persistencia. */
 public class App extends Application {
 
     private ApplicationServices applicationServices;
     private boolean compositionSelectedForStartup;
+
+    /** Constructor reservado para el lanzador JavaFX, que selecciona persistencia desde el entorno. */
+    public App() { }
+
+    /**
+     * Inyecta una composición explícita para recorridos controlados y pruebas.
+     *
+     * @param applicationServices composición compartida con controladores y servicios
+     * @throws IllegalArgumentException si la composición es nula
+     */
+    public App(ApplicationServices applicationServices) {
+        if (applicationServices == null) throw new IllegalArgumentException("La composición es obligatoria.");
+        this.applicationServices = applicationServices;
+        this.compositionSelectedForStartup = true;
+    }
 
     public UserRepository getUserRepository() {
         return services().identity().users();
@@ -24,19 +40,6 @@ public class App extends Application {
     /** Reutiliza la autoridad compartida para todo el ciclo JavaFX. */
     public AuthenticationService getAuthenticationService() {
         return services().identity().authentication();
-    }
-
-    public void initializeDemoAccounts(String adminPass, String workerPass) {
-        ApplicationServices selected = services();
-        if (selected.postgresMode()) {
-            throw new IllegalStateException("Las cuentas demo solo se pueden inicializar en modo memory.");
-        }
-        try {
-            selected.identity().bootstrapDemoAccounts(adminPass, workerPass);
-            compositionSelectedForStartup = true;
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            throw new IllegalStateException("Las contraseñas demo deben cumplir la política de contraseñas.");
-        }
     }
 
     public void initializeInitialAdmin(String adminPass) {
@@ -48,20 +51,12 @@ public class App extends Application {
         }
     }
 
-    public void processInitialization(Parameters params) {
+    public void processInitialization() {
         if (applicationServices == null) {
             applicationServices = ApplicationServices.fromEnvironment();
         }
-        boolean isDemo = params != null && params.getRaw().contains("--demo");
         ApplicationServices selected = applicationServices;
-        if (isDemo) {
-            if (selected.postgresMode()) {
-                throw new IllegalStateException("El modo --demo solo está disponible con LAEXCLUSIVA_PERSISTENCE_MODE=memory.");
-            }
-            String adminPass = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
-            String workerPass = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
-            initializeDemoAccounts(adminPass, workerPass);
-        } else if (selected.identity().users().findAll().isEmpty()) {
+        if (selected.identity().users().findAll().isEmpty()) {
             String initialAdminPass = System.getenv("LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD");
             String initialUsername = System.getenv().getOrDefault("LAEXCLUSIVA_INITIAL_ADMIN_USERNAME", "admin");
             try {
@@ -74,13 +69,29 @@ public class App extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        if (!compositionSelectedForStartup) {
-            // En PostgreSQL no hay alternativa en memoria: los errores de esquema o conexión fallan cerrados.
-            applicationServices = ApplicationServices.fromEnvironment();
-            compositionSelectedForStartup = true;
+        try {
+            if (!compositionSelectedForStartup) {
+                // La configuración normal usa PostgreSQL; memoria solo se elige explícitamente.
+                applicationServices = ApplicationServices.fromEnvironment();
+                compositionSelectedForStartup = true;
+            }
+            processInitialization();
+            showLogin(primaryStage);
+        } catch (RuntimeException startupFailure) {
+            showStartupFailure(primaryStage, startupFailure);
         }
-        processInitialization(getParameters());
-        showLogin(primaryStage);
+    }
+
+    private static void showStartupFailure(Stage stage, RuntimeException failure) {
+        String message = failure instanceof IllegalArgumentException
+                ? "No se pudo iniciar La Exclusiva. Revisa LAEXCLUSIVA_PERSISTENCE_MODE, la URL y las credenciales de PostgreSQL, y que las migraciones requeridas estén aplicadas."
+                : "No se pudo conectar con PostgreSQL o validar su esquema. Comprueba que el servicio esté activo y que la base local esté preparada. No se modificó el esquema automáticamente.";
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("No se pudo iniciar La Exclusiva");
+        alert.setHeaderText("Revisa la configuración comercial");
+        alert.setContentText(message);
+        alert.showAndWait();
+        stage.close();
     }
 
     private void showLogin(Stage primaryStage) throws IOException {
@@ -109,11 +120,10 @@ public class App extends Application {
         primaryStage.show();
     }
 
-    /** Crea composición en memoria solo para consumidores directos previos al arranque JavaFX. */
+    /** Impide acceder a repositorios antes de que el arranque seleccione su composición. */
     private ApplicationServices services() {
-        if (applicationServices == null) {
-            applicationServices = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
-        }
+        if (applicationServices == null) throw new IllegalStateException(
+                "La composición de persistencia todavía no fue seleccionada.");
         return applicationServices;
     }
 

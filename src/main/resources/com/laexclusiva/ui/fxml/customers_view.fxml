@@ -17,12 +17,10 @@
     </padding>
     <Label text="Clientes" style="-fx-font-size: 22px;" />
     <HBox fx:id="registrationPane" spacing="6.0"><FlowPane hgap="8" vgap="8" minWidth="0" prefWidth="0" HBox.hgrow="ALWAYS">
-        <TextField fx:id="idField" promptText="ID" prefWidth="100.0" />
         <TextField fx:id="nameField" promptText="Nombre" prefWidth="160.0" />
         <TextField fx:id="phoneField" promptText="Teléfono" prefWidth="120.0" />
         <TextField fx:id="addressField" promptText="Dirección" prefWidth="190.0" />
-        <TextField fx:id="creditLimitField" promptText="Cupo de crédito (COP)" prefWidth="160.0"
-                   visible="false" managed="false" />
+        <Label text="El ID se asigna automáticamente. El fiado se controla por venta." wrapText="true" />
         <Button fx:id="registerCustomerButton" text="Registrar cliente" onAction="#handleRegisterCustomer" />
         <Button fx:id="cancelEditButton" text="Cancelar edición" onAction="#handleCancelEdit"
                 visible="false" managed="false" />

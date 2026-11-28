@@ -53,7 +53,7 @@ public final class InteractiveDemoData {
             for (int i = 1; i <= count(config, "customer.count"); i++) {
                 String[] row = row(config, "customer." + i, 3);
                 String id = "CLI-%03d".formatted(i);
-                s.customers().registerCustomer(id, row[0], phone(row[1]), row[2], BigDecimal.valueOf(10_000_000));
+                s.customers().registerCustomer(id, row[0], phone(row[1]), row[2]);
                 customers.add(id);
             }
             // Observación real previa a compras, ventas y abonos; no se retocan sus fechas.
@@ -75,6 +75,14 @@ public final class InteractiveDemoData {
                 product.definePrice(SalePresentation.FULL_BASKET, new BigDecimal(row[8]));
                 s.products().register(product);
             }
+            // El catálogo base que antes venía precargado ahora se declara explícitamente
+            // en este fixture; conserva las referencias históricas usadas por stock.count.
+            Set<String> configuredProductIds = new HashSet<>();
+            for (int i = 1; i <= count(config, "product.count"); i++) {
+                configuredProductIds.add(row(config, "product." + i, 9)[0]);
+            }
+            s.products().registerAll(InitialCatalog.create().stream()
+                    .filter(product -> !configuredProductIds.contains(product.getId())).toList());
             List<String> stockIds = new ArrayList<>();
             for (int i = 1; i <= count(config, "stock.count"); i++) {
                 String[] row = row(config, "stock." + i, 3); stockIds.add(row[0]);

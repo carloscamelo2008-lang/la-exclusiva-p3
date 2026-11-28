@@ -1,16 +1,18 @@
 # PostgreSQL y JDBC
 
-La aplicación puede usar PostgreSQL mediante JDBC en modo explícito. JavaFX y el modo `memory` siguen disponibles sin conexión a la base. Las conexiones productivas y de pruebas usan variables distintas para reducir el riesgo de apuntar a una base equivocada.
+La operación comercial usa PostgreSQL mediante JDBC y falla cerrada si faltan configuración, conexión o esquema. El modo `memory` se reserva para pruebas y recorridos controlados explícitamente; nunca se elige por omisión. Las conexiones productivas y de pruebas usan variables distintas para reducir el riesgo de apuntar a una base equivocada.
 
 ## Configuración
 
 | Variable | Uso |
 |---|---|
-| `LAEXCLUSIVA_PERSISTENCE_MODE` | `memory` (predeterminado) o `postgres` para la aplicación |
+| `LAEXCLUSIVA_PERSISTENCE_MODE` | `postgres` (predeterminado); `memory` únicamente por selección explícita |
 | `LAEXCLUSIVA_DB_URL` | URL de la base a la que se conectará la aplicación |
 | `LAEXCLUSIVA_TEST_DB_URL` | URL exclusiva para pruebas de integración; valida el nombre `la_exclusiva_test` |
 | `LAEXCLUSIVA_DB_USER` | Usuario PostgreSQL |
 | `LAEXCLUSIVA_DB_PASSWORD` | Contraseña PostgreSQL, solo en el entorno del proceso |
+| `LAEXCLUSIVA_PRODUCT_IMAGES_DIR` | Carpeta local persistente de fotografías PNG/JPEG content-addressed |
+| `LAEXCLUSIVA_REPORTS_DIR` | Carpeta local persistente de estados de cuenta PDF |
 
 Ejemplos de nombres de base (no copiar una URL de desarrollo al proceso de pruebas):
 
@@ -32,15 +34,42 @@ Para las pruebas automatizadas, define `LAEXCLUSIVA_TEST_DB_URL` con la base ais
 
 ## Migraciones
 
-Las migraciones son SQL versionado, no se ejecutan automáticamente al iniciar la aplicación. El conjunto actual del repositorio incluye `V001`, `V002`, `V004` y `V100`–`V112`; los saltos de numeración son intencionales. La ruta aplicada por el laboratorio se declara en `database/validation/identity/application.psql`; los requisitos de cada versión están en sus encabezados y en el [contrato JDBC](jdbc-integration-contract.md). Antes de aplicar una migración, verifica manualmente el servidor, el nombre de base y el estado de esquema. No repitas una versión ya aplicada. Para pruebas que puedan insertar o limpiar fixtures, utiliza exclusivamente una base ficticia y aislada `la_exclusiva_test` o el laboratorio efímero de CI.
+Las migraciones son SQL versionado, no se ejecutan automáticamente al iniciar la aplicación. El conjunto actual del repositorio incluye `V001`, `V002`, `V004` y `V100`–`V114`; los saltos de numeración son intencionales. La ruta aplicada por el laboratorio se declara en `database/validation/identity/application.psql`; los requisitos de cada versión están en sus encabezados y en el [contrato JDBC](jdbc-integration-contract.md). Antes de aplicar una migración, verifica manualmente el servidor, el nombre de base y el estado de esquema. No repitas una versión ya aplicada. Para pruebas que puedan insertar o limpiar fixtures, utiliza exclusivamente una base ficticia y aislada `la_exclusiva_test` o el laboratorio efímero de CI.
 
 Las migraciones V107 y V108 agregan respectivamente preferencias/seguimiento de cobranza y auditoría administrativa. V109 añade identidad única del intento, propietario de instancia, evidencia cerrada del proveedor y estado de conciliación. También convierte los avisos históricos `SENDING` y `FAILED/PROVIDER_FAILED` a un estado incierto para evitar reenvíos posiblemente duplicados. Dependen de las tablas de cliente e identidad existentes. No alteran el historial de clientes, ventas ni pagos. No se ejecutaron migraciones locales como parte de esa implementación.
 
 V110 normaliza los teléfonos de clientes a dígitos ASCII, elimina espacios y el prefijo `+` de presentación, y crea el índice único `uq_customer_phone`. Antes de aplicarla, revisa los formatos históricos inválidos o los números que coincidan tras normalizar: la migración se revierte por completo si encuentra alguno. Las direcciones pueden repetirse.
 
-V111 agrega el cupo de crédito del cliente con valor inicial cero. Una venta con saldo pendiente exige que la deuda agregada más el nuevo importe financiado no supere el cupo configurado. El índice de ID normalizado conserva las claves históricas y requiere resolver previamente identificaciones equivalentes por espacios.
+V111 agregó cupos que fueron utilizados por una versión anterior para limitar ventas a crédito. V113 renombra esa columna a `legacy_credit_limit` y conserva sus valores; el campo deja de exponerse en el modelo y no limita el fiado nuevo, que se controla por el saldo de cada venta. El índice de ID normalizado conserva las claves históricas y requiere resolver previamente identificaciones equivalentes por espacios.
 
 V112 agrega vendedores activos, responsables de operaciones y el medio de pago de caja. Las filas históricas conservan `NULL` cuando no consta el actor o el medio. En caja manual se registra el medio elegido en la interfaz.
+
+V113 archiva sin borrar los valores existentes de cupo del cliente y renombra su restricción. No cambia IDs, clientes, ventas, saldos ni pagos. El arranque no la aplica: inclúyala en una ventana controlada de mantenimiento antes de actualizar el entorno comercial.
+
+V114 agrega una referencia opcional y validada a la fotografía local del producto. El archivo se guarda fuera de la base en el almacén portable configurado por `LAEXCLUSIVA_PRODUCT_IMAGES_DIR`; el arranque no aplica migraciones ni crea imágenes ficticias.
+
+## Respaldo y restauración
+
+Haz un respaldo antes de una migración y durante una ventana con la aplicación cerrada. Guarda los archivos fuera del repositorio, en una ubicación con acceso restringido. `pg_dump -Fc` produce un archivo de formato custom; `-W` solicita la contraseña de forma interactiva, por lo que no se incluye en el comando ni en el historial:
+
+```powershell
+pg_dump -Fc -h localhost -p 5432 -U usuario_local -W -d la_exclusiva `
+  -f 'D:\Respaldos\la_exclusiva-AAAA-MM-DD.dump'
+pg_restore --list 'D:\Respaldos\la_exclusiva-AAAA-MM-DD.dump'
+```
+
+La restauración de prueba debe hacerse en **una base nueva y vacía con otro nombre**, nunca sobre la base existente. Cree el destino solo tras verificar que ese nombre no existe y que el servidor es el local autorizado. No use `--clean`, `--create` ni comandos que eliminen objetos. Después restaure y compruebe las tablas con lectura:
+
+```powershell
+createdb -h localhost -p 5432 -U usuario_local -W la_exclusiva_restore_AAAA_MM_DD
+pg_restore -h localhost -p 5432 -U usuario_local -W `
+  --no-owner --no-privileges -d la_exclusiva_restore_AAAA_MM_DD `
+  'D:\Respaldos\la_exclusiva-AAAA-MM-DD.dump'
+psql -h localhost -p 5432 -U usuario_local -W -d la_exclusiva_restore_AAAA_MM_DD `
+  -c "SELECT current_database(), count(*) FROM public.customer"
+```
+
+El archivo PostgreSQL no incluye fotografías ni PDFs. Respalda por separado las carpetas configuradas por `LAEXCLUSIVA_PRODUCT_IMAGES_DIR` y `LAEXCLUSIVA_REPORTS_DIR` con la aplicación cerrada; conserva sus permisos y confidencialidad. Una restauración real debe ensayarse primero en el destino aislado y revisarse por Carlos. Este procedimiento está documentado, pero **esta rama no ejecutó `pg_dump`, `createdb` ni `pg_restore`**.
 
 ## Capas de persistencia
 

@@ -109,6 +109,24 @@ $rollback$;
 \ir ../../migrations/V110__customer_phone_uniqueness.sql
 \ir ../../migrations/V111__customer_credit_limit.sql
 \ir ../../migrations/V112__audit_actors_and_payment_methods.sql
+INSERT INTO beer_product (id, name, volume_ml, units_per_basket, container_type, container_group)
+VALUES ('IV_PRODUCT_IMAGE', 'Producto ficticio de laboratorio', 330, 24, 'NON_RETURNABLE_CAN', NULL);
+\ir ../../migrations/V113__retire_customer_credit_limit.sql
+\ir ../../migrations/V114__product_image_reference.sql
+DO $product_image_constraint$
+DECLARE
+    constraint_name TEXT;
+BEGIN
+    UPDATE beer_product SET image_filename=repeat('b', 64) || '.jpg' WHERE id='IV_PRODUCT_IMAGE';
+    BEGIN
+        UPDATE beer_product SET image_filename=repeat('c', 64) || '.gif' WHERE id='IV_PRODUCT_IMAGE';
+        RAISE EXCEPTION 'V114 permitió extensión no admitida';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS constraint_name=CONSTRAINT_NAME;
+        IF constraint_name <> 'ck_beer_product_image_filename' THEN RAISE; END IF;
+    END;
+END;
+$product_image_constraint$;
 DO $seller_active$
 BEGIN
     IF (SELECT active FROM public.seller WHERE id = 'iv_seller') IS DISTINCT FROM TRUE THEN

@@ -21,7 +21,7 @@ public final class ProductRepositoryJdbc implements ProductRepository {
             SalePresentation.UNIT, SalePresentation.HALF_BASKET, SalePresentation.FULL_BASKET);
     private static final String PRODUCT_SELECT = """
             SELECT p.id, p.name, p.volume_ml, p.units_per_basket, p.container_type,
-                   p.container_group, pp.presentation_code, pp.price
+                   p.container_group, p.image_filename, pp.presentation_code, pp.price
             FROM beer_product p
             LEFT JOIN product_price pp ON pp.product_id = p.id
             """;
@@ -67,8 +67,8 @@ public final class ProductRepositoryJdbc implements ProductRepository {
     private static void insertProduct(Connection connection, BeerProduct product) throws SQLException {
         String sql = """
                 INSERT INTO beer_product
-                    (id, name, volume_ml, units_per_basket, container_type, container_group)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (id, name, volume_ml, units_per_basket, container_type, container_group, image_filename)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (id) DO NOTHING
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -78,6 +78,7 @@ public final class ProductRepositoryJdbc implements ProductRepository {
             statement.setInt(4, product.getUnitsPerBasket());
             statement.setString(5, product.getContainerType().name());
             statement.setString(6, product.getContainerGroup());
+            statement.setString(7, product.getImageFilename());
             if (statement.executeUpdate() == 0) {
                 throw new IllegalArgumentException("Ya existe un producto con el id " + product.getId() + ".");
             }
@@ -120,9 +121,11 @@ public final class ProductRepositoryJdbc implements ProductRepository {
     }
 
     static BeerProduct readProduct(ResultSet row) throws SQLException {
-        return new BeerProduct(row.getString("id"), row.getString("name"), row.getInt("volume_ml"),
+        BeerProduct product = new BeerProduct(row.getString("id"), row.getString("name"), row.getInt("volume_ml"),
                 row.getInt("units_per_basket"), ContainerType.valueOf(row.getString("container_type")),
                 row.getString("container_group"));
+        product.setImageFilename(row.getString("image_filename"));
+        return product;
     }
 
     static void readPrice(ResultSet row, BeerProduct product) throws SQLException {
@@ -142,6 +145,24 @@ public final class ProductRepositoryJdbc implements ProductRepository {
                 }
             }
         });
+    }
+
+    @Override
+    public void updateImageFilename(String productId, String imageFilename) {
+        BeerProduct reference = new BeerProduct(productId, "validación", 330, 24,
+                ContainerType.NON_RETURNABLE_CAN, null);
+        reference.setImageFilename(imageFilename);
+        transactionManager.inTransaction(() -> connectionProvider.withConnection(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE beer_product SET image_filename = ? WHERE id = ?")) {
+                statement.setString(1, imageFilename);
+                statement.setString(2, productId);
+                if (statement.executeUpdate() != 1) {
+                    throw new IllegalArgumentException("No existe el producto con id " + productId + ".");
+                }
+            }
+            return null;
+        }));
     }
 
     @Override

@@ -10,10 +10,19 @@ import com.laexclusiva.model.UserSession;
 import com.laexclusiva.service.AuthorizationService;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
+import com.laexclusiva.service.ProductImageStore;
+import java.io.IOException;
+import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.format.DateTimeFormatter;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.fxml.FXML;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.stage.FileChooser;
+import javafx.stage.Window;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
@@ -48,16 +57,19 @@ public class InventoryController {
     @FXML private TextField productNameField;
     @FXML private TextField volumeField;
     @FXML private TextField unitsPerBasketField;
-    @FXML private TextField containerGroupField;
+    @FXML private ComboBox<String> containerGroupCombo;
     @FXML private TextField unitPriceField;
     @FXML private TextField halfBasketPriceField;
     @FXML private TextField fullBasketPriceField;
     @FXML private Label messageLabel;
+    @FXML private ImageView productImagePreview;
+    @FXML private Label productImageStatus;
 
     private ProductService products;
     private InventoryService inventory;
     private UserSession session;
     private AuthorizationService authorizationService;
+    private ProductImageStore productImageStore = ProductImageStore.fromEnvironment();
 
     /** Inyecta la autoridad actual que se revalida en cada acción de inventario. */
     public void setAuthorizationService(AuthorizationService authorizationService) {
@@ -102,6 +114,9 @@ public class InventoryController {
                 throw new IllegalArgumentException("Tipo de envase desconocido.");
             }
         });
+        containerGroupCombo.setEditable(true);
+        inventoryTable.getSelectionModel().selectedItemProperty().addListener((observable, previous, selected) ->
+                showProductImage(selected == null ? null : selected.product()));
     }
 
     /** Configura dependencias y calcula controles visibles a partir de la sesión actual.
@@ -143,7 +158,7 @@ public class InventoryController {
             product = new BeerProduct(productIdField.getText().trim(), productNameField.getText().trim(),
                     Integer.parseInt(volumeField.getText().trim()),
                     Integer.parseInt(unitsPerBasketField.getText().trim()), containerType,
-                    containerGroupField.getText().trim().isEmpty() ? null : containerGroupField.getText().trim());
+                    containerGroupValue());
             product.definePrice(SalePresentation.UNIT, new java.math.BigDecimal(unitPriceField.getText().trim()));
             product.definePrice(SalePresentation.HALF_BASKET,
                     new java.math.BigDecimal(halfBasketPriceField.getText().trim()));
@@ -233,7 +248,8 @@ public class InventoryController {
         productNameField.clear();
         volumeField.clear();
         unitsPerBasketField.clear();
-        containerGroupField.clear();
+        containerGroupCombo.setValue(null);
+        containerGroupCombo.getEditor().clear();
         unitPriceField.clear();
         halfBasketPriceField.clear();
         fullBasketPriceField.clear();
@@ -255,17 +271,95 @@ public class InventoryController {
         java.util.List<BeerProduct> catalog = authorizationService.execute(session, Permission.VIEW_CATALOG,
                 products::listAll);
         productCombo.getItems().setAll(catalog);
+        containerGroupCombo.getItems().setAll(catalog.stream().map(BeerProduct::getContainerGroup)
+                .filter(group -> group != null && !group.isBlank()).distinct().sorted().toList());
         inventoryTable.getItems().setAll(authorizationService.execute(session, Permission.VIEW_INVENTORY,
                 () -> catalog.stream().map(product -> new ProductStock(product,
                         inventory.getStock(product.getId()))).toList()));
         movementTable.getItems().setAll(authorizationService.execute(session, Permission.VIEW_INVENTORY,
                 inventory::allMovements));
+        if (inventoryTable.getSelectionModel().getSelectedItem() == null) showProductImage(null);
     }
 
     private ContainerType productType() {
         ContainerType selected = containerTypeCombo.getValue();
         if (selected == null) throw new IllegalArgumentException("Seleccione el tipo de envase.");
         return selected;
+    }
+
+    /** Abre el selector de archivos solo después de validar permiso y fila seleccionada. */
+    @FXML
+    private void handleChooseProductImage() {
+        try {
+            requirePermission(Permission.MANAGE_PRODUCTS, "No tiene permiso para modificar el catálogo.");
+            ProductStock selected = inventoryTable.getSelectionModel().getSelectedItem();
+            if (selected == null) throw new IllegalArgumentException("Seleccione un producto del catálogo.");
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Seleccionar fotografía del producto");
+            chooser.getExtensionFilters().setAll(new FileChooser.ExtensionFilter(
+                    "Imágenes PNG o JPEG", "*.png", "*.jpg", "*.jpeg"));
+            Window window = inventoryTable.getScene() == null ? null : inventoryTable.getScene().getWindow();
+            java.io.File selectedFile = chooser.showOpenDialog(window);
+            if (selectedFile == null) return;
+            importProductImage(selected.product(), selectedFile.toPath());
+        } catch (RuntimeException | IOException failure) {
+            messageLabel.setText("No se actualizó la fotografía: " + safeMessage(failure));
+        }
+    }
+
+    void importProductImage(BeerProduct selected, Path source) throws IOException {
+        requirePermission(Permission.MANAGE_PRODUCTS, "No tiene permiso para modificar el catálogo.");
+        if (selected == null) throw new IllegalArgumentException("Seleccione un producto del catálogo.");
+        String filename = productImageStore.importImage(source);
+        BeerProduct updated = authorizationService.execute(session, Permission.MANAGE_PRODUCTS,
+                () -> products.updateImageFilename(selected.getId(), filename));
+        refresh();
+        inventoryTable.getItems().stream().filter(row -> row.product().getId().equals(updated.getId()))
+                .findFirst().ifPresent(inventoryTable.getSelectionModel()::select);
+        showProductImage(updated);
+        messageLabel.setText("Fotografía guardada para " + updated.getName() + ".");
+    }
+
+    /** Sustituye el almacén persistente por uno aislado durante las pruebas. */
+    void setProductImageStore(ProductImageStore store) {
+        if (store == null) throw new IllegalArgumentException("El almacén de imágenes es obligatorio.");
+        this.productImageStore = store;
+    }
+
+    private String containerGroupValue() {
+        String typed = containerGroupCombo.getEditor().getText();
+        String value = typed == null || typed.isBlank() ? containerGroupCombo.getValue() : typed;
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void showProductImage(BeerProduct product) {
+        if (product == null || product.getImageFilename() == null) {
+            productImagePreview.setImage(null);
+            productImageStatus.setText("Sin fotografía");
+            return;
+        }
+        var path = productImageStore.resolve(product.getImageFilename());
+        if (path.isEmpty()) {
+            productImagePreview.setImage(null);
+            productImageStatus.setText("Fotografía no disponible en este equipo");
+            return;
+        }
+        try {
+            Image image;
+            try (ByteArrayInputStream bytes = new ByteArrayInputStream(Files.readAllBytes(path.get()))) {
+                image = new Image(bytes, 240, 160, true, true);
+            }
+            if (image.isError()) {
+                productImagePreview.setImage(null);
+                productImageStatus.setText("Fotografía no disponible");
+                return;
+            }
+            productImagePreview.setImage(image);
+            productImageStatus.setText(product.getName());
+        } catch (IOException failure) {
+            productImagePreview.setImage(null);
+            productImageStatus.setText("Fotografía no disponible");
+        }
     }
 
     private static int parseNonNegative(String value, String field) {

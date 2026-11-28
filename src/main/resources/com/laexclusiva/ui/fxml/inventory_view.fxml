@@ -11,6 +11,7 @@
 <?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.image.ImageView?>
 
 <ScrollPane fx:id="moduleScroll" fitToWidth="true" fitToHeight="true" minWidth="0" xmlns="http://javafx.com/javafx/17.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.laexclusiva.ui.controller.InventoryController" stylesheets="@../css/theme.css" styleClass="workspace"><content>
 <VBox spacing="10.0" minHeight="-Infinity" styleClass="workspace">
@@ -25,6 +26,14 @@
             <TableColumn fx:id="looseColumn" text="Sueltas" prefWidth="100.0" />
         </columns>
     </TableView>
+    <HBox spacing="10" alignment="CENTER_LEFT">
+        <ImageView fx:id="productImagePreview" fitWidth="180" fitHeight="120" preserveRatio="true" />
+        <VBox spacing="6">
+            <Label fx:id="productImageStatus" text="Sin fotografía" />
+            <Button fx:id="chooseProductImageButton" text="Actualizar fotografía del producto"
+                    onAction="#handleChooseProductImage" />
+        </VBox>
+    </HBox>
     <VBox fx:id="productRegistrationPane" spacing="5.0">
         <Label text="Registrar producto y precios" style="-fx-font-size: 16px; -fx-font-weight: bold;" />
         <FlowPane hgap="6.0" vgap="8">
@@ -35,7 +44,7 @@
             <ComboBox fx:id="containerTypeCombo" promptText="Tipo de envase" prefWidth="250.0" />
         </FlowPane>
         <FlowPane hgap="6.0" vgap="8">
-            <TextField fx:id="containerGroupField" promptText="Grupo de envase retornable" prefWidth="220.0" />
+            <ComboBox fx:id="containerGroupCombo" promptText="Grupo existente o nuevo" prefWidth="220.0" />
             <TextField fx:id="unitPriceField" promptText="Precio unidad" prefWidth="120.0" />
             <TextField fx:id="halfBasketPriceField" promptText="Precio media canasta" prefWidth="185.0" />
             <TextField fx:id="fullBasketPriceField" promptText="Precio canasta" prefWidth="125.0" />

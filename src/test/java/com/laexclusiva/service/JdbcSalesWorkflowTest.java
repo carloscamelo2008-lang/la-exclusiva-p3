@@ -223,6 +223,11 @@ class JdbcSalesWorkflowTest {
         @Override public void save(BeerProduct product) { world.products.put(product.getId(), product.copy()); }
         @Override public void updatePrice(String id, SalePresentation presentation, BigDecimal price) { throw new UnsupportedOperationException(); }
         @Override public void addMissingPrice(String id, SalePresentation presentation, BigDecimal price) { throw new UnsupportedOperationException(); }
+        @Override public void updateImageFilename(String id, String filename) {
+            BeerProduct product = world.products.get(id);
+            if (product == null) throw new IllegalArgumentException("Producto ausente.");
+            product.setImageFilename(filename);
+        }
         @Override public Optional<BeerProduct> findById(String id) { return Optional.ofNullable(world.products.get(id)).map(BeerProduct::copy); }
         @Override public List<BeerProduct> findAll() { return world.products.values().stream().map(BeerProduct::copy).toList(); }
         @Override public boolean existsById(String id) { return world.products.containsKey(id); }
@@ -313,7 +318,7 @@ class JdbcSalesWorkflowTest {
             return customer;
         }
         private static Customer withBalance(Customer c, BigDecimal balance) {
-            return new Customer(c.getId(), c.getName(), c.getPhone(), c.getAddress(), balance, c.getCreditLimit());
+            return new Customer(c.getId(), c.getName(), c.getPhone(), c.getAddress(), balance);
         }
     }
 

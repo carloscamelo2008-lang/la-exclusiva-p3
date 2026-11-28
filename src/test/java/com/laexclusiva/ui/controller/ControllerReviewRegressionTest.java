@@ -5,6 +5,7 @@ import com.laexclusiva.model.BeerProduct;
 import com.laexclusiva.model.ContainerType;
 import com.laexclusiva.model.Customer;
 import com.laexclusiva.model.InsufficientStockException;
+import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.model.Sale;
 import com.laexclusiva.model.SaleLine;
 import com.laexclusiva.model.SalePayment;
@@ -78,13 +79,37 @@ class ControllerReviewRegressionTest {
             controller.showCustomers(service.getAllCustomers());
             table(loader, "customersTable").getSelectionModel().selectFirst();
             ((Button) loader.getNamespace().get("editCustomerButton")).fire();
-            assertTrue(text(loader, "idField").isDisabled());
+            assertNull(loader.getNamespace().get("idField"), "El formulario ya no solicita IDs manuales.");
             text(loader, "nameField").setText("Cliente actualizado");
             text(loader, "phoneField").setText("+300 124");
             ((Button) loader.getNamespace().get("registerCustomerButton")).fire();
             assertEquals("Cliente actualizado", service.getCustomerById("CLIENTE-QA").getName());
             assertEquals("300124", service.getCustomerById("CLIENTE-QA").getPhone());
             assertEquals("Cliente actualizado.", label(loader, "messageLabel").getText());
+            return null;
+        });
+    }
+
+    @Test
+    void customerFormCreatesRecordWithGeneratedIdAndDisplaysIt() throws Exception {
+        runOnFx(() -> {
+            var service = new CustomerService(new CustomerRepository());
+            FXMLLoader loader = load("customers_view.fxml");
+            CustomerController controller = loader.getController();
+            controller.configure(service, adminSession());
+            controller.showCustomers(service.getAllCustomers());
+            text(loader, "nameField").setText("Cliente generado " + java.util.UUID.randomUUID());
+            text(loader, "phoneField").setText("3000000188");
+            text(loader, "addressField").setText("Dirección ficticia");
+
+            ((Button) loader.getNamespace().get("registerCustomerButton")).fire();
+
+            assertEquals(1, service.getAllCustomers().size());
+            Customer created = service.getAllCustomers().get(0);
+            assertTrue(created.getId().startsWith("CLI-"));
+            assertTrue(label(loader, "messageLabel").getText().contains(created.getId()));
+            assertNull(loader.getNamespace().get("idField"));
+            assertNull(loader.getNamespace().get("creditLimitField"));
             return null;
         });
     }
@@ -183,7 +208,7 @@ class ControllerReviewRegressionTest {
     @Test
     void selectedCustomerPartialSaleIsVisibleAndPaymentRetryAfterLostResponseIsIdempotent() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor cartera visible", "3000000241", "Dirección QA");
             String targetId = "CUS-PORTFOLIO-VISIBLE";
             String otherId = "CUS-PORTFOLIO-OTHER";
@@ -277,7 +302,7 @@ class ControllerReviewRegressionTest {
     @Test
     void confirmedSaleWithHistoryRefreshFailureKeepsTruthfulMessageAndDoesNotRepeatSale() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor venta", "3000000201", "Calle 1");
             BeerProduct product = services.products().listAll().get(0);
             services.inventory().addStock(product.getId(), 0, 2, "Fixture de regresión UI");
@@ -315,7 +340,7 @@ class ControllerReviewRegressionTest {
     @Test
     void insufficientStockKeepsCartAllowsCorrectionAndUsesANewOperationKey() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor de stock", "3000000211", "Calle 11");
             String customerId = "CUS-STOCK-RETRY";
             services.customers().registerCustomer(customerId,
@@ -373,7 +398,7 @@ class ControllerReviewRegressionTest {
     @Test
     void stockRejectionOnRetryDoesNotReleaseAnEarlierUncertainSaleKey() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor incierto", "3000000213", "Calle 13");
             BeerProduct product = services.products().listAll().get(0);
             services.inventory().addStock(product.getId(), 0, 1, "Fixture de respuesta incierta");
@@ -413,7 +438,7 @@ class ControllerReviewRegressionTest {
     @Test
     void uncertainSaleKeepsVisibleKeyAndRequiresTheSamePayloadForRetry() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller seller = services.sellers().registerSeller("Vendedor de reintento", "3000000202", "Calle 2");
             BeerProduct product = services.products().listAll().get(0);
             services.inventory().addStock(product.getId(), 0, 2, "Fixture de idempotencia JavaFX");
@@ -503,7 +528,7 @@ class ControllerReviewRegressionTest {
     @Test
     void workerCannotRegisterSaleUnderAnotherSellerEvenIfSelectionIsChangedProgrammatically() throws Exception {
         runOnFx(() -> {
-            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            ApplicationServices services = memoryServicesWithCatalog();
             Seller assigned = services.sellers().registerSeller("Asignado", "3000000202", "Calle 2");
             Seller other = services.sellers().registerSeller("Otro", "3000000203", "Calle 3");
             BeerProduct product = services.products().listAll().get(0);
@@ -531,6 +556,12 @@ class ControllerReviewRegressionTest {
 
     private static Customer customer(String id, String balance) {
         return new Customer(id, "Cliente de prueba", "3000000000", "Dirección de prueba", new BigDecimal(balance));
+    }
+
+    private static ApplicationServices memoryServicesWithCatalog() {
+        ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+        services.products().registerAll(InitialCatalog.create());
+        return services;
     }
 
     private static FailingCustomerService customerService(Customer customer) {

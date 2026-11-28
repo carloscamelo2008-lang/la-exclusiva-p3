@@ -75,6 +75,8 @@ class IdentityJavaFxPostgresIntegrationTest {
         String workerPassword = "P3-QA-Worker-" + UUID.randomUUID() + "!b8";
         String customerId = "FXCUS" + suffix;
         String productId = "FXPROD" + suffix;
+        String customerPhone = "3" + String.format(java.util.Locale.ROOT, "%09d",
+                Math.floorMod(UUID.randomUUID().getLeastSignificantBits(), 1_000_000_000L));
         String supplierName = "Proveedor QA " + suffix;
         String sellerId = null;
         Long supplierId = null;
@@ -123,7 +125,7 @@ class IdentityJavaFxPostgresIntegrationTest {
             fixtureServices.products().register(product);
             fixtureServices.inventory().addStock(productId, 0, 5, "Entrada ficticia " + suffix);
             fixtureServices.customers().registerCustomer(customerId, "Cliente QA " + suffix,
-                    "31" + suffix.substring(0, 8), "Dirección ficticia de laboratorio", new BigDecimal("10000000"));
+                    customerPhone, "Dirección ficticia de laboratorio", new BigDecimal("10000000"));
             var supplier = fixtureServices.purchases().suppliers().create(adminSession, supplierName,
                     "NIT-QA-" + suffix, "contacto ficticio");
             supplierId = supplier.id();
@@ -399,6 +401,9 @@ class IdentityJavaFxPostgresIntegrationTest {
                 execute(connection, "DELETE FROM product_price WHERE product_id = ?", productId);
                 execute(connection, "DELETE FROM beer_product WHERE id = ?", productId);
                 execute(connection, "DELETE FROM customer WHERE id = ?", customerId);
+                execute(connection, "DELETE FROM administrative_audit_event WHERE actor_user_id IN "
+                                + "(SELECT id FROM user_account WHERE username IN (?, ?))",
+                        workerUsername, adminUsername);
                 execute(connection, "DELETE FROM user_account WHERE username IN (?, ?)",
                         workerUsername, adminUsername);
                 if (sellerId != null) execute(connection, "DELETE FROM seller WHERE id = ?", sellerId);

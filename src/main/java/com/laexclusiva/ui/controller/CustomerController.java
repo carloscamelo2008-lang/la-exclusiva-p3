@@ -27,12 +27,10 @@ public class CustomerController {
     @FXML private TableColumn<Customer, String> phoneColumn;
     @FXML private TableColumn<Customer, String> addressColumn;
     @FXML private HBox registrationPane;
-    @FXML private TextField idField;
     @FXML private TextField nameField;
     @FXML private TextField phoneField;
     @FXML private TextField addressField;
     @FXML private Label messageLabel;
-    @FXML private TextField creditLimitField;
     @FXML private Button registerCustomerButton, editCustomerButton, cancelEditButton, deleteCustomerButton;
     private String editingId;
 
@@ -88,24 +86,20 @@ public class CustomerController {
     @FXML
     private void handleRegisterCustomer() {
         boolean editing = editingId != null;
+        String confirmation;
         try {
             if (editing) {
                 authorizationService.execute(session, Permission.EDIT_CUSTOMER, () ->
                         customerService.updateCustomer(editingId, nameField.getText(), phoneField.getText(),
-                                addressField.getText(), creditLimit()));
+                                addressField.getText()));
+                confirmation = "Cliente actualizado.";
             } else {
                 requirePermission(Permission.REGISTER_CUSTOMER, "No tiene permiso para registrar clientes.");
                 if (!confirmSimilarNames()) return;
-                authorizationService.execute(session, Permission.REGISTER_CUSTOMER, () -> {
-                    if (authorizationService.hasPermission(session, Permission.EDIT_CUSTOMER)
-                            && !creditLimitField.getText().isBlank()) {
-                        customerService.registerCustomer(idField.getText(), nameField.getText(), phoneField.getText(),
-                                addressField.getText(), creditLimit());
-                    } else {
-                        customerService.registerCustomer(idField.getText(), nameField.getText(), phoneField.getText(),
-                                addressField.getText());
-                    }
-                });
+                Customer created = authorizationService.execute(session, Permission.REGISTER_CUSTOMER,
+                        () -> customerService.registerCustomer(nameField.getText(), phoneField.getText(),
+                                addressField.getText()));
+                confirmation = "Cliente registrado. Identificador: " + created.getId() + ".";
             }
         } catch (RuntimeException failure) {
             messageLabel.setText((editing ? "No se actualizó el cliente: " : "No se registró el cliente: ")
@@ -113,7 +107,7 @@ public class CustomerController {
             return;
         }
         resetForm();
-        refreshAfterWrite(editing ? "Cliente actualizado." : "Cliente registrado.");
+        refreshAfterWrite(confirmation);
     }
 
     private boolean confirmSimilarNames() {
@@ -132,28 +126,15 @@ public class CustomerController {
         return warning.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
     }
 
-    private java.math.BigDecimal creditLimit() {
-        String text = creditLimitField.getText().trim();
-        if (text.isEmpty()) return java.math.BigDecimal.ZERO;
-        try {
-            return new java.math.BigDecimal(text.replace(',', '.'));
-        } catch (NumberFormatException invalid) {
-            throw new IllegalArgumentException("Ingrese un cupo de crédito válido.");
-        }
-    }
-
     @FXML
     private void handleEditCustomer() {
         try {
             requirePermission(Permission.EDIT_CUSTOMER, "No tiene permiso para editar clientes.");
             Customer customer = selectedCustomer();
             editingId = customer.getId();
-            idField.setText(editingId);
-            idField.setDisable(true);
             nameField.setText(customer.getName());
             phoneField.setText(customer.getPhone());
             addressField.setText(customer.getAddress());
-            creditLimitField.setText(customer.getCreditLimit().toPlainString());
             registerCustomerButton.setText("Guardar cambios");
             registerCustomerButton.setDisable(false);
             cancelEditButton.setVisible(true);
@@ -205,15 +186,9 @@ public class CustomerController {
 
     private void resetForm() {
         editingId = null;
-        idField.clear();
-        idField.setDisable(false);
         nameField.clear();
         phoneField.clear();
         addressField.clear();
-        creditLimitField.clear();
-        boolean canEdit = authorizationService.hasPermission(session, Permission.EDIT_CUSTOMER);
-        creditLimitField.setVisible(canEdit);
-        creditLimitField.setManaged(canEdit);
         registerCustomerButton.setText("Registrar cliente");
         registerCustomerButton.setDisable(!authorizationService.hasPermission(session, Permission.REGISTER_CUSTOMER));
         cancelEditButton.setVisible(false);

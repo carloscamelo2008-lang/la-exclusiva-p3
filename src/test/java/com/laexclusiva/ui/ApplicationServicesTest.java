@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.laexclusiva.service.GoodsReceiptService;
 import com.laexclusiva.service.PurchaseOrderService;
+import com.laexclusiva.persistence.jdbc.DatabaseConfig;
 import java.util.Map;
 import java.math.BigDecimal;
 import com.laexclusiva.model.CustomerDeletionBlockedException;
@@ -17,13 +18,14 @@ import org.junit.jupiter.api.Test;
 class ApplicationServicesTest {
 
     @Test
-    void keepsExistingMemoryCompositionAsAnExplicitSupportedMode() {
+    void keepsAnEmptyMemoryCompositionOnlyForExplicitTestUse() {
         ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
 
         assertFalse(services.postgresMode());
         assertFalse(services.sales().supportsDurableIdempotency());
         assertNull(services.debtQuery());
-        assertEquals(6, services.products().listAll().size());
+        assertTrue(services.products().listAll().isEmpty(), "La composición no precarga productos ficticios.");
+        assertTrue(services.identity().users().findAll().isEmpty(), "La composición no aprovisiona cuentas ficticias.");
         assertNotNull(services.purchases());
         assertNotNull(services.collectionAssistant());
         assertNotNull(services.administrativeAudit());
@@ -51,14 +53,35 @@ class ApplicationServicesTest {
     }
 
     @Test
-    void refusesRealSmtpFromNonDurableMemoryMode() {
-        assertThrows(IllegalArgumentException.class, () -> ApplicationServices.create(
-                ApplicationServices.MEMORY_MODE, Map.of("LAEXCLUSIVA_SMTP_ENABLED", "true")));
+    void environmentSelectionRequiresPostgresUnlessMemoryWasExplicitlyChosen() {
+        assertThrows(IllegalArgumentException.class, () -> ApplicationServices.fromEnvironment(Map.of()));
+        var commercialDefault = ApplicationServices.fromEnvironment(Map.of(
+                DatabaseConfig.URL_ENV, "jdbc:postgresql://127.0.0.1:55432/la_exclusiva_test",
+                DatabaseConfig.USER_ENV, "fixture-user",
+                DatabaseConfig.PASSWORD_ENV, "fixture-password-not-used"));
+        assertTrue(commercialDefault.postgresMode(), "La configuración comercial usa PostgreSQL por defecto.");
+        assertFalse(ApplicationServices.fromEnvironment(Map.of(
+                ApplicationServices.MODE_ENV, ApplicationServices.MEMORY_MODE)).postgresMode());
+    }
+
+    @Test
+    void applicationAccessDoesNotCreateAnImplicitMemoryComposition() {
+        assertThrows(IllegalStateException.class, () -> new App().getUserRepository());
+    }
+
+    @Test
+    void refusesCommercialEmailDeliveryInEveryPersistenceMode() {
+        var configuration = Map.of("LAEXCLUSIVA_SMTP_ENABLED", "true");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> ApplicationServices.create(
+                ApplicationServices.MEMORY_MODE, configuration)).getMessage().contains("deshabilitado"));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> ApplicationServices.create(
+                ApplicationServices.POSTGRES_MODE, configuration)).getMessage().contains("deshabilitado"));
     }
 
     @Test
     void memoryPurchasesShareIdentityInventoryCatalogAndMovementHistory() {
         ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+        services.products().registerAll(com.laexclusiva.model.InitialCatalog.create());
         String password = "Purchases-Composition-Only-2026";
         assertTrue(services.identity().bootstrapInitialAdministrator("purchases-admin", password));
         var admin = services.identity().authentication().createSession("purchases-admin", password).orElseThrow();

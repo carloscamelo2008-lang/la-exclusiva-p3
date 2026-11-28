@@ -23,6 +23,7 @@ public class BeerProduct {
     private final int unitsPerBasket;
     private final ContainerType containerType;
     private final String containerGroup; // null si el envase no se comparte
+    private String imageFilename;
     private final Map<String, BigDecimal> prices = new LinkedHashMap<>();
 
     public BeerProduct(String id, String name, int volumeMl, int unitsPerBasket,
@@ -158,7 +159,16 @@ public class BeerProduct {
     public BeerProduct copy() {
         BeerProduct copy = new BeerProduct(id, name, volumeMl, unitsPerBasket, containerType, containerGroup);
         copy.prices.putAll(prices);
+        copy.imageFilename = imageFilename;
         return copy;
+    }
+
+    /** Asocia un archivo local content-addressed o quita la fotografía sin tocar precios ni ventas. */
+    public void setImageFilename(String imageFilename) {
+        if (imageFilename != null && !imageFilename.matches("[0-9a-f]{64}\\.(png|jpg)")) {
+            throw new IllegalArgumentException("La fotografía debe usar una referencia SHA-256 PNG o JPG.");
+        }
+        this.imageFilename = imageFilename;
     }
 
     public String getId() { return id; }
@@ -167,6 +177,7 @@ public class BeerProduct {
     public int getUnitsPerBasket() { return unitsPerBasket; }
     public ContainerType getContainerType() { return containerType; }
     public String getContainerGroup() { return containerGroup; }
+    public String getImageFilename() { return imageFilename; }
 
     @Override
     public String toString() {

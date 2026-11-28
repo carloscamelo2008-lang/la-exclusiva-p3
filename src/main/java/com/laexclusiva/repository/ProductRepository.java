@@ -22,6 +22,9 @@ public interface ProductRepository {
     /** Inserta un precio faltante. Rechaza productos ausentes, precios duplicados e importes inválidos. */
     void addMissingPrice(String productId, SalePresentation presentation, BigDecimal price);
 
+    /** Actualiza únicamente la referencia relativa de una fotografía ya validada. */
+    void updateImageFilename(String productId, String imageFilename);
+
 
     Optional<BeerProduct> findById(String id);
 

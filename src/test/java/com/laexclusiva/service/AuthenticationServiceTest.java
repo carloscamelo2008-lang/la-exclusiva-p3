@@ -8,6 +8,7 @@ import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
 import com.laexclusiva.repository.CustomerRepository;
 import com.laexclusiva.repository.SellerRepository;
+import com.laexclusiva.security.PasswordHasher;
 import com.laexclusiva.ui.App;
 import com.laexclusiva.ui.ApplicationServices;
 import com.laexclusiva.ui.controller.InventoryController;
@@ -121,16 +122,8 @@ public class AuthenticationServiceTest {
     }
 
     @Test
-    void invalidSecondDemoPasswordLeavesNoProvisionedAccounts() {
-        App app = new App();
-        assertThrows(IllegalStateException.class,
-                () -> app.initializeDemoAccounts("Una frase demo permitida", "short"));
-        assertTrue(app.getUserRepository().findAll().isEmpty());
-    }
-
-    @Test
     void blockedInitialPasswordLeavesNoAccountAndNoSecretInError() {
-        App app = new App();
+        App app = memoryApp();
         var failure = assertThrows(IllegalStateException.class,
                 () -> app.initializeInitialAdmin("passwordpassword"));
         assertTrue(app.getUserRepository().findAll().isEmpty());
@@ -149,25 +142,8 @@ public class AuthenticationServiceTest {
     }
 
     @Test
-    public void testAppDemoAccountsInitializationMechanism() {
-        App app = new App();
-        app.initializeDemoAccounts("passAdmin123-Valid-Only", "passWorker123-Valid-Only");
-
-        AuthenticationService authService = new AuthenticationService(app.getUserRepository());
-        assertTrue(authService.authenticate("admin", "passAdmin123-Valid-Only").isPresent(), "Admin demo debe autenticarse correctamente");
-        assertTrue(authService.authenticate("worker", "passWorker123-Valid-Only").isPresent(), "Worker demo debe autenticarse correctamente");
-    }
-
-    @Test
-    public void testAppDemoAccountsInitializationFailsWithoutPasswords() {
-        App app = new App();
-        assertThrows(IllegalStateException.class, () -> app.initializeDemoAccounts(null, "passWorker123-Valid-Only"),
-                "Debe fallar si falta la clave del administrador demo");
-    }
-
-    @Test
     public void testInitialAdminProvisioningSuccess() {
-        App app = new App();
+        App app = memoryApp();
         app.initializeInitialAdmin("adminSecret123-Valid-Only");
 
         AuthenticationService authService = new AuthenticationService(app.getUserRepository());
@@ -176,7 +152,7 @@ public class AuthenticationServiceTest {
 
     @Test
     public void testInitialAdminProvisioningFailsWithoutPassword() {
-        App app = new App();
+        App app = memoryApp();
         assertThrows(IllegalStateException.class, () -> app.initializeInitialAdmin(""),
                 "Debe exigir LAEXCLUSIVA_INITIAL_ADMIN_PASSWORD en el arranque normal");
     }
@@ -811,8 +787,7 @@ public class AuthenticationServiceTest {
     @Test
     void testAppCanLoginLogoutAndChangeUserInTheSameWindow() throws Exception {
         onFxThread(() -> {
-            App app = new App();
-            app.initializeDemoAccounts("Admin-Test-2026-Valid-Only", "Worker-Test-2026-Valid-Only");
+            App app = memoryAppWithTestAccounts();
             Stage stage = new Stage();
             try {
                 app.start(stage);
@@ -873,8 +848,7 @@ public class AuthenticationServiceTest {
 
     @Test
     void testReauthenticationCreatesANewSessionAfterInvalidation() {
-        App app = new App();
-        app.initializeDemoAccounts("Admin-Test-2026-Valid-Only", "Worker-Test-2026-Valid-Only");
+        App app = memoryAppWithTestAccounts();
         AuthenticationService auth = new AuthenticationService(app.getUserRepository());
         UserSession first = auth.createSession("admin", "Admin-Test-2026-Valid-Only").orElseThrow();
         first.invalidate();
@@ -888,6 +862,18 @@ public class AuthenticationServiceTest {
         ((TextField) stage.getScene().lookup("#usernameField")).setText(username);
         ((PasswordField) stage.getScene().lookup("#passwordField")).setText(password);
         ((Button) stage.getScene().lookup("#loginButton")).fire();
+    }
+
+    private static App memoryApp() {
+        return new App(ApplicationServices.create(ApplicationServices.MEMORY_MODE, java.util.Map.of()));
+    }
+
+    private static App memoryAppWithTestAccounts() {
+        ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, java.util.Map.of());
+        services.identity().bootstrapInitialAdministrator("admin", "Admin-Test-2026-Valid-Only");
+        services.identity().users().save(new UserAccount(null, "worker",
+                PasswordHasher.hash("Worker-Test-2026-Valid-Only"), UserRole.WORKER, null));
+        return new App(services);
     }
 
     private static void assertActiveNavigation(BorderPane menu, String selectedId) {

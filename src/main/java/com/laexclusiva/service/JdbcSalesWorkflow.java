@@ -173,7 +173,6 @@ public final class JdbcSalesWorkflow implements SalesWorkflow {
         BigDecimal outstanding = sale.calculateBalance();
         if (customer != null) {
             requireConsistentCustomerBalance(customer);
-            customer.requireAvailableCredit(outstanding);
         }
         if (outstanding.signum() > 0 && customer == null) {
             throw new IllegalArgumentException("Se requiere cliente para una venta con saldo pendiente.");

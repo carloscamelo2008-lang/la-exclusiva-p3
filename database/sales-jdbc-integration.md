@@ -1,5 +1,9 @@
 # Integración JDBC de ventas
 
+> **Nota de vigencia:** las referencias a cuentas o catálogos de demostración que aparecen en los
+> registros históricos de validación describen ejecuciones anteriores. El producto actual ya no
+> incluye aprovisionamiento demo ni precarga datos ficticios; esas fixtures viven en `src/test`.
+
 ## Estado y alcance
 
 Este documento registra el avance desde `feature/sales-jdbc` hasta la rama temporal
@@ -994,3 +998,33 @@ ficticios propios con limpieza acotada.
 Permanecen las advertencias conocidas del modelo efectivo de JavaFX y de carga desde módulo no
 nombrado; se imprimieron trazas previstas por pruebas que simulan fallos de consulta. No afectaron
 los resultados. No se tocaron autenticación, identidad, ventas, inventario o cartera.
+
+## Validación final del PR #31 (2026-11-28)
+
+En una corrida posterior, con el módulo de identidad y las regresiones JavaFX habilitadas, se ejecutó
+`mvn clean verify` con Microsoft JDK 17.0.18 y Maven 3.10.0. El destino fue exclusivamente el
+clúster PostgreSQL 18.6 desechable `127.0.0.1:55432/la_exclusiva_test`; se verificó el nombre de la
+base, usuario técnico y clúster antes de iniciar. V001, V004, V002 y V100–V114 ya estaban aplicadas
+en ese laboratorio. No se repitieron migraciones ni se usó el servicio PostgreSQL del puerto 5432.
+
+Surefire reportó **918 pruebas, 897 aprobadas, 0 fallidas, 0 errores y 21 omitidas**. Se ejecutaron
+y aprobaron **47 pruebas contra PostgreSQL real**, incluyendo `IdentityApplicationPostgresIntegrationTest`
+(2), `IdentityJavaFxPostgresIntegrationTest` (1), consultas y repositorios de clientes, finanzas,
+inventario, ventas, productos, compras, movimientos, usuarios y recordatorios. La prueba del plan y
+las aserciones SQL de `application.psql` verificaron V113 (preservación de `legacy_credit_limit` y
+ausencia de `credit_limit`) y V114 (referencia opcional y rechazo de rutas/extensiones inválidas).
+
+Las 21 omisiones corresponden a `AccountInstancePostgresIntegrationTest` (3),
+`ActiveSellerConcurrencyPostgresIntegrationTest` (6) y `UserSecurityVersionPostgresIntegrationTest`
+(11), que protegen sus escrituras exigiendo puerto 5432; no se detuvo ni se utilizó el servicio
+existente. `IncompleteIdentitySchemaPostgresIntegrationTest` (1) requiere una base independiente
+con esquema deliberadamente incompleto, no el esquema completo V114 utilizado aquí. No se cuentan
+como éxitos.
+
+La prueba visual de escritorio abrió la app JavaFX y confirmó la pantalla de login conectada al
+laboratorio. La autenticación PostgreSQL de administrador y trabajador se probó en el test JavaFX
+automatizado; no se ingresaron credenciales mediante automatización visual ni se afirma un recorrido
+manual autenticado. Las vistas, alertas, fotos y contenido PDF se cubrieron mediante pruebas JavaFX,
+PDFBox y almacenamiento local automatizadas. No se enviaron correos ni se modificaron bases
+existentes. El usuario QA creado solo para abrir la app se eliminó por su ID y nombre exactos; la
+consulta posterior confirmó en cero las tablas de fixtures.

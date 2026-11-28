@@ -18,7 +18,7 @@ import com.laexclusiva.model.CustomerDeletionBlockedException;
 /** Adaptador JDBC del repositorio de clientes que conserva sus identificadores históricos. */
 public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface {
 
-    private static final String CUSTOMER_COLUMNS = "id, name, phone, address, balance, credit_limit";
+    private static final String CUSTOMER_COLUMNS = "id, name, phone, address, balance";
 
     private final JdbcConnectionProvider connectionProvider;
 
@@ -47,14 +47,13 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
         requireCustomer(customer);
         BigDecimal balance = requireBalance(customer.getBalance());
         connectionProvider.withConnection(connection -> {
-            String sql = "INSERT INTO customer (id, name, phone, address, balance, credit_limit) VALUES (?, ?, ?, ?, ?, ?)";
+            String sql = "INSERT INTO customer (id, name, phone, address, balance) VALUES (?, ?, ?, ?, ?)";
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, customer.getId());
                 statement.setString(2, customer.getName());
                 statement.setString(3, customer.getPhone());
                 statement.setString(4, customer.getAddress());
                 statement.setBigDecimal(5, balance);
-                statement.setBigDecimal(6, customer.getCreditLimit());
                 try {
                     if (statement.executeUpdate() != 1) {
                         throw new SQLException("No se insertó exactamente un cliente.");
@@ -174,7 +173,7 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
     }
 
     /**
-     * Actualiza el contacto y el cupo si el saldo persistido sigue coincidiendo con el snapshot.
+     * Actualiza los datos personales si el saldo persistido sigue coincidiendo con el snapshot.
      * El saldo se usa como condición de concurrencia y nunca aparece en la cláusula {@code SET}.
      *
      * @param customer snapshot cuyos datos personales se actualizarán
@@ -187,14 +186,13 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
         requireCustomer(customer);
         BigDecimal balance = requireBalance(customer.getBalance());
         connectionProvider.withConnection(connection -> {
-            String sql = "UPDATE customer SET name = ?, phone = ?, address = ?, credit_limit = ? WHERE id = ? AND balance = ?";
+            String sql = "UPDATE customer SET name = ?, phone = ?, address = ? WHERE id = ? AND balance = ?";
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, customer.getName());
                 statement.setString(2, customer.getPhone());
                 statement.setString(3, customer.getAddress());
-                statement.setBigDecimal(4, customer.getCreditLimit());
-                statement.setString(5, customer.getId());
-                statement.setBigDecimal(6, balance);
+                statement.setString(4, customer.getId());
+                statement.setBigDecimal(5, balance);
                 int updated;
                 try {
                     updated = statement.executeUpdate();
@@ -285,7 +283,7 @@ public final class CustomerRepositoryJdbc implements CustomerRepositoryInterface
     private static Customer mapCustomer(ResultSet resultSet) throws SQLException {
         return Customer.reconstitute(resultSet.getString("id"), resultSet.getString("name"),
                 resultSet.getString("phone"), resultSet.getString("address"),
-                resultSet.getBigDecimal("balance"), resultSet.getBigDecimal("credit_limit"));
+                resultSet.getBigDecimal("balance"));
     }
 
     private static void requireCustomer(Customer customer) {

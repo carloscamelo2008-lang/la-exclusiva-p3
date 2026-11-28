@@ -1,7 +1,6 @@
 package com.laexclusiva.ui;
 
 import com.laexclusiva.model.CustomerCollectionReminder;
-import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.persistence.jdbc.DatabaseConfig;
 import com.laexclusiva.persistence.jdbc.InventoryRepositoryJdbc;
 import com.laexclusiva.persistence.jdbc.InventoryStockAdjusterJdbc;
@@ -39,9 +38,7 @@ import com.laexclusiva.service.CustomerService;
 import com.laexclusiva.service.CollectionAssistantService;
 import com.laexclusiva.service.AccountStatementPdfGenerator;
 import com.laexclusiva.service.ColombiaContactWindow;
-import com.laexclusiva.service.EmailDeliveryProvider;
 import com.laexclusiva.service.SimulatedEmailDeliveryProvider;
-import com.laexclusiva.service.SmtpEmailDeliveryProvider;
 import com.laexclusiva.service.AdministrativeAuditService;
 import com.laexclusiva.service.CustomerGeneralDebtWorkflow;
 import com.laexclusiva.service.CustomerGeneralDebtWorkflowJdbc;
@@ -110,16 +107,29 @@ public final class ApplicationServices {
     }
 
     /**
-     * Selecciona la composición mediante {@value #MODE_ENV}; memoria es el modo predeterminado.
+     * Selecciona la composición mediante {@value #MODE_ENV}; PostgreSQL es el modo predeterminado
+     * para impedir que una ejecución comercial use almacenamiento volátil por omisión.
      * Las credenciales JDBC se leen solo desde el entorno del proceso.
      *
      * @return servicios compuestos para el modo configurado
      */
     public static ApplicationServices fromEnvironment() {
-        return create(System.getenv().getOrDefault(MODE_ENV, MEMORY_MODE), System.getenv());
+        return fromEnvironment(System.getenv());
     }
 
-    /** Variante inyectable para probar la selección de modo sin leer ni registrar secretos. */
+    /**
+     * Selecciona PostgreSQL cuando el entorno no declara un modo; memoria exige selección explícita.
+     * Esta variante permite verificar el arranque sin alterar el entorno del proceso.
+     *
+     * @param environment variables de proceso disponibles
+     * @return composición coherente con el modo seleccionado
+     * @throws IllegalArgumentException si falta la configuración PostgreSQL o el modo no es válido
+     */
+    public static ApplicationServices fromEnvironment(Map<String, String> environment) {
+        if (environment == null) throw new IllegalArgumentException("El entorno de configuración es obligatorio.");
+        return create(environment.getOrDefault(MODE_ENV, POSTGRES_MODE), environment);
+    }
+
     /**
      * Construye la composición sin registrar credenciales ni abrir conexiones durante el arranque.
      *
@@ -132,6 +142,9 @@ public final class ApplicationServices {
             throw new IllegalArgumentException(MODE_ENV + " debe ser memory o postgres.");
         }
         Map<String, String> configured = environment == null ? Map.of() : Map.copyOf(environment);
+        if (enabled(configured, "LAEXCLUSIVA_SMTP_ENABLED")) {
+            throw new IllegalArgumentException("El envío comercial de correo está deshabilitado en esta versión.");
+        }
         return switch (mode.trim().toLowerCase()) {
             case MEMORY_MODE -> inMemory(configured);
             case POSTGRES_MODE -> postgres(DatabaseConfig.fromEnvironment(configured), configured);
@@ -140,9 +153,6 @@ public final class ApplicationServices {
     }
 
     private static ApplicationServices inMemory(Map<String, String> environment) {
-        if (enabled(environment, "LAEXCLUSIVA_SMTP_ENABLED")) {
-            throw new IllegalArgumentException("El envío SMTP real requiere persistencia PostgreSQL.");
-        }
         SellerRepositoryInterface sellerRepository = new SellerRepository();
         SellerService sellers = new SellerService(sellerRepository);
         InMemoryAdministrativeAuditRepository auditRepository = new InMemoryAdministrativeAuditRepository();
@@ -164,7 +174,6 @@ public final class ApplicationServices {
                                 .anyMatch(reminder -> id.equals(reminder.customerId()))));
         CustomerService customers = new CustomerService(customerRepository);
         ProductService products = new ProductService(productRepository);
-        products.registerAll(InitialCatalog.create());
         InventoryService inventory = new InventoryService(products, inventoryRepository, movements);
         SaleService saleService = new SaleService(saleRepository, products, inventory, customers, sellers).requireAuthenticatedSales();
         SalesWorkflow sales = new InMemorySalesWorkflow(saleService, customers);
@@ -217,7 +226,7 @@ public final class ApplicationServices {
         AdministrativeAuditService auditService = new AdministrativeAuditService(auditRepository,
                 identity.authorization());
         CollectionAssistantService collections = new CollectionAssistantService(customers, sales, generalDebt,
-                collectionRepository, auditRepository, identity.authorization(), emailProvider(environment),
+                collectionRepository, auditRepository, identity.authorization(), new SimulatedEmailDeliveryProvider(),
                 new AccountStatementPdfGenerator(), contactWindow(environment), transactions,
                 Clock.system(ZoneId.of("America/Bogota")), environment.get("LAEXCLUSIVA_PAYMENT_KEY"),
                 enabled(environment, "LAEXCLUSIVA_PAYMENT_KEY_OWNER_CONFIRMED"),
@@ -226,19 +235,6 @@ public final class ApplicationServices {
                 products, transactions, inventoryAdjuster, movementRepository);
         return new ApplicationServices(customers, sellers, products, inventory, sales, debtQuery, true,
                 generalDebt, cash, identity, purchases, collections, auditService);
-    }
-
-    private static EmailDeliveryProvider emailProvider(Map<String, String> environment) {
-        if (!enabled(environment, "LAEXCLUSIVA_SMTP_ENABLED")) return new SimulatedEmailDeliveryProvider();
-        try {
-            return new SmtpEmailDeliveryProvider(required(environment, "LAEXCLUSIVA_SMTP_HOST"),
-                    Integer.parseInt(required(environment, "LAEXCLUSIVA_SMTP_PORT")),
-                    required(environment, "LAEXCLUSIVA_SMTP_USERNAME"),
-                    required(environment, "LAEXCLUSIVA_SMTP_PASSWORD"),
-                    required(environment, "LAEXCLUSIVA_SMTP_FROM"));
-        } catch (RuntimeException invalidConfiguration) {
-            throw new IllegalArgumentException("La configuración SMTP habilitada está incompleta o no es válida.");
-        }
     }
 
     private static ColombiaContactWindow contactWindow(Map<String, String> environment) {

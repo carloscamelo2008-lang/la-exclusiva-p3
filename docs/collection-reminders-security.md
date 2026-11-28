@@ -1,5 +1,7 @@
 # Asistente de cartera, estados de cuenta y recordatorios
 
+> **Estado de la composición comercial al 28-11-2026:** el envío de correo fue retirado de la ruta de aplicación. `ApplicationServices` rechaza `LAEXCLUSIVA_SMTP_ENABLED=true` y siempre compone un proveedor simulado. Las secciones y resultados históricos que describen vista previa, envío SMTP o CI anterior documentan versiones previas; no son instrucciones para activar correo en la versión actual.
+
 ## Alcance y arquitectura
 
 `CollectionAssistantService` ofrece recomendaciones explicables por reglas registradas. No usa un modelo de aprendizaje automático, no predice incumplimiento y no califica moralmente al cliente. La composición se obtiene desde `ApplicationServices.collectionAssistant()`; sus adaptadores en memoria y JDBC usan los puertos `CustomerCollectionRepository` y `AdministrativeAuditRepository`. En PostgreSQL, el seguimiento comparte el `JdbcConnectionProvider` y la frontera transaccional de la aplicación.
@@ -23,13 +25,13 @@ El saldo general se mantiene separado de la deuda pendiente de ventas. Una incon
 
 ## Seguimiento, consentimiento y datos de contacto
 
-Un administrador puede registrar compromiso, nota breve, correo opcional, canal autorizado, consentimiento y si los recordatorios están habilitados. Cada cambio genera un evento de seguimiento con actor, fecha y saldo observado. Las notas son para gestión breve; no deben incluir contraseñas, datos bancarios, información sensible innecesaria ni detalles de autenticación.
+Un administrador puede registrar compromiso, nota breve, canal de seguimiento interno, consentimiento para contacto telefónico manual y si el seguimiento semanal está habilitado. Cada cambio genera un evento con actor, fecha y saldo observado. Las notas son para gestión breve; no deben incluir contraseñas, datos bancarios, información sensible innecesaria ni detalles de autenticación.
 
-El correo se conserva únicamente mientras el canal `EMAIL` está autorizado y el consentimiento está vigente. Al cambiar a teléfono o revocar el consentimiento, el perfil guarda `email = NULL`; el modelo y la restricción de V107 refuerzan la misma regla. Cambiar la dirección de email renueva la fecha de consentimiento y registra `CONSENT_CHANGED`, porque la autorización de contacto debe corresponder al destino actualizado. La pantalla vuelve a mostrar el valor persistido y limpia cualquier dirección que ya no esté autorizada.
+Los campos y eventos de correo que puedan existir en perfiles históricos se conservan en el esquema para auditoría, pero la interfaz comercial ya no permite editar ni enviar correo. Un perfil histórico de canal `EMAIL` se presenta como no operativo; no se convierte automáticamente en autorización telefónica. La información histórica no se elimina ni se reutiliza como consentimiento telefónico.
 
 Al revocar consentimiento, el servicio fuerza canal `NONE`, desactiva recordatorios, limpia el correo del perfil y deja un evento de revocación. El teléfono existente del cliente no se convierte automáticamente en autorización para contactar. El canal `PHONE` solo genera una tarea de gestión manual: este sistema no hace llamadas ni puede registrar contactos externos que el equipo realice fuera de la aplicación.
 
-La fecha almacenada indica cuándo el operador registró o actualizó la preferencia; **no sustituye la evidencia del consentimiento otorgado por el cliente**. La organización debe conservar esa evidencia por su proceso autorizado. Un cambio de email se registra como cambio de autorización y renueva la fecha del registro; el responsable debe confirmar que el destino nuevo está cubierto por una autorización válida antes de enviar.
+La fecha almacenada indica cuándo el operador registró o actualizó la preferencia; **no sustituye la evidencia del consentimiento otorgado por el cliente**. La organización debe conservar esa evidencia por su proceso autorizado. Antes de registrar seguimiento telefónico, el responsable debe confirmar la autorización correspondiente.
 
 La interfaz de administración de contacto requiere `MANAGE_COLLECTION`. El resumen de alertas y la generación del PDF requieren `VIEW_PORTFOLIO`. El servicio y el controlador revalidan permisos; ocultar campos no es el único control. Los detalles de contacto no se entregan en el resumen destinado a trabajadores.
 
@@ -39,47 +41,36 @@ La interfaz de administración de contacto requiere `MANAGE_COLLECTION`. El resu
 
 El texto se sanea para la fuente PDF incorporada y se ajusta usando el ancho medido de cada fuente/tamaño y el ancho útil A4; no se usa un límite aproximado de caracteres que pueda cortar nombres largos. Las páginas conservan sus márgenes y el contenido se distribuye en páginas sucesivas. La prueba extrae un nombre ficticio largo y comprueba que se conserva completo y que cada renglón queda dentro del ancho imprimible.
 
-La generación exige `VIEW_PORTFOLIO`, pero el archivo que el operador decide guardar queda fuera de los controles de acceso y auditoría de la aplicación. Debe almacenarse y compartirse como información financiera confidencial; la aplicación no cifra ni administra las copias exportadas.
+La generación exige `VIEW_PORTFOLIO`. El controlador guarda el archivo en `LAEXCLUSIVA_REPORTS_DIR` o, por omisión, en `%USERPROFILE%\La Exclusiva\Reportes`; usa un nombre único, muestra la ruta y permite abrir la carpeta. El archivo queda fuera de los controles de acceso y auditoría de la aplicación después de exportarse. Debe almacenarse y compartirse como información financiera confidencial; la aplicación no cifra ni administra las copias exportadas. Incluye una presentación azul/blanca y no es factura electrónica DIAN.
 
 La llave de pago se lee de `LAEXCLUSIVA_PAYMENT_KEY`, nunca de una constante. Solo se incorpora al documento cuando también están en `true` `LAEXCLUSIVA_PAYMENT_KEY_OWNER_CONFIRMED` y `LAEXCLUSIVA_PAYMENT_KEY_VERIFIED_BY_ADMIN`. Las confirmaciones y el valor son responsabilidad de administración; la aplicación no verifica titularidad en el banco. No almacenes la llave en Git, bitácoras o pruebas.
 
 ## Avisos semanales y correo
 
-Un administrador prepara el lote manualmente desde «Actualizar recordatorios». No existe un proceso de fondo: la aplicación de escritorio no envía nada con el equipo apagado. Se prepara como máximo un registro por cliente y semana ISO; la clave única de V107 evita duplicados concurrentes. Solo se incluyen saldos positivos, consentimiento vigente, recordatorios activados y un canal seleccionado. La regla semanal limita el lote de la aplicación a una comunicación preparada por cliente, no permite contabilizar contactos por fuera del sistema.
+El administrador prepara manualmente las alertas internas desde «Preparar seguimiento semanal». No existe un proceso de fondo ni un envío externo. Se prepara como máximo un registro por cliente y semana ISO; la clave única de V107 evita duplicados concurrentes. El lote ayuda a revisar saldos y compromisos, pero no prueba que haya existido una llamada o contacto externo.
 
-Cada correo se revisa y confirma de manera individual. La vista previa muestra destinatario, texto y PDF. El modo predeterminado es simulado: no abre una conexión SMTP y el aviso queda pendiente. El envío real requiere `LAEXCLUSIVA_SMTP_ENABLED=true`, servidor TLS correctamente configurado, consentimiento/canal email vigentes, saldo aún idéntico al revisado, instrucciones de pago confirmadas y ventana de contacto habilitada.
+El envío comercial de correo está retirado de esta versión. La pantalla no contiene dirección ni acciones de revisión/envío y `ApplicationServices` rechaza `LAEXCLUSIVA_SMTP_ENABLED=true` en ambos modos de persistencia; la composición usa exclusivamente un proveedor simulado. No se deben configurar credenciales SMTP ni habilitar transporte real. Los estados, perfiles y auditorías históricos relacionados con email permanecen consultables como historial y no reactivan una ruta de envío.
 
-La aprobación se ata al destinatario, la versión completa del perfil de cobranza, el saldo, el contenido financiero, la versión del aviso y SHA-256 del PDF que vio el administrador. El token es aleatorio, de un uso, expira a los cinco minutos y se asocia a la misma instancia de sesión, identidad de cuenta y versión de seguridad. El servicio consume y vuelve a validar el token tanto al confirmar como justo antes de enviar; `sendReminder(actor,id)` sin token rechaza la operación. Los cambios de preferencias invalidan las vistas pendientes. El envío usa los bytes del PDF retenidos por esa revisión; la validación compara nuevamente la fuente del documento, sin regenerar otro archivo cuya metadata binaria pueda variar.
+Los servicios y tipos de proveedor históricos todavía contienen contratos de revisión SMTP por compatibilidad y pruebas, pero no se componen en la aplicación. La ruta productiva no crea tokens de envío ni llama a SMTP. Si se retomara esa funcionalidad, requiere decisión operativa, nueva revisión de seguridad y validación humana; no basta con añadir variables de entorno.
 
-El claim PostgreSQL bloquea primero la fila del cliente y luego el perfil y comprueba saldo, datos del cliente, consentimiento/destino y versión antes de pasar a `SENDING`. Abonos que se confirman antes del bloqueo hacen fallar la aprobación anterior y exigen refrescar y revisar otra vez. Una actualización que llegue luego de obtener los bloqueos se serializa después del claim; la operación externa ya iniciada queda identificada como intento y no se duplica silenciosamente.
+En versiones anteriores, el claim PostgreSQL bloqueaba primero la fila del cliente y luego el perfil antes de pasar a `SENDING`. Esa implementación e integración se conserva en las secciones históricas de este documento; no existe una acción de envío comercial en la interfaz ni una composición SMTP activa en la versión actual.
 
-Variables SMTP leídas del entorno del proceso:
+No hay variables SMTP activas en esta composición. Las pruebas usan proveedores simulados o dobles; no envían mensajes reales. El esquema V109 conserva evidencia histórica de intentos (`SMTP_ACCEPTED`, `SMTP_REJECTED`, `SMTP_OUTCOME_UNCERTAIN` o `SIMULATED`) sin almacenar dirección, token, credenciales, cuerpo ni PDF en auditoría.
 
-| Variable | Descripción |
-|---|---|
-| `LAEXCLUSIVA_SMTP_ENABLED` | Habilita explícitamente entrega real; desactivada por defecto |
-| `LAEXCLUSIVA_SMTP_HOST` | Host SMTP |
-| `LAEXCLUSIVA_SMTP_PORT` | Puerto TLS configurado |
-| `LAEXCLUSIVA_SMTP_USERNAME` | Usuario de correo |
-| `LAEXCLUSIVA_SMTP_PASSWORD` | Secreto del proveedor; nunca se registra |
-| `LAEXCLUSIVA_SMTP_FROM` | Remitente autorizado |
-
-El proveedor usa TLS, valida certificados/identidad del servidor, fija tiempos de espera y no activa trazas SMTP. Las pruebas usan proveedores dobles o simulados y nunca envían mensajes reales. Una entrega externa y una transacción de base de datos no pueden confirmarse atómicamente: el registro pasa a `SENDING` antes de llamar al proveedor. V109 persiste un UUID único de intento, un propietario de instancia y evidencia no sensible (`SMTP_ACCEPTED`, `SMTP_REJECTED`, `SMTP_OUTCOME_UNCERTAIN` o `SIMULATED`). Aceptación, rechazo confirmado e incertidumbre quedan separados; no se guardan dirección, token, credenciales, cuerpo ni PDF en auditoría.
-
-Si se pierde la respuesta, se interrumpe el proceso durante `SENDING` o falla la persistencia tras la llamada externa, el estado pasa o se recupera como `RECONCILIATION_REQUIRED`. El UUID y la evidencia disponible permanecen consultables para administración y la aplicación no reintenta automáticamente. Si el proveedor aceptó el mensaje pero no se pudo confirmar la escritura, la fila se conserva como incierta para revisión aunque el campo de evidencia indique la aceptación observada. La organización debe consultar al proveedor antes de resolver manualmente ese caso.
+Los estados `SENDING` y `RECONCILIATION_REQUIRED` que ya existan representan intentos históricos. Se conservan para que administración pueda auditarlos; no se reintentan ni se generan nuevos intentos de correo desde la aplicación actual.
 
 Al preparar otra vez la semana, el mismo registro solo puede actualizarse si todavía tiene cero intentos y está pendiente de revisión o marcado por saldo cambiado. El saldo nuevo queda en la fila semanal existente y se registra `BALANCE_CHANGED`; cualquier vista previa anterior se invalida. Filas en `SENDING`, `SENT`, con rechazo del proveedor o en conciliación nunca se reactivan automáticamente. La unicidad por cliente/semana permanece impuesta por PostgreSQL.
 
-Los horarios son hora `America/Bogota`: lunes a viernes 07:00–19:00, sábado 08:00–15:00, sin domingos ni festivos configurados. Para habilitar un envío real se debe suministrar el calendario completo del año actual:
+La política horaria que se describe a continuación pertenecía al envío SMTP de versiones anteriores y no habilita envíos en la composición actual. No se requiere configurar estas variables para las alertas internas:
 
 | Variable | Descripción |
 |---|---|
 | `LAEXCLUSIVA_COLOMBIA_HOLIDAYS_YEAR` | Año para el calendario configurado; debe coincidir con el año actual |
 | `LAEXCLUSIVA_COLOMBIA_HOLIDAYS` | Fechas festivas del año, separadas por coma (`AAAA-MM-DD`) |
 
-Si falta el calendario, está vencido o contiene valores inválidos, el servicio bloquea el envío. La lista completa y correcta de festivos es una responsabilidad de configuración y debe revisarse cada año. Los controles de la aplicación son una política conservadora, no una certificación legal ni sustituyen la revisión jurídica y operativa.
+Los intentos históricos pueden haber usado un calendario `America/Bogota` de lunes a viernes 07:00–19:00 y sábado 08:00–15:00. Los valores siguientes se conservan solo para interpretar esa configuración histórica; la composición actual no los lee para efectuar envíos.
 
-Las preferencias y el consentimiento se vuelven a leer antes de reclamar el aviso, pero la entrega SMTP es externa a PostgreSQL: una revocación concurrente justo después de esa última lectura no puede confirmarse atómicamente con el proveedor de correo. Por esa razón el SMTP real permanece desactivado hasta acordar controles operativos y cómo reconciliar ese límite. Tampoco hay una comprobación periódica que retire de inmediato una pantalla ya abierta cuando se revoca una sesión desde otra sesión; cada operación protegida vuelve a validar la autoridad vigente, pero los datos ya cargados pueden permanecer visibles hasta refrescar o salir de la vista.
+Los límites de revocación concurrente descritos en versiones anteriores quedan como requisito de seguridad si se vuelve a proponer SMTP. En la ruta vigente no hay transporte externo. La revocación de sesión bloquea operaciones posteriores; los datos ya cargados pueden permanecer visibles hasta refrescar o salir de la vista.
 
 Referencias normativas primarias: [Ley 2300 de 2023, Función Pública](https://www.funcionpublica.gov.co/eva/gestornormativo/norma.php?i=213990) y [Ley 1581 de 2012, texto oficial](https://www.suin-juriscol.gov.co/archivo/listado/habeasdataSUIN.pdf). La organización debe obtener y conservar evidencia válida del consentimiento y atender revocaciones o solicitudes recibidas por canales externos.
 
@@ -98,7 +89,7 @@ board.statementsPendingReview();
 board.recommendations();
 ```
 
-`dashboard(session)` vuelve a validar `VIEW_PORTFOLIO`. Los cuatro contadores y las filas deben ocultarse/limpiarse si esa autorización falla; no copiar el detalle de contacto al dashboard. La gestión de perfiles, historial, preparación/revisión/envío de recordatorios requiere `MANAGE_COLLECTION`; auditoría requiere `VIEW_ADMIN_AUDIT`. No se modifica la rama visual de Daniel con este contrato.
+`dashboard(session)` vuelve a validar `VIEW_PORTFOLIO`. Los cuatro contadores y las filas deben ocultarse/limpiarse si esa autorización falla; no copiar el detalle de contacto al dashboard. La gestión de perfiles, historial y preparación de seguimiento interno requiere `MANAGE_COLLECTION`; auditoría requiere `VIEW_ADMIN_AUDIT`. La aplicación actual no expone revisión ni envío de correo. No se modifica la rama visual de Daniel con este contrato.
 
 ## Pedidos a domicilio: pendiente independiente
 

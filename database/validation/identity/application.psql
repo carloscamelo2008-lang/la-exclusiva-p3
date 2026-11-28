@@ -56,5 +56,39 @@ BEGIN
     END IF;
 END;
 $customer_migrations$;
+UPDATE customer SET credit_limit = 5000.00 WHERE id='IV_V109_LEGACY';
+INSERT INTO beer_product (id, name, volume_ml, units_per_basket, container_type, container_group)
+VALUES ('IV_PRODUCT_IMAGE', 'Producto ficticio de laboratorio', 330, 24, 'NON_RETURNABLE_CAN', NULL);
+\ir ../../migrations/V113__retire_customer_credit_limit.sql
+\ir ../../migrations/V114__product_image_reference.sql
+DO $customer_credit_history$
+BEGIN
+    IF NOT EXISTS (SELECT FROM customer WHERE id='IV_V109_LEGACY' AND legacy_credit_limit=5000.00) THEN
+        RAISE EXCEPTION 'V113 no conservó el valor histórico del cupo';
+    END IF;
+    IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema='public'
+               AND table_name='customer' AND column_name='credit_limit') THEN
+        RAISE EXCEPTION 'V113 dejó visible el nombre retirado credit_limit';
+    END IF;
+END;
+$customer_credit_history$;
+DO $product_image_reference$
+DECLARE
+    constraint_name TEXT;
+BEGIN
+    IF NOT EXISTS (SELECT FROM beer_product WHERE id='IV_PRODUCT_IMAGE' AND image_filename IS NULL) THEN
+        RAISE EXCEPTION 'V114 no conservó la fila histórica sin fotografía';
+    END IF;
+    UPDATE beer_product SET image_filename=repeat('a', 64) || '.png' WHERE id='IV_PRODUCT_IMAGE';
+    BEGIN
+        UPDATE beer_product SET image_filename='../foto.png' WHERE id='IV_PRODUCT_IMAGE';
+        RAISE EXCEPTION 'V114 permitió una ruta de imagen fuera del almacén';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS constraint_name=CONSTRAINT_NAME;
+        IF constraint_name <> 'ck_beer_product_image_filename' THEN RAISE; END IF;
+    END;
+END;
+$product_image_reference$;
+DELETE FROM beer_product WHERE id='IV_PRODUCT_IMAGE';
 DELETE FROM customer WHERE id='IV_V109_LEGACY';
 \echo 'Esquema completo aplicado al cluster temporal aislado.'

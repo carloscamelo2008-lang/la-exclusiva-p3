@@ -31,6 +31,8 @@ class StockMovementRepositoryJdbcPostgresIntegrationTest {
         BeerProduct product = product();
         BeerProduct otherProduct = product();
         String id = product.getId();
+        String imageFilename = "b".repeat(64) + ".jpg";
+        product.setImageFilename(imageFilename);
         StockMovement entry = new StockMovement(id, MovementType.ENTRY, 12, "Recepción", OCCURRED_AT);
 
         try {
@@ -58,6 +60,7 @@ class StockMovementRepositoryJdbcPostgresIntegrationTest {
             assertEquals(3, history.get(2).units());
             assertEquals(id, stored.product().getId());
             assertEquals(product.getName(), stored.product().getName());
+            assertEquals(imageFilename, stored.product().getImageFilename());
             assertEquals(product.priceFor(SalePresentation.UNIT), stored.product().priceFor(SalePresentation.UNIT));
             assertTrue(stored.product().hasAllPrices());
             assertThrows(UnsupportedOperationException.class, () -> movements.remove(stored));

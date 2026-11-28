@@ -59,9 +59,19 @@ class CustomerCrudTest {
         assertEquals(1, service.findSimilarNames(" MARIA  perez ").size());
         assertTrue(service.findSimilarNames("María Gómez").isEmpty());
         service.updateCustomer(" C 001 ", "María Pérez", "30012", " Calle  2 ");
-        assertEquals(new BigDecimal("2500.00"), service.getCustomerById("C 001").getCreditLimit());
-        assertThrows(IllegalArgumentException.class,
-                () -> service.updateCustomer("C 001", "María", "30012", "Calle", BigDecimal.ONE.negate()));
+        assertEquals(BigDecimal.ZERO, service.getCustomerById("C 001").getBalance());
+        assertDoesNotThrow(() -> service.updateCustomer("C 001", "María", "30012", "Calle",
+                BigDecimal.ONE.negate()), "El argumento legado de cupo ya no gobierna la actualización.");
+    }
+
+    @Test
+    void createsCustomerWithGeneratedStableFormatIdentifier() {
+        var created = service.registerCustomer("Ana", "300123", "Calle 1");
+
+        assertTrue(created.getId().matches("CLI-[0-9A-F-]{36}"));
+        assertEquals(created.getId(), service.getCustomerById(created.getId()).getId());
+        assertEquals("Ana", created.getName());
+        assertEquals(BigDecimal.ZERO, created.getBalance());
     }
 
     @Test

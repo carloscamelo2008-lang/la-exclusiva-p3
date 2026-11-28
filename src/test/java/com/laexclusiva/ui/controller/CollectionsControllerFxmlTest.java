@@ -15,6 +15,7 @@ import com.laexclusiva.ui.ApplicationServices;
 import java.math.BigDecimal;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
@@ -24,9 +25,13 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Verifica la carga FXML y que los datos de contacto se oculten a una sesión trabajadora. */
 class CollectionsControllerFxmlTest {
+    @TempDir
+    Path reportDirectory;
+
     @BeforeAll
     static void startJavaFx() {
         try { Platform.startup(() -> { }); }
@@ -67,7 +72,7 @@ class CollectionsControllerFxmlTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void savingPhoneConsentClearsEmailFromProfileAndForm() throws Exception {
+    void savesPhoneFollowUpWithoutAnEmailControl() throws Exception {
         onFxThread(() -> {
             ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
             String adminPassword = "Collection-Phone-Admin-2026!";
@@ -83,8 +88,6 @@ class CollectionsControllerFxmlTest {
                     services.customers().getAllCustomers(), admin, services.authorization());
             field(controller, "customerCombo", javafx.scene.control.ComboBox.class)
                     .setValue(services.customers().getCustomerById("collection-phone-only"));
-            field(controller, "emailField", javafx.scene.control.TextField.class)
-                    .setText("stale@example.test");
             field(controller, "channelCombo", javafx.scene.control.ComboBox.class)
                     .setValue(CollectionChannel.PHONE);
             field(controller, "consentCheck", javafx.scene.control.CheckBox.class).setSelected(true);
@@ -95,13 +98,13 @@ class CollectionsControllerFxmlTest {
             save.invoke(controller);
 
             assertNull(services.collectionAssistant().profile(admin, "collection-phone-only").email());
-            assertEquals("", field(controller, "emailField", javafx.scene.control.TextField.class).getText());
+            assertNull(loader.getNamespace().get("emailField"));
             return null;
         });
     }
 
     @Test
-    void approvedReminderPreviewFlowsThroughControllerAndRejectsWorkerConfirmation() throws Exception {
+    void preparesInternalPhoneFollowUpWithoutEmailActions() throws Exception {
         onFxThread(() -> {
             ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
             String adminPassword = "Collection-Review-Admin-2026!";
@@ -111,33 +114,108 @@ class CollectionsControllerFxmlTest {
             services.customers().registerCustomer("collection-review-customer", "Cliente ficticio revisión",
                     "3000000788", "Dirección ficticia");
             services.customers().addDebtToCustomer("collection-review-customer", new BigDecimal("12000.00"));
-            services.collectionAssistant().saveProfile(admin, "collection-review-customer", "review@example.test",
-                    CollectionChannel.EMAIL, true, true, null, null);
+            services.collectionAssistant().saveProfile(admin, "collection-review-customer", null,
+                    CollectionChannel.PHONE, true, true, null, null);
             var reminder = services.collectionAssistant().prepareWeeklyReminders(admin).pendingReview().get(0);
-            var preview = services.collectionAssistant().previewReminder(admin, reminder.id());
-
-            UserAccount workerAccount = new UserAccount(null, "collection-review-worker",
-                    PasswordHasher.hash("Collection-Review-Worker-2026!"), UserRole.WORKER, null);
-            services.identity().users().save(workerAccount);
-            var worker = services.identity().authentication().createSession("collection-review-worker",
-                    "Collection-Review-Worker-2026!").orElseThrow();
-            FXMLLoader workerLoader = load();
-            CollectionsController workerController = workerLoader.getController();
-            workerController.configure(services.collectionAssistant(), services.administrativeAudit(),
-                    services.customers().getAllCustomers(), worker, services.authorization());
-            assertThrows(SecurityException.class,
-                    () -> workerController.deliverConfirmedPreview(reminder.id(), preview.previewToken()));
-
+            assertEquals(CollectionChannel.PHONE, reminder.channel());
             FXMLLoader adminLoader = load();
             CollectionsController adminController = adminLoader.getController();
             adminController.configure(services.collectionAssistant(), services.administrativeAudit(),
                     services.customers().getAllCustomers(), admin, services.authorization());
-            var result = adminController.deliverConfirmedPreview(reminder.id(), preview.previewToken());
-            assertEquals(com.laexclusiva.model.CustomerCollectionReminder.ResultCode.SIMULATED, result.resultCode());
-            assertEquals(CustomerCollectionReminder.Status.PENDING_REVIEW, result.status());
+            var controls = ((Parent) adminLoader.getRoot()).lookupAll(".button").stream()
+                    .map(node -> ((javafx.scene.control.Button) node).getText()).toList();
+            assertFalse(controls.stream().anyMatch(text -> text.toLowerCase().contains("correo")
+                    || text.toLowerCase().contains("enviar")));
+            assertNull(adminLoader.getNamespace().get("emailField"));
             var persisted = services.collectionAssistant().listReminders(admin, null).get(0);
             assertEquals(reminder.id(), persisted.id());
-            assertEquals(0, persisted.attemptCount(), "El modo memoria solo simula la entrega y no reclama envío SMTP.");
+            assertEquals(CustomerCollectionReminder.Status.PENDING_REVIEW, persisted.status());
+            assertEquals(0, persisted.attemptCount(), "El seguimiento no intenta entregar correo.");
+            return null;
+        });
+    }
+
+    @Test
+    void manualRefreshConfirmsSuccessEvenAfterAnEarlierMessage() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            String password = "Collection-Refresh-Admin-2026!";
+            services.identity().bootstrapInitialAdministrator("collection-refresh-admin", password);
+            var session = services.identity().authentication().createSession("collection-refresh-admin", password)
+                    .orElseThrow();
+            FXMLLoader loader = load();
+            ((CollectionsController) loader.getController()).configure(services.collectionAssistant(),
+                    services.administrativeAudit(), services.customers().getAllCustomers(), session,
+                    services.authorization());
+            var message = (javafx.scene.control.Label) loader.getNamespace().get("messageLabel");
+            message.setText("Se guardaron preferencias en la consulta anterior.");
+
+            refreshAlertsButton(loader).fire();
+
+            assertEquals("Tablero actualizado.", message.getText());
+            assertTrue(((javafx.scene.control.Label) loader.getNamespace().get("metricsLabel"))
+                    .getText().startsWith("Compromisos vencidos:"));
+            return null;
+        });
+    }
+
+    @Test
+    void manualRefreshShowsQueryFailureInsteadOfAFalseSuccess() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            String password = "Collection-Refresh-Failure-2026!";
+            services.identity().bootstrapInitialAdministrator("collection-refresh-failure", password);
+            var session = services.identity().authentication().createSession("collection-refresh-failure", password)
+                    .orElseThrow();
+            FXMLLoader loader = load();
+            ((CollectionsController) loader.getController()).configure(services.collectionAssistant(),
+                    services.administrativeAudit(), services.customers().getAllCustomers(), session,
+                    services.authorization());
+            services.identity().authentication().revoke(session);
+            var message = (javafx.scene.control.Label) loader.getNamespace().get("messageLabel");
+            message.setText("Mensaje anterior.");
+
+            refreshAlertsButton(loader).fire();
+
+            assertTrue(message.getText().startsWith("No se pudo actualizar el tablero."));
+            assertFalse(message.getText().contains("Tablero actualizado."));
+            assertEquals("Indicadores no disponibles.",
+                    ((javafx.scene.control.Label) loader.getNamespace().get("metricsLabel")).getText());
+            assertTrue(((javafx.scene.control.TableView<?>) loader.getNamespace().get("recommendationsTable"))
+                    .getItems().isEmpty());
+            return null;
+        });
+    }
+
+    @Test
+    void savesStatementIntoConfiguredReportsFolderAndShowsExactPath() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            String adminPassword = "Collection-Pdf-Admin-2026!";
+            services.identity().bootstrapInitialAdministrator("collection-pdf-admin", adminPassword);
+            var admin = services.identity().authentication().createSession("collection-pdf-admin", adminPassword)
+                    .orElseThrow();
+            services.customers().registerCustomer("collection-pdf-customer", "Cliente PDF",
+                    "3000000790", "Dirección ficticia");
+            services.customers().addDebtToCustomer("collection-pdf-customer", new BigDecimal("12000.00"));
+            FXMLLoader loader = load();
+            CollectionsController controller = loader.getController();
+            controller.configure(services.collectionAssistant(), services.administrativeAudit(),
+                    services.customers().getAllCustomers(), admin, services.authorization());
+            controller.setReportStore(new com.laexclusiva.service.AccountStatementReportStore(reportDirectory));
+            field(controller, "customerCombo", javafx.scene.control.ComboBox.class).getSelectionModel().selectFirst();
+            var generate = (javafx.scene.control.Button) loader.getNamespace().get("generateStatementButton");
+
+            generate.fire();
+
+            try (var files = java.nio.file.Files.list(reportDirectory)) {
+                Path pdf = files.filter(path -> path.toString().endsWith(".pdf")).findFirst().orElseThrow();
+                byte[] bytes = java.nio.file.Files.readAllBytes(pdf);
+                assertTrue(bytes.length > 100);
+                assertEquals("%PDF-", new String(bytes, 0, 5, java.nio.charset.StandardCharsets.US_ASCII));
+                assertTrue(((javafx.scene.control.Label) loader.getNamespace().get("messageLabel"))
+                        .getText().contains(pdf.toString()));
+            }
             return null;
         });
     }
@@ -154,6 +232,10 @@ class CollectionsControllerFxmlTest {
         Parent root = loader.load();
         assertTrue(root.getChildrenUnmodifiable().size() > 0);
         return loader;
+    }
+
+    private static javafx.scene.control.Button refreshAlertsButton(FXMLLoader loader) {
+        return (javafx.scene.control.Button) loader.getNamespace().get("refreshAlertsButton");
     }
 
     private static <T> T onFxThread(Callable<T> operation) throws Exception {

@@ -1,5 +1,6 @@
 package com.laexclusiva.ui;
 
+import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.model.UserAccount;
 import com.laexclusiva.model.UserRole;
 import com.laexclusiva.model.UserSession;
@@ -274,6 +275,7 @@ class VisualRefreshTest {
         onFx(() -> {
             for (UserRole role : UserRole.values()) {
                 ApplicationServices services = ApplicationServices.create("memory", Map.of());
+                services.products().registerAll(InitialCatalog.create());
                 UserSession admin = issue(services, UserRole.ADMINISTRATOR);
                 UserSession session = role == UserRole.ADMINISTRATOR ? admin : issue(services, role);
                 var supplier = services.purchases().suppliers().create(admin, "Proveedor QA visual", "QA-UI-26", "Contacto ficticio");
@@ -345,6 +347,7 @@ class VisualRefreshTest {
     void modernPortfolioKeepsPendingSaleSelectionAndPaymentReachableAtAllSizes() throws Exception {
         onFx(() -> {
             ApplicationServices services = ApplicationServices.create("memory", Map.of());
+            services.products().registerAll(InitialCatalog.create());
             UserSession session = issue(services, UserRole.ADMINISTRATOR);
             var seller = services.sellers().registerSeller("Vendedor QA visual", "3000000000", "Dirección QA");
             services.customers().registerCustomer("QA-PORTFOLIO", "Cliente QA visual", "3000000001", "Dirección QA", java.math.BigDecimal.valueOf(10_000_000));
@@ -401,6 +404,7 @@ class VisualRefreshTest {
     void compactDashboardKeepsLogoutAndNavigationInsideSidebar() throws Exception {
         onFx(() -> {
             ApplicationServices services = ApplicationServices.create("memory", Map.of());
+            services.products().registerAll(InitialCatalog.create());
             FXMLLoader loader = loader("main_menu_view.fxml");
             BorderPane root = loader.load();
             MainController controller = loader.getController();
