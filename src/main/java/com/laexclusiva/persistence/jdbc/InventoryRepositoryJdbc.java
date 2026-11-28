@@ -19,7 +19,7 @@ import java.util.Optional;
 public final class InventoryRepositoryJdbc implements InventoryRepository {
     private static final String INVENTORY_SELECT = """
             SELECT p.id, p.name, p.volume_ml, p.units_per_basket, p.container_type,
-                   p.container_group, i.total_units, pp.presentation_code, pp.price
+                   p.container_group, p.image_filename, i.total_units, pp.presentation_code, pp.price
             FROM inventory_item i
             JOIN beer_product p ON p.id = i.product_id
             LEFT JOIN product_price pp ON pp.product_id = p.id

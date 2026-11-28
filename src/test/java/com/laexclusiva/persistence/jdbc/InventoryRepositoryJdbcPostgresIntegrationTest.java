@@ -28,6 +28,33 @@ import org.junit.jupiter.api.Test;
 /** Pruebas opcionales contra la base PostgreSQL dedicada a integración. */
 class InventoryRepositoryJdbcPostgresIntegrationTest {
     @Test
+    void inventoryQueriesPreserveProductImageReference() {
+        JdbcConnectionProvider provider = testProvider();
+        JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
+        ProductRepositoryJdbc products = new ProductRepositoryJdbc(provider, transactions);
+        InventoryRepositoryJdbc inventory = new InventoryRepositoryJdbc(provider, transactions);
+        BeerProduct product = product();
+        String id = product.getId();
+        String imageFilename = "a".repeat(64) + ".jpg";
+        product.setImageFilename(imageFilename);
+
+        try {
+            products.save(product);
+            transactions.inTransaction(() -> inventory.save(new InventoryItem(product)));
+
+            assertEquals(imageFilename, inventory.findByProductId(id).orElseThrow()
+                    .getProduct().getImageFilename());
+            assertEquals(imageFilename, inventory.findAll().stream()
+                    .filter(item -> item.getProduct().getId().equals(id))
+                    .findFirst().orElseThrow().getProduct().getImageFilename());
+            assertEquals(imageFilename, transactions.inTransaction(() -> inventory
+                    .findByProductIdForUpdate(id).orElseThrow().getProduct().getImageFilename()));
+        } finally {
+            cleanup(provider, id);
+        }
+    }
+
+    @Test
     void insertsInitialRowAndRejectsStaleSnapshotWhileReadingZeroStock() {
         JdbcConnectionProvider provider = testProvider();
         JdbcTransactionManager transactions = new JdbcTransactionManager(provider);
