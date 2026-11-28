@@ -18,7 +18,10 @@ import com.laexclusiva.repository.ProductRepository;
 import com.laexclusiva.repository.StockMovementRepository;
 import com.laexclusiva.service.InventoryService;
 import com.laexclusiva.service.ProductService;
+import com.laexclusiva.service.ProductImageStore;
 import com.laexclusiva.testutil.IdentityTestFixture;
+import java.awt.image.BufferedImage;
+import java.nio.file.Path;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,12 +38,16 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.image.ImageView;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /** Regresiones JavaFX para distinguir escrituras confirmadas de fallos de refresco del inventario. */
 class InventoryControllerReviewRegressionTest {
     private static final IdentityTestFixture IDENTITY = new IdentityTestFixture();
+    @TempDir Path temporaryDirectory;
 
     @BeforeAll
     static void startJavaFxToolkit() {
@@ -166,6 +173,78 @@ class InventoryControllerReviewRegressionTest {
         });
     }
 
+    @Test
+    void administratorCanImportProductPhotoAndCreateNewReturnableContainerGroup() throws Exception {
+        onFxThread(() -> {
+            Fixture fixture = new Fixture();
+            FXMLLoader loader = loadInventoryView();
+            InventoryController controller = loader.getController();
+            controller.configure(fixture.products, fixture.inventory, adminSession());
+            controller.setProductImageStore(new ProductImageStore(temporaryDirectory.resolve("catalog")));
+            Path photo = temporaryDirectory.resolve("poker.png");
+            try {
+                ImageIO.write(new BufferedImage(24, 18, BufferedImage.TYPE_INT_RGB), "png", photo.toFile());
+                controller.importProductImage(fixture.catalogProduct, photo);
+            } catch (Exception failure) {
+                throw new AssertionError(failure);
+            }
+            BeerProduct persisted = fixture.products.findById(fixture.catalogProduct.getId());
+            assertTrue(persisted.getImageFilename().matches("[0-9a-f]{64}\\.png"));
+            ImageView image = (ImageView) loader.getNamespace().get("productImagePreview");
+            assertTrue(image.getImage() != null);
+
+            @SuppressWarnings("unchecked")
+            ComboBox<ContainerType> type = (ComboBox<ContainerType>) loader.getNamespace().get("containerTypeCombo");
+            type.setValue(ContainerType.RETURNABLE_SHARED);
+            ((TextField) loader.getNamespace().get("productIdField")).setText("GROUP-CREATION");
+            ((TextField) loader.getNamespace().get("productNameField")).setText("Envase prueba");
+            ((TextField) loader.getNamespace().get("volumeField")).setText("330");
+            ((TextField) loader.getNamespace().get("unitsPerBasketField")).setText("24");
+            @SuppressWarnings("unchecked")
+            ComboBox<String> groups = (ComboBox<String>) loader.getNamespace().get("containerGroupCombo");
+            groups.getEditor().setText("grupo-retornable-nuevo");
+            ((TextField) loader.getNamespace().get("unitPriceField")).setText("100");
+            ((TextField) loader.getNamespace().get("halfBasketPriceField")).setText("1100");
+            ((TextField) loader.getNamespace().get("fullBasketPriceField")).setText("2100");
+            ((Button) loader.getNamespace().get("registerProductButton")).fire();
+
+            assertEquals("grupo-retornable-nuevo", fixture.products.findById("GROUP-CREATION").getContainerGroup());
+            assertTrue(groups.getItems().contains("grupo-retornable-nuevo"));
+            return null;
+        });
+    }
+
+    @Test
+    void salesProductSelectionShowsItsPersistedPhotoOrTheFallback() throws Exception {
+        onFxThread(() -> {
+            FXMLLoader loader = new FXMLLoader(InventoryControllerReviewRegressionTest.class.getResource(
+                    "/com/laexclusiva/ui/fxml/sales_view.fxml"));
+            loader.load();
+            SalesController controller = loader.getController();
+            ProductImageStore store = new ProductImageStore(temporaryDirectory.resolve("sales-images"));
+            controller.setProductImageStore(store);
+            Path photo = temporaryDirectory.resolve("cola.png");
+            try {
+                ImageIO.write(new BufferedImage(18, 14, BufferedImage.TYPE_INT_RGB), "png", photo.toFile());
+                BeerProduct product = product("SALES-IMAGE", "Cola de prueba");
+                product.setImageFilename(store.importImage(photo));
+                @SuppressWarnings("unchecked")
+                ComboBox<BeerProduct> selection = (ComboBox<BeerProduct>) loader.getNamespace().get("productCombo");
+                selection.setValue(product);
+                assertEquals("Cola de prueba", ((Label) loader.getNamespace().get("productImageStatus")).getText());
+                assertTrue(((ImageView) loader.getNamespace().get("productImagePreview")).getImage() != null);
+
+                product.setImageFilename(null);
+                selection.setValue(null);
+                selection.setValue(product);
+                assertEquals("Sin fotografía", ((Label) loader.getNamespace().get("productImageStatus")).getText());
+            } catch (Exception failure) {
+                throw new AssertionError(failure);
+            }
+            return null;
+        });
+    }
+
     private static FXMLLoader loadInventoryView() throws Exception {
         FXMLLoader loader = new FXMLLoader(InventoryControllerReviewRegressionTest.class.getResource(
                 "/com/laexclusiva/ui/fxml/inventory_view.fxml"));
@@ -228,6 +307,11 @@ class InventoryControllerReviewRegressionTest {
         }
         @Override public void addMissingPrice(String id, SalePresentation presentation, BigDecimal price) {
             throw new UnsupportedOperationException();
+        }
+        @Override public void updateImageFilename(String id, String filename) {
+            BeerProduct product = products.get(id);
+            if (product == null) throw new IllegalArgumentException("Producto ausente.");
+            product.setImageFilename(filename);
         }
         @Override public Optional<BeerProduct> findById(String id) {
             return Optional.ofNullable(products.get(id)).map(BeerProduct::copy);

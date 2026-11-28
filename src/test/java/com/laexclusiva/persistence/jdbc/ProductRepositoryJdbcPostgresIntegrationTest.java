@@ -46,6 +46,11 @@ class ProductRepositoryJdbcPostgresIntegrationTest {
             assertEquals(new BigDecimal("1300.25"),
                     repository.findById(id).orElseThrow().priceFor(SalePresentation.UNIT));
 
+            String image = "a".repeat(64) + ".png";
+            repository.updateImageFilename(id, image);
+            assertEquals(image, repository.findById(id).orElseThrow().getImageFilename());
+            assertThrows(IllegalArgumentException.class, () -> repository.updateImageFilename(id, "../foto.png"));
+
             execute(provider, "DELETE FROM product_price WHERE product_id = ? AND presentation_code = 'FULL_BASKET'", id);
             assertFalse(repository.findById(id).orElseThrow().hasAllPrices());
             assertThrows(IllegalArgumentException.class,
@@ -155,6 +160,7 @@ class ProductRepositoryJdbcPostgresIntegrationTest {
         assertEquals(expected.getUnitsPerBasket(), actual.getUnitsPerBasket());
         assertEquals(expected.getContainerType(), actual.getContainerType());
         assertEquals(expected.getContainerGroup(), actual.getContainerGroup());
+        assertEquals(expected.getImageFilename(), actual.getImageFilename());
         assertEquals(expected.priceFor(SalePresentation.UNIT), actual.priceFor(SalePresentation.UNIT));
         assertEquals(expected.priceFor(SalePresentation.HALF_BASKET), actual.priceFor(SalePresentation.HALF_BASKET));
         assertEquals(expected.priceFor(SalePresentation.FULL_BASKET), actual.priceFor(SalePresentation.FULL_BASKET));

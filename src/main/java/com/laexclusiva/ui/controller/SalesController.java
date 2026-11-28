@@ -18,7 +18,11 @@ import com.laexclusiva.service.ProductService;
 import com.laexclusiva.service.SalesWorkflow;
 import com.laexclusiva.service.SaleRequestFingerprint;
 import com.laexclusiva.service.SellerService;
+import com.laexclusiva.service.ProductImageStore;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
@@ -32,11 +36,15 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.util.StringConverter;
 
 /** Pantalla JavaFX para registrar ventas y consultar el historial guardado. */
 public class SalesController {
     @FXML private ComboBox<BeerProduct> productCombo;
+    @FXML private ImageView productImagePreview;
+    @FXML private Label productImageStatus;
     @FXML private ComboBox<SalePresentation> presentationCombo;
     @FXML private TextField quantityField;
     @FXML private ComboBox<Seller> sellerCombo;
@@ -67,6 +75,7 @@ public class SalesController {
     private String saleOperationKey = UUID.randomUUID().toString();
     private String uncertainSaleFingerprint;
     private AuthorizationService authorizationService;
+    private ProductImageStore productImageStore = ProductImageStore.fromEnvironment();
 
     /** Inyecta la autoridad actual compartida con el servicio que procesa las ventas. */
     public void setAuthorizationService(AuthorizationService authorizationService) {
@@ -87,6 +96,7 @@ public class SalesController {
         initialPaymentMethodCombo.setValue(PaymentMethod.EFECTIVO);
         refreshSaleOperationKeyLabel();
         productCombo.setConverter(converter(BeerProduct::toString));
+        productCombo.valueProperty().addListener((observable, previous, selected) -> showProductImage(selected));
         sellerCombo.setConverter(converter(Seller::getName));
         customerCombo.setConverter(converter(Customer::getName));
         cartProductColumn.setCellValueFactory(cell -> new ReadOnlyStringWrapper(cell.getValue().product().getName()));
@@ -100,6 +110,42 @@ public class SalesController {
                 cell.getValue().getCustomer() == null ? "Contado" : cell.getValue().getCustomer().getName()));
         historyTotalColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().calculateTotal()));
         historyBalanceColumn.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(cell.getValue().calculateBalance()));
+    }
+
+    private void showProductImage(BeerProduct product) {
+        if (product == null || product.getImageFilename() == null) {
+            productImagePreview.setImage(null);
+            productImageStatus.setText("Sin fotografía");
+            return;
+        }
+        var path = productImageStore.resolve(product.getImageFilename());
+        if (path.isEmpty()) {
+            productImagePreview.setImage(null);
+            productImageStatus.setText("Fotografía no disponible en este equipo");
+            return;
+        }
+        try {
+            Image image;
+            try (ByteArrayInputStream bytes = new ByteArrayInputStream(Files.readAllBytes(path.get()))) {
+                image = new Image(bytes, 140, 110, true, true);
+            }
+            if (image.isError()) {
+                productImagePreview.setImage(null);
+                productImageStatus.setText("Fotografía no disponible");
+                return;
+            }
+            productImagePreview.setImage(image);
+            productImageStatus.setText(product.getName());
+        } catch (IOException failure) {
+            productImagePreview.setImage(null);
+            productImageStatus.setText("Fotografía no disponible");
+        }
+    }
+
+    /** Sustituye el almacén local por uno aislado en pruebas JavaFX. */
+    void setProductImageStore(ProductImageStore store) {
+        if (store == null) throw new IllegalArgumentException("El almacén de imágenes es obligatorio.");
+        this.productImageStore = store;
     }
 
     /**

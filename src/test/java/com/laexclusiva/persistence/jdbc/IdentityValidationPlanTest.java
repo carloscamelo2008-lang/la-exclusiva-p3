@@ -90,7 +90,32 @@ class IdentityValidationPlanTest {
         int phone = sql.indexOf("\\ir ../../migrations/V110");
         int credit = sql.indexOf("\\ir ../../migrations/V111");
         int actors = sql.indexOf("\\ir ../../migrations/V112");
-        assertTrue(phone >= 0 && phone < credit && credit < actors);
+        int archivedCredit = sql.indexOf("\\ir ../../migrations/V113");
+        int productImages = sql.indexOf("\\ir ../../migrations/V114");
+        assertTrue(phone >= 0 && phone < credit && credit < actors && actors < archivedCredit
+                && archivedCredit < productImages);
+    }
+
+    @Test
+    void customerCreditRetirementPreservesValuesWithoutDeletingRows() throws Exception {
+        String migration = Files.readString(Path.of(
+                "database/migrations/V113__retire_customer_credit_limit.sql"));
+        assertTrue(migration.contains("RENAME COLUMN credit_limit TO legacy_credit_limit"));
+        assertTrue(migration.contains("RENAME CONSTRAINT ck_customer_credit_limit TO ck_customer_legacy_credit_limit"));
+        assertTrue(migration.contains("COMMENT ON COLUMN customer.legacy_credit_limit"));
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("DROP "));
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("DELETE "));
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("TRUNCATE"));
+    }
+
+    @Test
+    void productImageMigrationAddsOnlyAnOptionalValidatedReference() throws Exception {
+        String migration = Files.readString(Path.of("database/migrations/V114__product_image_reference.sql"));
+        assertTrue(migration.contains("ADD COLUMN image_filename VARCHAR(68)"));
+        assertTrue(migration.contains("image_filename IS NULL OR image_filename ~"));
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("DROP "));
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("DELETE "));
+        assertFalse(migration.toUpperCase(java.util.Locale.ROOT).contains("TRUNCATE"));
     }
 
     @Test

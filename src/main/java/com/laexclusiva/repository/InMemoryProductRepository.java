@@ -44,6 +44,12 @@ public class InMemoryProductRepository implements ProductRepository {
         product.definePrice(supported, price);
     }
 
+    @Override
+    public void updateImageFilename(String productId, String imageFilename) {
+        BeerProduct product = requireProduct(productId);
+        product.setImageFilename(imageFilename);
+    }
+
     private BeerProduct requireProduct(String productId) {
         BeerProduct product = storage.get(productId);
         if (product == null) {
