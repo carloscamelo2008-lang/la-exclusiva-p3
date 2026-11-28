@@ -21,7 +21,7 @@ La aplicación no carga ni importa datos reales del negocio. V113 y V114 se aña
 3. **Obligaciones de deuda general:** la cartera actual conserva el libro agregado con categoría y no permite seleccionar una obligación específica al abonar. Se requiere un modelo de obligación/asignación y una estrategia explícita para saldos históricos cuyos pagos no pueden atribuirse con certeza. La categoría todavía aparece en el flujo existente.
 4. **Cuentas por pagar a proveedores:** compras y recepción distinguen pedido de mercancía recibida, pero no hay todavía libro de obligaciones, pagos parciales, vencimientos ni responsables del pago. No se presuponen plazos, tasas o acuerdos.
 5. **Costos y ganancias:** no se presenta utilidad como resultado comercial hasta disponer de costos de compra confiables y su regla histórica por producto/lote. Ventas y efectivo son métricas distintas.
-6. **Fotografías reales:** no se encontraron en `src/main/resources` las seis imágenes indicadas por Carlos; allí solo está la mascota aprobada. No se descargaron ni asignaron sustitutos. Para asociarlas, ubicar los archivos aprobados en una carpeta local y desde Catálogo seleccionar el producto por su ID estable y actualizar su foto. El almacén predeterminado es `%USERPROFILE%\La Exclusiva\Productos`; se puede cambiar con `LAEXCLUSIVA_PRODUCT_IMAGES_DIR`. Respaldar esa carpeta junto con PostgreSQL.
+6. **Fotografías reales:** las seis fotografías originales suministradas por Carlos se inspeccionaron y se copiaron sin transformación a `docs/assets/catalogo-productos/`, con manifiesto, dimensiones y SHA-256. Son recursos de entrega para Daniel; no están en `src/main/resources`, no se incorporan automáticamente al runtime y todavía no se guardaron referencias en productos ni en una base. El contrato existente permite que una persona autorizada importe una foto mediante `ProductImageStore`, guarde la referencia por el servicio del catálogo y la resuelva desde `%USERPROFILE%\La Exclusiva\Productos` (o `LAEXCLUSIVA_PRODUCT_IMAGES_DIR`); respaldar esa carpeta junto con PostgreSQL. El manifiesto registra que el producto visual “Águila Original 250 ml” corresponde por volumen al ID actual `AGUILITA_250`, cuyo nombre en `InitialCatalog` es “Aguilita”; Carlos debe confirmar esa equivalencia antes de asignar la imagen.
 7. **Datos auténticos, configuración y despliegue:** faltan el catálogo validado, cantidades/precios, clientes, proveedores, usuarios/vendedores y la configuración de la base del negocio. No se conectó a una base de negocio ni se preparó un instalador. El procedimiento de respaldo/restauración se documentó en `database/README.md`, pero no se ejecutó ni ensayó.
 
 ## Validación de esta intervención
@@ -45,7 +45,44 @@ Configura `LAEXCLUSIVA_PRODUCT_IMAGES_DIR` y `LAEXCLUSIVA_REPORTS_DIR` a carpeta
 
 ## Revisión humana requerida
 
-- Carlos: definir política de documento de identidad, entregar las seis fotos originales y datos comerciales validados, y revisar/ensayar el procedimiento de respaldo y restauración en una base aislada.
+- Carlos: definir política de documento de identidad, confirmar la asociación “Águila Original” / `AGUILITA_250`, aportar datos comerciales validados y revisar/ensayar el procedimiento de respaldo y restauración en una base aislada.
 - Jesús: revisar el contrato/migraciones propuestos para identidad de actor de venta, obligaciones generales individualizadas y cuentas por pagar antes de habilitar esas escrituras.
-- Daniel: conservar las funciones y `fx:id` agregados a Inventario y Ventas al continuar el diseño visual.
+- Daniel: revisar el manifiesto de `docs/assets/catalogo-productos/` e integrar su visualización conservando los controles y contratos actuales de Inventario y Ventas; el staging no cambia FXML ni comportamiento JavaFX.
 - Equipo: revisar V113/V114 y ejecutar sus pruebas en un laboratorio PostgreSQL efímero antes de aplicar las migraciones en una base de negocio.
+
+## Actualización de coordinación y validación (2026-11-28)
+
+### Recursos visuales preparados
+
+Se copiaron seis imágenes JPEG originales a `docs/assets/catalogo-productos/`. Las copias conservan el SHA-256 de origen y el manifiesto contiene el ID existente propuesto para cada producto. No se modificaron los originales, no se recortaron ni comprimieron imágenes, no se inventaron precios o cantidades y no se tocaron el catálogo ni la interfaz. La carpeta contiene material de coordinación documental, no recursos runtime. La imagen `costena_bacana_330ml.jpeg` conserva su extensión original; al importarla, el almacén existente normaliza el nombre derivado del hash a `.jpg`.
+
+La carpeta de origen también incluía un ZIP con esos seis nombres; se inspeccionaron sus entradas y se usaron las seis imágenes sueltas, sin duplicar el archivo ZIP en el repositorio.
+
+### Validación PostgreSQL aislada
+
+- Se utilizó un clúster PostgreSQL 18.6 temporal, enlazado solo a `127.0.0.1:55432`, con la base `la_exclusiva_test` y el usuario técnico del laboratorio. El clúster quedó aislado bajo `%LOCALAPPDATA%\Temp`; el servicio local del puerto 5432 y cualquier base existente, incluida `la_exclusiva`, no se usaron ni modificaron.
+- El script `database/validation/identity/application.psql` aplicó V001, V004, V002 y V100–V114 únicamente al clúster temporal. Sus verificaciones de conservación del cupo histórico V113 y de restricción de referencias de imágenes V114 finalizaron correctamente. Las pruebas automatizadas usaron fixtures de laboratorio; no se cargaron datos reales.
+- Con Microsoft JDK 17.0.18 y Maven 3.10.0, `mvn -e clean verify` terminó en **BUILD FAILURE**: **918 pruebas, 873 aprobadas, 3 fallidas, 10 con error y 32 omitidas**. Surefire muestra 36 pruebas de integración PostgreSQL ejecutadas: 23 aprobadas, 3 fallidas y 10 con error. Las 32 omitidas son integraciones optativas que requieren autorización/configuración específica; no se cuentan como aprobadas. No se generó un artefacto nuevo porque la fase de pruebas detuvo la verificación.
+- Las suites automatizadas `ProductImageStoreTest` (2/2) e `InventoryControllerReviewRegressionTest` (5/5) pasaron. Esto no acredita una revisión visual manual ni que estas seis fotos ya se vean en la aplicación.
+
+### Hallazgos que requieren coordinación
+
+1. **Regresión de lectura JDBC:** `ProductRepositoryJdbc.readProduct(ResultSet)` lee `image_filename`, pero `InventoryRepositoryJdbc.INVENTORY_SELECT` no proyecta esa columna. PostgreSQL reportó `The column name image_filename was not found in this ResultSet`. Esto causa errores en lecturas de inventario y movimientos y bloquea escenarios de operaciones financieras/ventas que consultan existencias. La corrección técnica probable es incluir `p.image_filename` en esa proyección y añadir una regresión PostgreSQL para dicho lector. No se modificó el DAO compartido porque su revisión debe coordinarse con Jesús; el defecto debe resolverse antes de afirmar que inventario/ventas PostgreSQL están validados.
+2. **Aserción de escala monetaria:** `CustomerCrudPostgresIntegrationTest.editsAndDeletesWithPhoneAndReferenceConstraints` compara `BigDecimal.ZERO` con el valor SQL `0.00` mediante igualdad sensible a escala. Los valores numéricos son equivalentes; la regresión observada está en la aserción del test. El ajuste propuesto es comparar numéricamente (`compareTo`) o usar una expectativa de escala compatible. No se alteró el contrato financiero.
+3. Los fallos y errores restantes de las suites PostgreSQL son consecuencias en cascada de la columna ausente: inventario, movimientos, rollback financiero y flujos de venta JDBC. No se atribuyen a fallos independientes de consistencia transaccional.
+
+### Impacto de los siete commits locales
+
+Los siete commits originales permanecen intactos en `feature/commercial-transformation`. La tabla identifica las áreas que necesitan revisión cruzada antes de integrar:
+
+| Commit | Área modificada | Revisión de coordinación |
+|---|---|---|
+| `8f19bfb` | Arranque, `App`, `ApplicationServices` y composición de persistencia | Revisar con quien mantenga la composición JavaFX; afecta el límite entre arranque, autenticación y persistencia. |
+| `6d4672a` | Retiro de datos demo del arranque productivo | Coordinar si se cambia el flujo de inicio/demo; no cambia la carga de negocio. |
+| `a3cc8a4` | Cliente, ventas y V113 para retirar el cupo nuevo | Revisión de Jesús requerida por el contrato financiero y la migración histórica. |
+| `4da86e8` | Cartera, controlador/FXML, PDF local y correo desactivado | Revisión de Daniel por FXML/controlador; conservar el contrato visual y eventos existentes. |
+| `28ea81c` | Referencias de imagen, repositorios, inventario/ventas, FXML y V114 | Revisión de Daniel por visualización; revisión de Jesús por persistencia/migración y consultas JDBC. El error de `image_filename` quedó expuesto por integración. |
+| `f41b237` | Documentación y scripts del laboratorio | Coordinación; comprobar scripts y documentación con el responsable del laboratorio. |
+| `04fd4c6` | Bitácora y documentación del estado | Solo documentación; conservar el registro histórico. |
+
+No se ejecutó un recorrido manual de escritorio. El inicio visual en JavaFX, la asignación real de las imágenes, la comprobación de permisos desde una sesión abierta y la actualización visual posterior a una carga quedan pendientes; las pruebas FXML no sustituyen esas comprobaciones.
