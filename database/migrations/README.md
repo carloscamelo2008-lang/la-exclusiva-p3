@@ -5,8 +5,11 @@
 `database/deployment/install.psql` requiere un esquema `public` vacío y el rol
 dueño/instalador con permisos de DDL. Ejecuta el comando documentado en
 [PostgreSQL y JDBC](../README.md#instalación-comercial-y-rol-aplicativo).
-El orden es `V001 → V004 → V002 → V100 … V112`. Las migraciones conservan sus
-transacciones individuales. El registro de las 16 versiones se inserta al
+El orden es `V001 → V004 → V002 → V100 … V112`.
+La cobertura actual de `develop` termina en `V112`. Antes de usar el instalador
+comercial final, incorpora `V113` y `V114` de la rama de transformación comercial
+y actualiza el orden y el registro de versiones.
+Las migraciones conservan sus transacciones individuales. El registro de las 16 versiones se inserta al
 final, tras completar todas las migraciones. Si se interrumpe la instalación,
 pueden quedar cambios confirmados y la guarda rechazará otra ejecución sobre
 esa base. Conserva el diagnóstico y repite sobre otra base vacía tras resolver
@@ -15,11 +18,17 @@ en la guía JDBC.
 
 Para comprobar el instalador con JUnit, prepara una base aislada
 `la_exclusiva_test` con este mismo script, configura `LAEXCLUSIVA_TEST_DB_URL` y
-las variables JDBC de usuario y contraseña para esa base, y ejecuta:
+las variables `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD` con un rol
+instalador de pruebas que pueda crear roles y conceder los permisos sobre las
+tablas, y ejecuta:
 
 ```powershell
 mvn "-Dlaexclusiva.test.postgres.commercialDeployment=true" "-Dtest=PostgresStartupVerifierIntegrationTest" test
 ```
+
+La prueba crea un rol temporal sin superusuario ni inicio de sesión, activa
+sus permisos con `SET LOCAL ROLE` y revierte el rol y las concesiones al cerrar
+la transacción de prueba.
 
 ## Respaldo y restauración de prueba obligatorios
 

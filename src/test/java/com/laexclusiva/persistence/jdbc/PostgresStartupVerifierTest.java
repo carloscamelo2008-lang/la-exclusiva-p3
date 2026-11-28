@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -18,11 +19,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 class PostgresStartupVerifierTest {
+    static final Map<String, Set<String>> MINIMUM_GRANTS = Map.ofEntries(
+            Map.entry("schema_migration", Set.of("SELECT")),
+            Map.entry("customer", Set.of("SELECT", "INSERT", "UPDATE", "DELETE")),
+            Map.entry("user_account", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("seller", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("product_price", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("inventory_item", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("supplier", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("purchase_order", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("purchase_order_line", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("customer_collection_profile", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("customer_collection_reminder", Set.of("SELECT", "INSERT", "UPDATE")),
+            Map.entry("sale", Set.of("SELECT", "INSERT", "UPDATE (id)")),
+            Map.entry("beer_product", Set.of("SELECT", "INSERT")),
+            Map.entry("sale_line", Set.of("SELECT", "INSERT")),
+            Map.entry("sale_payment", Set.of("SELECT", "INSERT")),
+            Map.entry("stock_movement", Set.of("SELECT", "INSERT")),
+            Map.entry("cash_movement", Set.of("SELECT", "INSERT")),
+            Map.entry("customer_general_debt_movement", Set.of("SELECT", "INSERT")),
+            Map.entry("goods_receipt", Set.of("SELECT", "INSERT")),
+            Map.entry("goods_receipt_line", Set.of("SELECT", "INSERT")),
+            Map.entry("customer_collection_follow_up", Set.of("SELECT", "INSERT")),
+            Map.entry("administrative_audit_event", Set.of("SELECT", "INSERT")));
+
     @Test
-    void acceptsCompleteV112SchemaAndClosesConnection() {
+    void acceptsExactMinimumGrantsWithoutDeleteOnFinancialHistoryAndClosesConnection() {
         Fixture fixture = new Fixture();
         assertDoesNotThrow(fixture.verifier()::verify);
-        assertEquals(true, fixture.closed.get());
+        assertTrue(fixture.closed.get());
     }
 
     @Test
@@ -56,8 +81,17 @@ class PostgresStartupVerifierTest {
     @Test
     void rejectsMissingTablePrivileges() {
         Fixture fixture = new Fixture();
-        fixture.denied = Set.of("sale");
-        assertFailure(fixture.verifier(), PostgresStartupVerifier.Failure.INSUFFICIENT_PRIVILEGES);
+        fixture.grants.put("sale_payment", Set.of("SELECT"));
+        var failure = assertFailure(fixture.verifier(), PostgresStartupVerifier.Failure.INSUFFICIENT_PRIVILEGES);
+        assertTrue(failure.getMessage().contains("INSERT sobre public.sale_payment"));
+    }
+
+    @Test
+    void rejectsMissingSaleRowLockPrivilege() {
+        Fixture fixture = new Fixture();
+        fixture.grants.put("sale", Set.of("SELECT", "INSERT"));
+        var failure = assertFailure(fixture.verifier(), PostgresStartupVerifier.Failure.INSUFFICIENT_PRIVILEGES);
+        assertTrue(failure.getMessage().contains("UPDATE (id) sobre public.sale"));
     }
 
     @Test
@@ -72,7 +106,7 @@ class PostgresStartupVerifierTest {
         Fixture fixture = new Fixture();
         fixture.valid = false;
         assertFailure(fixture.verifier(), PostgresStartupVerifier.Failure.CONNECTION_FAILED);
-        assertEquals(true, fixture.closed.get());
+        assertTrue(fixture.closed.get());
     }
 
     @Test
@@ -83,10 +117,12 @@ class PostgresStartupVerifierTest {
         assertFailure(verifier, PostgresStartupVerifier.Failure.CONNECTION_FAILED);
     }
 
-    private static void assertFailure(PostgresStartupVerifier verifier, PostgresStartupVerifier.Failure expected) {
+    private static PostgresStartupVerifier.VerificationException assertFailure(
+            PostgresStartupVerifier verifier, PostgresStartupVerifier.Failure expected) {
         var failure = assertThrows(PostgresStartupVerifier.VerificationException.class, verifier::verify);
         assertEquals(expected, failure.getFailure());
         assertNull(failure.getCause());
+        return failure;
     }
 
     private static PostgresStartupVerifier verifier(JdbcConnectionProvider.ConnectionFactory connection) {
@@ -96,16 +132,14 @@ class PostgresStartupVerifierTest {
 
     private static final class Fixture {
         private final Map<String, String> columns = new LinkedHashMap<>();
+        private final Map<String, Set<String>> grants = new LinkedHashMap<>(MINIMUM_GRANTS);
         private final AtomicBoolean closed = new AtomicBoolean();
-        private Set<String> denied = Set.of();
         private boolean valid = true;
         private boolean versionCompatible = true;
         private boolean historyReadable = true;
 
         private Fixture() {
-            for (String table : new String[]{"user_account", "beer_product", "product_price", "inventory_item",
-                    "sale", "sale_line", "cash_movement", "supplier", "purchase_order", "purchase_order_line",
-                    "goods_receipt", "goods_receipt_line"}) {
+            for (String table : MINIMUM_GRANTS.keySet()) {
                 columns.put(table, "id");
             }
             columns.put("schema_migration", "version");
@@ -138,9 +172,13 @@ class PostgresStartupVerifierTest {
                 case "executeQuery" -> {
                     String sql = (String) args[0];
                     if (sql.contains("FROM pg_catalog.pg_class")) {
-                        yield rows(columns.entrySet().stream()
-                                .map(entry -> new Object[]{entry.getKey(), entry.getValue(),
-                                        !denied.contains(entry.getKey())}).toArray(Object[][]::new));
+                        yield rows(columns.entrySet().stream().map(entry -> {
+                            Set<String> permissions = grants.get(entry.getKey());
+                            return new Object[]{entry.getKey(), entry.getValue(),
+                                    permissions.contains("SELECT"), permissions.contains("INSERT"),
+                                    permissions.contains("UPDATE"), permissions.contains("DELETE"),
+                                    permissions.contains("UPDATE (id)")};
+                        }).toArray(Object[][]::new));
                     }
                     if (!sql.contains("FROM public.schema_migration")) {
                         throw new AssertionError(sql);

@@ -42,8 +42,10 @@ psql -X -h localhost -p 5432 -U rol_instalador -d la_exclusiva -f database/deplo
 ```
 
 El instalador aplica las 16 migraciones en orden y registra el conjunto en
-`public.schema_migration`. Consulta [el procedimiento de respaldo y actualización](migrations/README.md)
-antes de intervenir una base existente.
+`public.schema_migration`. La cobertura actual de `develop` llega hasta
+`V112`. La versión comercial final depende de incorporar `V113` y `V114`
+de la rama de transformación comercial. Consulta [el procedimiento de respaldo
+y actualización](migrations/README.md) antes de intervenir una base existente.
 
 Como administrador PostgreSQL, crea un rol de inicio de sesión dedicado, sin
 superusuario, creación de bases, creación de roles ni membresía en el rol dueño.
@@ -59,27 +61,60 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO la_exclusiva_app;
 
 GRANT SELECT ON public.schema_migration TO la_exclusiva_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON
-    public.user_account, public.customer, public.beer_product, public.inventory_item,
-    public.stock_movement, public.sale, public.sale_line, public.sale_payment,
-    public.customer_general_debt_movement, public.cash_movement,
-    public.purchase_order, public.goods_receipt TO la_exclusiva_app;
-GRANT SELECT, INSERT, UPDATE ON public.seller, public.product_price, public.supplier,
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer TO la_exclusiva_app;
+GRANT SELECT, INSERT, UPDATE ON public.user_account, public.seller,
+    public.product_price, public.inventory_item, public.supplier, public.purchase_order,
     public.purchase_order_line, public.customer_collection_profile,
     public.customer_collection_reminder TO la_exclusiva_app;
-GRANT SELECT, INSERT ON public.goods_receipt_line, public.customer_collection_follow_up,
-    public.administrative_audit_event TO la_exclusiva_app;
+GRANT SELECT, INSERT ON public.beer_product, public.sale, public.sale_line,
+    public.sale_payment, public.customer_general_debt_movement, public.stock_movement,
+    public.cash_movement, public.goods_receipt, public.goods_receipt_line,
+    public.customer_collection_follow_up, public.administrative_audit_event TO la_exclusiva_app;
+GRANT UPDATE (id) ON public.sale TO la_exclusiva_app;
 ```
 
-Comprueba los privilegios efectivos, incluidos los heredados de `PUBLIC` o de
-otras membresías. El ejemplo concede los cuatro permisos del contrato del
-verificador en las doce tablas operativas y limita las concesiones en las demás
-a las operaciones de sus repositorios. Revisa cada migración posterior para
-conceder únicamente el acceso adicional que requiera.
+| Tabla en `public` | Permisos requeridos | Uso JDBC |
+|---|---|---|
+| `schema_migration` | SELECT | Comprobar la versión instalada |
+| `customer` | SELECT, INSERT, UPDATE, DELETE | Mantener clientes y saldos, y eliminar según las reglas del repositorio |
+| `user_account` | SELECT, INSERT, UPDATE | Gestionar cuentas, estado y credenciales |
+| `seller` | SELECT, INSERT, UPDATE | Registrar, consultar y cambiar el estado |
+| `beer_product` | SELECT, INSERT | Registrar productos y consultar el catálogo |
+| `product_price` | SELECT, INSERT, UPDATE | Registrar y modificar precios |
+| `inventory_item` | SELECT, INSERT, UPDATE | Crear, consultar y ajustar existencias |
+| `stock_movement` | SELECT, INSERT | Registrar y consultar movimientos de inventario |
+| `sale` | SELECT, INSERT, UPDATE (id) | Guardar y consultar ventas y bloquear su cabecera al registrar abonos |
+| `sale_line` | SELECT, INSERT | Guardar y consultar líneas de venta |
+| `sale_payment` | SELECT, INSERT | Registrar y consultar abonos de venta |
+| `customer_general_debt_movement` | SELECT, INSERT | Registrar y consultar movimientos de cartera |
+| `cash_movement` | SELECT, INSERT | Registrar movimientos y consultar caja |
+| `supplier` | SELECT, INSERT, UPDATE | Mantener proveedores |
+| `purchase_order` | SELECT, INSERT, UPDATE | Crear pedidos y cambiar su estado |
+| `purchase_order_line` | SELECT, INSERT, UPDATE | Registrar líneas y ajustar las unidades recibidas |
+| `goods_receipt` | SELECT, INSERT | Registrar y consultar recepciones |
+| `goods_receipt_line` | SELECT, INSERT | Registrar y consultar detalles de recepción |
+| `customer_collection_profile` | SELECT, INSERT, UPDATE | Mantener preferencias de cobranza |
+| `customer_collection_reminder` | SELECT, INSERT, UPDATE | Registrar avisos y actualizar su estado de entrega |
+| `customer_collection_follow_up` | SELECT, INSERT | Registrar y consultar seguimientos |
+| `administrative_audit_event` | SELECT, INSERT | Registrar y consultar eventos de auditoría |
+
+`UPDATE (id)` permite el `SELECT … FOR UPDATE` de Ventas. PostgreSQL también
+permite actualizar esa columna con la misma concesión. El repositorio la
+utiliza únicamente para bloquear la fila y serializar los abonos.
+El borrado de `user_account` que implementa el repositorio solo tiene un
+consumidor en la compensación del alta de cuentas demo en memoria.
+
+Si el rol ya recibió concesiones más amplias, revoca las sobrantes antes de
+aplicar esta matriz. `GRANT` agrega permisos y deja vigentes los anteriores.
+Comprueba también permisos efectivos heredados de `PUBLIC` u otras membresías.
 
 `PostgresStartupVerifier.verify()` valida la conexión, las tablas y columnas
-requeridas, el registro V112 o posterior y los permisos del usuario efectivo.
-Este PR entrega el verificador JDBC para su integración posterior en el arranque.
+requeridas, el registro V112 o posterior y los permisos mínimos del usuario
+efectivo. El PR 1 entrega la infraestructura JDBC de invocación explícita.
+El arranque actual de `App` y `ApplicationServices` todavía carece de esta
+verificación automática. Su activación obligatoria antes de habilitar la
+sesión queda para el PR 2 (`feature/jesus-commercial-startup`). Los laboratorios
+de integración actuales aplican migraciones sin crear `schema_migration`.
 
 Las migraciones son SQL versionado, no se ejecutan automáticamente al iniciar la aplicación. El conjunto actual del repositorio incluye `V001`, `V002`, `V004` y `V100`–`V112`; los saltos de numeración son intencionales. La ruta aplicada por el laboratorio se declara en `database/validation/identity/application.psql`; los requisitos de cada versión están en sus encabezados y en el [contrato JDBC](jdbc-integration-contract.md). Antes de aplicar una migración, verifica manualmente el servidor, el nombre de base y el estado de esquema. No repitas una versión ya aplicada. Para pruebas que puedan insertar o limpiar fixtures, utiliza exclusivamente una base ficticia y aislada `la_exclusiva_test` o el laboratorio efímero de CI.
 

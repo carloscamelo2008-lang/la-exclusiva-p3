@@ -1,5 +1,8 @@
 -- database/deployment/install.psql
--- Instalador comercial limpio para La Exclusiva (PostgreSQL local)
+-- Base del instalador comercial para La Exclusiva (PostgreSQL local).
+-- Cobertura actual de develop: hasta V112.
+-- Pendiente incorporar V113 y V114 de la rama de transformación comercial
+-- antes de usar este script como instalador comercial final.
 -- No incluye fixtures ni datos de demostracion.
 
 \set ON_ERROR_STOP on

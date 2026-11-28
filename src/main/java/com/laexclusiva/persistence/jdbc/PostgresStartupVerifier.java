@@ -2,26 +2,44 @@ package com.laexclusiva.persistence.jdbc;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Comprueba el contrato del esquema comercial sin modificar la base. */
+/**
+ * Comprueba el contrato PostgreSQL V112 sin modificar la base.
+ * El PR 1 entrega este verificador explícito. Su uso obligatorio en el arranque
+ * queda para el PR 2 (feature/jesus-commercial-startup).
+ */
 public final class PostgresStartupVerifier {
-    private static final List<String> REQUIRED_TABLES = List.of(
-            "schema_migration", "user_account", "seller", "customer", "beer_product",
-            "product_price", "inventory_item", "stock_movement", "sale", "sale_line",
-            "sale_payment", "customer_general_debt_movement", "cash_movement", "supplier",
-            "purchase_order", "purchase_order_line", "goods_receipt", "goods_receipt_line");
-    private static final List<String> CRUD_TABLES = List.of(
-            "user_account", "customer", "beer_product", "inventory_item", "stock_movement",
-            "sale", "sale_line", "sale_payment", "customer_general_debt_movement", "cash_movement",
-            "purchase_order", "goods_receipt");
+    private static final List<String> TABLE_PRIVILEGES = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
+    private static final String SALE_ROW_LOCK = "UPDATE (id)";
+    private static final Map<String, List<String>> REQUIRED_PRIVILEGES = requiredPrivileges();
     private static final List<String> REQUIRED_COLUMNS = List.of(
             "seller.active", "customer.credit_limit", "sale_payment.received_by_user_id",
             "customer_general_debt_movement.received_by_user_id", "stock_movement.actor_user_id",
-            "schema_migration.version");
+            "sale.id", "schema_migration.version");
+
+    private static Map<String, List<String>> requiredPrivileges() {
+        Map<String, List<String>> privileges = new LinkedHashMap<>();
+        privileges.put("schema_migration", List.of("SELECT"));
+        privileges.put("customer", TABLE_PRIVILEGES);
+        for (String table : List.of("user_account", "seller", "product_price", "inventory_item", "supplier",
+                "purchase_order", "purchase_order_line", "customer_collection_profile", "customer_collection_reminder")) {
+            privileges.put(table, List.of("SELECT", "INSERT", "UPDATE"));
+        }
+        for (String table : List.of("beer_product", "stock_movement", "sale_line", "sale_payment",
+                "customer_general_debt_movement", "cash_movement", "goods_receipt", "goods_receipt_line",
+                "customer_collection_follow_up", "administrative_audit_event")) {
+            privileges.put(table, List.of("SELECT", "INSERT"));
+        }
+        // SaleRepositoryJdbc bloquea la cabecera con FOR UPDATE OF s al registrar abonos.
+        privileges.put("sale", List.of("SELECT", "INSERT", SALE_ROW_LOCK));
+        return privileges;
+    }
 
     public enum Failure {
         CONNECTION_FAILED,
@@ -65,17 +83,19 @@ public final class PostgresStartupVerifier {
     }
 
     private static void verifySchema(Connection connection) {
-        Set<String> tables = new HashSet<>();
+        Map<String, Set<String>> granted = new LinkedHashMap<>();
         Set<String> columns = new HashSet<>();
-        Set<String> writableTables = new HashSet<>();
         try (var statement = connection.createStatement()) {
             statement.setQueryTimeout(5);
             try (var rows = statement.executeQuery("""
                     SELECT c.relname, a.attname,
-                           pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT')
-                           AND pg_catalog.has_table_privilege(current_user, c.oid, 'INSERT')
-                           AND pg_catalog.has_table_privilege(current_user, c.oid, 'UPDATE')
-                           AND pg_catalog.has_table_privilege(current_user, c.oid, 'DELETE')
+                           pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT'),
+                           pg_catalog.has_table_privilege(current_user, c.oid, 'INSERT'),
+                           pg_catalog.has_table_privilege(current_user, c.oid, 'UPDATE'),
+                           pg_catalog.has_table_privilege(current_user, c.oid, 'DELETE'),
+                           CASE WHEN c.relname = 'sale' AND a.attname = 'id'
+                                THEN pg_catalog.has_column_privilege(current_user, c.oid, a.attnum, 'UPDATE')
+                                ELSE false END
                     FROM pg_catalog.pg_class c
                     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                     LEFT JOIN pg_catalog.pg_attribute a
@@ -84,21 +104,34 @@ public final class PostgresStartupVerifier {
                     """)) {
                 while (rows.next()) {
                     String table = rows.getString(1);
-                    tables.add(table);
                     columns.add(table + "." + rows.getString(2));
-                    if (rows.getBoolean(3)) {
-                        writableTables.add(table);
+                    Set<String> privileges = granted.computeIfAbsent(table, key -> new HashSet<>());
+                    for (int index = 0; index < TABLE_PRIVILEGES.size(); index++) {
+                        if (rows.getBoolean(index + 3)) {
+                            privileges.add(TABLE_PRIVILEGES.get(index));
+                        }
+                    }
+                    if (rows.getBoolean(7)) {
+                        privileges.add(SALE_ROW_LOCK);
                     }
                 }
             }
-            for (String table : REQUIRED_TABLES) {
-                if (!tables.contains(table)) {
+            for (String table : REQUIRED_PRIVILEGES.keySet()) {
+                if (!granted.containsKey(table)) {
                     throw incompatible("Falta la tabla public." + table + ".");
                 }
             }
             for (String column : REQUIRED_COLUMNS) {
                 if (!columns.contains(column)) {
                     throw incompatible("Falta la columna public." + column + ".");
+                }
+            }
+            for (var requirement : REQUIRED_PRIVILEGES.entrySet()) {
+                String table = requirement.getKey();
+                for (String privilege : requirement.getValue()) {
+                    if (!granted.get(table).contains(privilege)) {
+                        throw insufficient("Falta " + privilege + " sobre public." + table + ".");
+                    }
                 }
             }
             try (var rows = statement.executeQuery("""
@@ -111,11 +144,6 @@ public final class PostgresStartupVerifier {
                     """)) {
                 if (!rows.next() || !rows.getBoolean(1)) {
                     throw incompatible("Se requiere la versión V112 o posterior.");
-                }
-            }
-            for (String table : CRUD_TABLES) {
-                if (!writableTables.contains(table)) {
-                    throw insufficient("Se requieren SELECT, INSERT, UPDATE y DELETE sobre public." + table + ".");
                 }
             }
         } catch (SQLException failure) {
