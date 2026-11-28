@@ -101,7 +101,7 @@ public final class AccountStatementPdfGenerator {
         result.add("Compromiso de pago: " + (data.commitmentDate() == null ? "No registrado" : data.commitmentDate()));
         result.add("Instrucciones: confirme con administracion el medio y titular antes de pagar.");
         if (data.paymentKey() != null) result.add("Llave de pago configurada: " + data.paymentKey());
-        result.add("El pago requiere confirmacion administrativa; el correo no registra una deuda como pagada.");
+        result.add("Los pagos incluidos constan como registrados hasta la fecha de generación; verifique cualquier pago posterior en el sistema.");
         return result;
     }
 

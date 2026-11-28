@@ -148,7 +148,11 @@ class CollectionAssistantServiceTest {
     void reminderPreparationIsWeeklyIdempotentPdfIsCommercialAndDefaultDeliveryIsSimulated() throws Exception {
         FakeEmail email = new FakeEmail(false, false);
         Fixture fixture = new Fixture(email);
-        fixture.customer("email-client", "250.00", List.of());
+        LocalDate saleDate = TODAY.minusDays(2);
+        Sale pendingSale = sale("SALE-PDF-STATEMENT", "email-client", "100.00", saleDate, List.of(
+                new SalePayment(new BigDecimal("40.00"), saleDate.atTime(10, 0)),
+                new SalePayment(new BigDecimal("10.00"), TODAY.minusDays(1).atTime(12, 0))));
+        fixture.customer("email-client", "250.00", List.of(pendingSale));
         fixture.service.saveProfile(fixture.admin.session(), "email-client", "billing@example.test",
                 CollectionChannel.EMAIL, true, true, null, null);
 
@@ -163,10 +167,20 @@ class CollectionAssistantServiceTest {
         try (var document = Loader.loadPDF(preview.pdf())) {
             String text = new PDFTextStripper().getText(document);
             assertTrue(text.contains("Estado de cuenta"));
+            assertTrue(text.contains("Cliente: Cliente email-client (email-client)"));
+            assertTrue(text.contains("Generado: " + TODAY));
+            assertTrue(text.contains("Venta SALE-PDF-STATEMENT | fecha " + saleDate));
+            assertTrue(text.contains("Pago inicial " + saleDate));
+            assertTrue(text.contains("Abono " + TODAY.minusDays(1)));
             assertTrue(text.contains("Deuda general"));
+            assertTrue(text.contains("Saldo total actualizado"));
             assertTrue(text.contains("no es factura electronica DIAN"));
+            assertTrue(text.contains("Los pagos incluidos constan como registrados"));
+            assertFalse(text.toLowerCase(java.util.Locale.ROOT).contains("correo no registra"));
+            assertFalse(text.toLowerCase(java.util.Locale.ROOT).contains("correo"));
         }
-        assertTrue(preview.text().contains("no registra la deuda como pagada"));
+        assertTrue(preview.text().contains("Los pagos se consideran aplicados cuando su registro y confirmación aparecen en el sistema."));
+        assertFalse(preview.text().contains("correo no registra la deuda como pagada"));
         assertEquals(0, email.calls.get(), "La vista previa no debe enviar correo.");
 
         String confirmation = fixture.service.confirmReminder(fixture.admin.session(), reminder.id(), preview.previewToken());

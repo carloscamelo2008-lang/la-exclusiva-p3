@@ -165,7 +165,7 @@ public final class CollectionsController {
         }
     }
 
-    @FXML private void handleRefresh() { refreshDashboard(); }
+    @FXML private void handleRefresh() { refreshDashboard(true); }
 
     @FXML
     private void handleCustomerSelected() {
@@ -260,6 +260,10 @@ public final class CollectionsController {
 
     @FXML
     private void refreshDashboard() {
+        refreshDashboard(false);
+    }
+
+    private void refreshDashboard(boolean confirmSuccessfulRefresh) {
         try {
             CollectionDashboard dashboard = assistant.dashboard(session);
             recommendationsTable.getItems().setAll(dashboard.recommendations());
@@ -267,7 +271,7 @@ public final class CollectionsController {
                     + " | Deudas 30+ días: " + dashboard.agedDebts()
                     + " | Próximos 3 días: " + dashboard.upcomingCommitments()
                     + " | Avisos pendientes de revisión: " + dashboard.statementsPendingReview());
-            if (messageLabel != null && messageLabel.getText().isBlank()) messageLabel.setText("Tablero actualizado.");
+            if (confirmSuccessfulRefresh) messageLabel.setText("Tablero actualizado.");
         } catch (RuntimeException failure) {
             recommendationsTable.getItems().clear();
             metricsLabel.setText("Indicadores no disponibles.");

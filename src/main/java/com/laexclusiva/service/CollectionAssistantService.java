@@ -693,8 +693,8 @@ public final class CollectionAssistantService {
     private EmailPreviewContent emailContent(String recipient, AccountStatementData statement) {
         byte[] pdf = pdfGenerator.generate(statement);
         String text = "Adjuntamos el estado de cuenta comercial actualizado de La Exclusiva. "
-                + "El documento separa deuda de ventas y deuda general. Un pago requiere confirmación "
-                + "administrativa; el envío de este correo no registra la deuda como pagada.";
+                + "El documento separa deuda de ventas y deuda general. Los pagos se consideran aplicados "
+                + "cuando su registro y confirmación aparecen en el sistema.";
         return new EmailPreviewContent(recipient, "Estado de cuenta comercial - La Exclusiva", text, pdf);
     }
 

@@ -136,6 +136,58 @@ class CollectionsControllerFxmlTest {
     }
 
     @Test
+    void manualRefreshConfirmsSuccessEvenAfterAnEarlierMessage() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            String password = "Collection-Refresh-Admin-2026!";
+            services.identity().bootstrapInitialAdministrator("collection-refresh-admin", password);
+            var session = services.identity().authentication().createSession("collection-refresh-admin", password)
+                    .orElseThrow();
+            FXMLLoader loader = load();
+            ((CollectionsController) loader.getController()).configure(services.collectionAssistant(),
+                    services.administrativeAudit(), services.customers().getAllCustomers(), session,
+                    services.authorization());
+            var message = (javafx.scene.control.Label) loader.getNamespace().get("messageLabel");
+            message.setText("Se guardaron preferencias en la consulta anterior.");
+
+            refreshAlertsButton(loader).fire();
+
+            assertEquals("Tablero actualizado.", message.getText());
+            assertTrue(((javafx.scene.control.Label) loader.getNamespace().get("metricsLabel"))
+                    .getText().startsWith("Compromisos vencidos:"));
+            return null;
+        });
+    }
+
+    @Test
+    void manualRefreshShowsQueryFailureInsteadOfAFalseSuccess() throws Exception {
+        onFxThread(() -> {
+            ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
+            String password = "Collection-Refresh-Failure-2026!";
+            services.identity().bootstrapInitialAdministrator("collection-refresh-failure", password);
+            var session = services.identity().authentication().createSession("collection-refresh-failure", password)
+                    .orElseThrow();
+            FXMLLoader loader = load();
+            ((CollectionsController) loader.getController()).configure(services.collectionAssistant(),
+                    services.administrativeAudit(), services.customers().getAllCustomers(), session,
+                    services.authorization());
+            services.identity().authentication().revoke(session);
+            var message = (javafx.scene.control.Label) loader.getNamespace().get("messageLabel");
+            message.setText("Mensaje anterior.");
+
+            refreshAlertsButton(loader).fire();
+
+            assertTrue(message.getText().startsWith("No se pudo actualizar el tablero."));
+            assertFalse(message.getText().contains("Tablero actualizado."));
+            assertEquals("Indicadores no disponibles.",
+                    ((javafx.scene.control.Label) loader.getNamespace().get("metricsLabel")).getText());
+            assertTrue(((javafx.scene.control.TableView<?>) loader.getNamespace().get("recommendationsTable"))
+                    .getItems().isEmpty());
+            return null;
+        });
+    }
+
+    @Test
     void savesStatementIntoConfiguredReportsFolderAndShowsExactPath() throws Exception {
         onFxThread(() -> {
             ApplicationServices services = ApplicationServices.create(ApplicationServices.MEMORY_MODE, Map.of());
@@ -180,6 +232,10 @@ class CollectionsControllerFxmlTest {
         Parent root = loader.load();
         assertTrue(root.getChildrenUnmodifiable().size() > 0);
         return loader;
+    }
+
+    private static javafx.scene.control.Button refreshAlertsButton(FXMLLoader loader) {
+        return (javafx.scene.control.Button) loader.getNamespace().get("refreshAlertsButton");
     }
 
     private static <T> T onFxThread(Callable<T> operation) throws Exception {

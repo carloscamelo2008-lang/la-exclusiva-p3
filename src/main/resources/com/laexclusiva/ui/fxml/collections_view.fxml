@@ -29,7 +29,7 @@
                         <Label fx:id="metricsLabel" wrapText="true" />
                         <FlowPane hgap="8" vgap="10">
                             <children>
-                                <Button wrapText="true" text="Actualizar alertas" onAction="#handleRefresh" />
+                                <Button fx:id="refreshAlertsButton" wrapText="true" text="Actualizar alertas" onAction="#handleRefresh" />
                                 <Button fx:id="generateStatementButton" wrapText="true" text="Generar estado PDF" onAction="#handleGenerateStatement" />
                                 <Button fx:id="openReportFolderButton" wrapText="true" text="Abrir carpeta de reportes" onAction="#handleOpenReportFolder" />
                                 <Label fx:id="messageLabel" wrapText="true" style="-fx-text-fill: #42515c;" />
