@@ -66,6 +66,10 @@ BEGIN
     IF NOT EXISTS (SELECT FROM customer WHERE id='IV_V109_LEGACY' AND legacy_credit_limit=5000.00) THEN
         RAISE EXCEPTION 'V113 no conservó el valor histórico del cupo';
     END IF;
+    IF EXISTS (SELECT FROM information_schema.columns WHERE table_schema='public'
+               AND table_name='customer' AND column_name='credit_limit') THEN
+        RAISE EXCEPTION 'V113 dejó visible el nombre retirado credit_limit';
+    END IF;
 END;
 $customer_credit_history$;
 DO $product_image_reference$

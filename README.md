@@ -1,6 +1,6 @@
 # La Exclusiva P3
 
-Aplicación de escritorio para gestionar catálogo, inventario, compras, ventas, cartera y caja del negocio La Exclusiva. El cliente JavaFX usa Java 17 y requiere PostgreSQL local para la operación comercial normal. El almacenamiento en memoria se selecciona explícitamente solo para pruebas o recorridos controlados.
+Aplicación de escritorio para gestionar catálogo, inventario, compras, ventas, cartera y caja del negocio La Exclusiva. El cliente JavaFX usa Java 17 y requiere PostgreSQL para la operación comercial normal. El almacenamiento en memoria se selecciona explícitamente para pruebas o recorridos controlados sin persistencia; no es el arranque comercial.
 
 ## Funciones disponibles
 
@@ -41,20 +41,11 @@ El arranque comercial selecciona PostgreSQL por defecto; configure `LAEXCLUSIVA_
 
 Las fotografías opcionales se almacenan fuera de PostgreSQL en `%USERPROFILE%\La Exclusiva\Productos` (`LAEXCLUSIVA_PRODUCT_IMAGES_DIR`). Los informes PDF se guardan en `%USERPROFILE%\La Exclusiva\Reportes` (`LAEXCLUSIVA_REPORTS_DIR`). Ambas carpetas deben incluirse en el respaldo; el arranque no aplica V113/V114.
 
-La operación comercial no carga datos ficticios. El antiguo cargador de demostración quedó en el alcance de pruebas; las fixtures visuales están en `src/test`. El aprovisionamiento opcional `--demo` crea solo dos cuentas temporales y se limita a memoria seleccionada explícitamente; no forma parte del modo PostgreSQL ni persiste cambios:
-
-```powershell
-$env:LAEXCLUSIVA_PERSISTENCE_MODE = 'memory'
-$env:LAEXCLUSIVA_DEMO_ADMIN_PASSWORD = 'contraseña temporal'
-$env:LAEXCLUSIVA_DEMO_WORKER_PASSWORD = 'otra contraseña temporal'
-mvn exec:java "-Dexec.args=--demo"
-```
-
-No guardes contraseñas reales en el repositorio ni en la línea de comandos compartida. Usa variables privadas del proceso y evita capturar sus valores en registros.
+La aplicación comercial no ofrece un modo demo, no precarga productos ni crea cuentas ficticias. El modo `memory` queda disponible como composición explícita para pruebas automatizadas o recorridos controlados; los fixtures de catálogo y usuarios están bajo `src/test` y no se incorporan al JAR comercial. PostgreSQL sigue siendo el modo predeterminado y requiere configuración válida.
 
 ## Seleccionar PostgreSQL
 
-La aplicación utiliza PostgreSQL únicamente cuando se configura `LAEXCLUSIVA_PERSISTENCE_MODE=postgres` junto con `LAEXCLUSIVA_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD`. La configuración inválida o un esquema incompleto debe fallar de forma segura; no se cambia automáticamente a memoria.
+La aplicación utiliza PostgreSQL por defecto; puede fijarse también con `LAEXCLUSIVA_PERSISTENCE_MODE=postgres`, junto con `LAEXCLUSIVA_DB_URL`, `LAEXCLUSIVA_DB_USER` y `LAEXCLUSIVA_DB_PASSWORD`. La configuración inválida o un esquema incompleto debe fallar de forma segura; no se cambia automáticamente a memoria. Seleccionar `memory` es una opción de pruebas y no proporciona persistencia comercial.
 
 Las migraciones no se ejecutan automáticamente. Antes de aplicar una migración, verifica el destino y su versión; nunca uses la base de desarrollo o producción para pruebas. La guía de entorno y el contrato están en [database/README.md](database/README.md) y [database/jdbc-integration-contract.md](database/jdbc-integration-contract.md).
 

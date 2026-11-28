@@ -97,6 +97,19 @@ class IdentityValidationPlanTest {
     }
 
     @Test
+    void commercialSchemaVerifierCoversPostV113AndV114Contracts() throws Exception {
+        String application = asset("application.psql");
+        String validation = asset("validate.psql");
+        assertTrue(application.contains("legacy_credit_limit=5000.00"));
+        assertTrue(application.contains("V113 dejó visible el nombre retirado credit_limit"));
+        assertTrue(application.contains("V114 no conservó la fila histórica sin fotografía"));
+        assertTrue(validation.contains("\\ir ../../migrations/V113__retire_customer_credit_limit.sql"));
+        assertTrue(validation.contains("\\ir ../../migrations/V114__product_image_reference.sql"));
+        assertTrue(validation.contains("ck_beer_product_image_filename"));
+        assertTrue(validation.contains("repeat('c', 64) || '.gif'"));
+    }
+
+    @Test
     void customerCreditRetirementPreservesValuesWithoutDeletingRows() throws Exception {
         String migration = Files.readString(Path.of(
                 "database/migrations/V113__retire_customer_credit_limit.sql"));

@@ -1,4 +1,4 @@
-# Despliegue de V110 y V111
+# Despliegue de V110–V114
 
 Antes de aplicar V110, ejecuta esta consulta de solo lectura. Usa la misma normalización que la migración y devuelve los IDs que requieren revisión.
 
@@ -47,6 +47,26 @@ Concilia manualmente los IDs de cada grupo y revisa sus referencias antes de eje
 V111 fue la versión que incorporó límites de crédito. V113 archiva esa columna como `legacy_credit_limit` sin borrar sus valores. La aplicación deja de tratarla como autorización financiera; las ventas a crédito conservan su saldo individual en cartera. No asignes cupos nuevos ni alteres los valores archivados como parte de la operación normal.
 
 V114 agrega únicamente la referencia opcional `beer_product.image_filename`, validada como hash SHA-256 con extensión PNG/JPG. Los bytes permanecen en la carpeta portable local (`LAEXCLUSIVA_PRODUCT_IMAGES_DIR`); no se eliminan ni modifican imágenes o referencias históricas.
+
+## Compatibilidad del instalador y verificador de PR #30
+
+Los scripts de PR #30 que hoy se detienen en V112 deben actualizarse antes de integrar la rama
+comercial que incluye V113/V114:
+
+1. Extender su manifiesto de migraciones a V113 y V114 en ese orden, sin repetir ni alterar V111 o
+   V112.
+2. Cambiar la verificación del cupo final: V113 renombra `customer.credit_limit` a
+   `customer.legacy_credit_limit`. Comprobar la preservación de los valores históricos desde la
+   nueva columna y no exigir la antigua tras V113.
+3. Comprobar que V114 crea `beer_product.image_filename` nullable y la restricción
+   `ck_beer_product_image_filename`; productos históricos sin referencia siguen válidos.
+4. Ejecutar la verificación combinada en el laboratorio PostgreSQL desechable: fijar un cupo no cero
+   antes de V113, confirmar su conservación después; validar referencias permitidas y rechazo SQL
+   de rutas/extensiones no admitidas después de V114.
+
+La secuencia de esta rama y las restricciones V113/V114 se prueban en `database/validation/identity`.
+La adaptación y ejecución de los scripts de PR #30 pertenece a Jesús y permanece pendiente; no
+aplicar migraciones de esta secuencia a una base existente para comprobar compatibilidad.
 
 ## Medios de pago históricos
 
