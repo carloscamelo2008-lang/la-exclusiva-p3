@@ -1,6 +1,5 @@
 package com.laexclusiva;
 
-import com.laexclusiva.demo.DemoDataInitializer;
 import com.laexclusiva.model.InitialCatalog;
 import com.laexclusiva.model.Permission;
 import com.laexclusiva.model.UserAccount;
@@ -58,22 +57,7 @@ public final class Main {
         AuthorizationService authorizationService = identity.authorization();
         Scanner scanner = new Scanner(System.in);
         
-        boolean demo = java.util.Arrays.asList(args).contains("--demo");
-        if (demo) {
-            String adminPassword = System.getenv("LAEXCLUSIVA_DEMO_ADMIN_PASSWORD");
-            String workerPassword = System.getenv("LAEXCLUSIVA_DEMO_WORKER_PASSWORD");
-            try {
-                PasswordPolicy.validate(adminPassword);
-                PasswordPolicy.validate(workerPassword);
-            } catch (IllegalArgumentException | IllegalStateException invalid) {
-                System.err.println("No se pudieron validar las contraseñas demo. Revise la política y su configuración.");
-                return;
-            }
-            DemoDataInitializer initializer = new DemoDataInitializer(productService, inventoryService, customerService, sellerService, saleService);
-            DemoDataInitializer.DemoResult result = initializer.initialize();
-            userRepository.save(new UserAccount(null, "admin.demo", PasswordHasher.hash(adminPassword), UserRole.ADMINISTRATOR, result.adminSellerId()));
-            userRepository.save(new UserAccount(null, "trabajador.demo", PasswordHasher.hash(workerPassword), UserRole.WORKER, result.workerSellerId()));
-        } else if (userRepository.findAll().isEmpty()) {
+        if (userRepository.findAll().isEmpty()) {
             System.out.print("Usuario administrador inicial: "); 
             String username = scanner.nextLine().trim();
             System.out.print("Contraseña: "); 
